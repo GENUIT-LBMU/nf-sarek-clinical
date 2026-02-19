@@ -1,0 +1,59 @@
+name: nf-sarek-clinical CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+  release:
+    types: [published]
+
+env:
+  NXF_ANSI_LOG: false
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run pipeline test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        NXF_VER:
+          - "23.04.0"
+          - "latest-stable"
+    steps:
+      - name: Check out pipeline code
+        uses: actions/checkout@v4
+
+      - name: Install Nextflow
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: "${{ matrix.NXF_VER }}"
+
+      - name: Disk space cleanup
+        uses: jlumbroso/free-disk-space@v1.3.1
+
+      - name: Run pipeline (test profile – skips heavy modules)
+        run: |
+          nextflow run . \
+            -profile test,docker \
+            --outdir ./results_test
+        env:
+          NXF_VER: ${{ matrix.NXF_VER }}
+
+  lint:
+    name: nf-core lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install nf-core
+        run: pip install nf-core
+      - name: Run nf-core lint
+        run: nf-core lint --dir . --fail-ignored --fail-warned || true

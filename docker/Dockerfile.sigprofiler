@@ -1,0 +1,27 @@
+FROM python:3.10-slim
+
+LABEL maintainer="IMAXi Bioinformatics"
+LABEL description="SigProfilerAssignment + SigProfilerMatrixGenerator container for nf-sarek-clinical mutational signatures"
+
+# Build tools required by some SigProfiler C extensions
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc \
+        g++ \
+        make \
+        wget \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install SigProfiler packages
+# Pin major versions; update when COSMIC database versions change
+RUN pip install --no-cache-dir \
+    SigProfilerMatrixGenerator==1.3.21 \
+    SigProfilerAssignment==0.1.7
+
+# Pre-install the GRCh38 reference for SigProfilerMatrixGenerator
+# This downloads ~300 MB of chromosome reference data; can be skipped if
+# the reference is mounted at runtime via NXF_SINGULARITY_CACHEDIR / bind mounts.
+# Uncomment the line below to bake references into the image (larger image):
+# RUN python3 -c "from SigProfilerMatrixGenerator import install; install.install('GRCh38', rsync=False, bash=True)"
+
+CMD ["/bin/bash"]

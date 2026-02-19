@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+LABEL maintainer="IMAXi Bioinformatics"
+LABEL description="civicpy + bcftools container for nf-sarek-clinical CIViC annotation step"
+
+# Install system dependencies (bcftools, tabix, htslib)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bcftools \
+        tabix \
+        wget \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install civicpy
+# Pin version for reproducibility; bump as needed
+RUN pip install --no-cache-dir \
+    civicpy==3.1.0
+
+# Pre-populate the CIViC local cache to avoid network calls at runtime
+# (cache is refreshed with `civicpy update --soft` on first run anyway)
+RUN python3 -c "import civicpy; civicpy.update_cache()" || true
+
+CMD ["/bin/bash"]

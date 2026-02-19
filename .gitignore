@@ -1,0 +1,29 @@
+# Nextflow
+.nextflow/
+.nextflow.log*
+work/
+results/
+
+# Test outputs
+results_test/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# R
+.Rhistory
+.RData
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db

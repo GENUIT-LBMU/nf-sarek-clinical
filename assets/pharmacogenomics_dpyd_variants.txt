@@ -1,0 +1,10 @@
+# DPYD pharmacogenomics variants
+# Used for fluoropyrimidine toxicity risk assessment
+# References: CPIC guidelines, PharmGKB, DPYD star allele definitions
+# Format: rsID  gene  star_allele  clinical_significance
+rs3918290	DPYD	*2A	Decreased function – HapB3
+rs55886062	DPYD	*13	Decreased function
+rs67376798	DPYD	*2A (HapB3)	Decreased function – HapB3
+rs56038477	DPYD	HapB3	Decreased function
+rs4148323	UGT1A1	*28	Irinotecan metabolism (decreased)
+rs3064744	UGT1A1	*28 (TA7)	Irinotecan metabolism (decreased)

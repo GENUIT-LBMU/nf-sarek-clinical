@@ -1,0 +1,44 @@
+# 38-gene somatic oncogene/TSG panel
+# Used for CNVkit somatic event reporting:
+#   - HOMDEL (CN=0): homozygous deletion
+#   - HETDEL (CN=1): heterozygous deletion
+#   - AMP (CN>=5): amplification
+# Includes key oncogenes, tumor suppressor genes, and actionable targets
+B2M
+MAP2K1
+FBXW7
+SDHD
+SDHA
+NOTCH3
+BLM
+SMAD4
+BRCA1
+BRCA2
+PALB2
+APC
+CTNNB1
+TP53
+RNF43
+MLH1
+MLH3
+MSH2
+MSH6
+EPCAM
+MSH3
+PMS2
+ERBB2
+MTOR
+MYC
+MEN1
+POLE
+POLD1
+RECQL4
+WRN
+MET
+PIK3R1
+PTEN
+PIK3CA
+KRAS
+NRAS
+BRAF
+EGFR
