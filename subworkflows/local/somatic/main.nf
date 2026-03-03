@@ -10,23 +10,25 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-include { SNPSIFT_DBNSFP_SOMATIC   } from '../../modules/local/snpsift_somatic/main'
-include { SNPSIFT_FILTER_SOMATIC   } from '../../modules/local/snpsift_somatic/main'
-include { CIVIC_ANNOTATE           } from '../../modules/local/snpsift_somatic/main'
-include { SNPSIFT_EXTRACT_SOMATIC  } from '../../modules/local/snpsift_somatic/main'
-include { CIVIC_EXTRACT            } from '../../modules/local/snpsift_somatic/main'
-include { SOMATIC_CNV_INTERPRET    } from '../../modules/local/somatic_cnv_interpret/main'
-include { TMB_FILTER               } from '../../modules/local/tmb/main'
-include { TMB_CALCULATE            } from '../../modules/local/tmb/main'
-include { MUTSIG_FILTER            } from '../../modules/local/mutational_signatures/main'
-include { MUTSIG_SIGPROFILER       } from '../../modules/local/mutational_signatures/main'
+include { SNPSIFT_DBNSFP_SOMATIC   } from '../../../modules/local/snpsift_somatic/main'
+include { SNPSIFT_FILTER_SOMATIC   } from '../../../modules/local/snpsift_somatic/main'
+include { CIVIC_ANNOTATE           } from '../../../modules/local/snpsift_somatic/main'
+include { SNPSIFT_EXTRACT_SOMATIC  } from '../../../modules/local/snpsift_somatic/main'
+include { CIVIC_EXTRACT            } from '../../../modules/local/snpsift_somatic/main'
+include { SOMATIC_CNV_INTERPRET    } from '../../../modules/local/somatic_cnv_interpret/main'
+include { TMB_FILTER               } from '../../../modules/local/tmb/main'
+include { TMB_CALCULATE            } from '../../../modules/local/tmb/main'
+include { MUTSIG_FILTER            } from '../../../modules/local/mutational_signatures/main'
+include { MUTSIG_SIGPROFILER       } from '../../../modules/local/mutational_signatures/main'
+include { HRD_PROFILER             } from '../../../modules/local/hrd/main'
 
 workflow SOMATIC_POSTPROCESS {
     take:
     ch_mutect2_vcfs     // channel: [ val(pair), path(vcf.gz) ]  snpEff-annotated Mutect2 VCFs
     ch_cnvkit_cns       // channel: [ val(pair), val(tumor), val(normal), path(*.call.cns) ]
     ch_ascat            // channel: [ val(pair), path(segments.txt), path(metrics.txt) ]
-    ch_dbnsfp           // path: dbNSFP database
+    ch_dbnsfp           // path: dbNSFP database (.txt.gz)
+    ch_dbnsfp_tbi       // path: dbNSFP tabix index (.txt.gz.tbi)
     ch_snpsift_jar      // path: SnpSift.jar
     ch_somatic_snv_panel // path: somatic SNV gene panel
     ch_somatic_cnv_panel // path: somatic CNV gene panel (38 genes)
@@ -40,6 +42,7 @@ workflow SOMATIC_POSTPROCESS {
     SNPSIFT_DBNSFP_SOMATIC(
         ch_mutect2_vcfs,
         ch_dbnsfp,
+        ch_dbnsfp_tbi,
         ch_snpsift_jar
     )
 
@@ -123,6 +126,25 @@ workflow SOMATIC_POSTPROCESS {
         params.genome_build
     )
 
+    // ── HRD Profiler ─────────────────────────────────────────────────────────
+    ch_hrd_tsv = Channel.empty()
+    if (!params.skip_hrd) {
+        // Join filtered VCF [pair, vcf] with ASCAT segments [pair, seg, met] → [pair, vcf, seg]
+        ch_hrd_input = MUTSIG_FILTER.out.vcf
+            .join(
+                ch_ascat.map { pair, seg, met -> [pair, seg] },
+                by: 0
+            )
+            .filter { pair, vcf, seg -> seg.name != 'NO_FILE' }
+
+        HRD_PROFILER(
+            ch_hrd_input,
+            params.hrd_organ,
+            params.genome_build
+        )
+        ch_hrd_tsv = HRD_PROFILER.out.predictions
+    }
+
     emit:
     somatic_snv_tsv   = SNPSIFT_EXTRACT_SOMATIC.out.tsv    // [ pair, path(*.somatic_snvs.tsv) ]
     civic_tsv         = CIVIC_EXTRACT.out.tsv               // [ pair, path(*.civic.exploded.tsv) ]
@@ -130,4 +152,5 @@ workflow SOMATIC_POSTPROCESS {
     cnv_txt           = SOMATIC_CNV_INTERPRET.out.txt       // [ pair, path(*_somatic_cnv_report.txt) ]
     tmb_tsv           = TMB_CALCULATE.out.tsv               // [ pair, path(*.tmb.tsv) ]
     signatures_dir    = MUTSIG_SIGPROFILER.out.assignment   // path(assignment/)
+    hrd_tsv           = ch_hrd_tsv                          // [ pair, path(*_hrd_predictions.tsv) ]
 }

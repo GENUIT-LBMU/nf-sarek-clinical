@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+"""
+final_report_sections.py
+========================
+Helper functions for the GENUIT nf-sarek-clinical HTML report:
+  - CPIC Pharmacogenomics lookup table + rendering
+  - ClinicalTrials.gov API query + rendering
+  - Test Methodology section rendering
+
+These functions are imported by the FINAL_REPORT Nextflow module
+to keep the heredoc small enough for the Groovy parser.
+"""
+
+import html
+import os
+import csv
+
+# ---------------------------------------------------------------------------
+# CPIC Pharmacogenomics lookup table
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# CPIC Pharmacogenomics lookup table
+# ---------------------------------------------------------------------------
+_CPIC_TABLE = {
+    'rs3918290':   {'gene':'DPYD',    'allele':'*2A (c.1905+1G>A)',         'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'5-FU, Capecitabine, Tegafur',                       'recommendation':'Avoid fluoropyrimidines. If unavoidable, reduce starting dose by >=50% and perform therapeutic drug monitoring. Risk of severe/fatal toxicity.',           'alert':'HIGH'},
+    'rs55886062':  {'gene':'DPYD',    'allele':'*13 (c.1679T>G)',            'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'5-FU, Capecitabine, Tegafur',                       'recommendation':'Avoid fluoropyrimidines. If unavoidable, reduce starting dose by >=50% and perform TDM.',                                                                'alert':'HIGH'},
+    'rs67376798':  {'gene':'DPYD',    'allele':'c.2846A>T (p.Asp949Val)',    'activity':'0.5',     'phenotype':'Decreased Function -- Intermediate Met.',   'drugs':'5-FU, Capecitabine, Tegafur',                       'recommendation':'Reduce starting dose by 25-50%; titrate based on toxicity and pharmacokinetics.',                                                                        'alert':'MODERATE'},
+    'rs56038477':  {'gene':'DPYD',    'allele':'HapB3 (c.1236G>A, E412E)',  'activity':'0.5',     'phenotype':'Decreased Function -- Intermediate Met.',   'drugs':'5-FU, Capecitabine, Tegafur',                       'recommendation':'Reduce starting dose by 25-50%; titrate based on toxicity and pharmacokinetics.',                                                                        'alert':'MODERATE'},
+    'rs4148323':   {'gene':'UGT1A1',  'allele':'*28 ([TA]7)',                'activity':'Reduced', 'phenotype':'Reduced UGT1A1 Activity',                  'drugs':'Irinotecan, Belinostat, Nilotinib',                 'recommendation':'*28/*28: reduce irinotecan starting dose by >=30%. *1/*28: standard dose; monitor for diarrhea/neutropenia.',                                            'alert':'MODERATE'},
+    'rs3064744':   {'gene':'UGT1A1',  'allele':'*28 TA7 repeat',            'activity':'Reduced', 'phenotype':'Reduced UGT1A1 Activity',                  'drugs':'Irinotecan',                                        'recommendation':'Consider reduced irinotecan starting dose; monitor for SN-38-related toxicity.',                                                                          'alert':'MODERATE'},
+    'rs116855232': {'gene':'NUDT15',  'allele':'*2 (c.415C>T, p.Arg139Cys)','activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Start thiopurine at 10% of standard dose; adjust based on hematological toxicity and TGN nucleotide levels.',                                           'alert':'HIGH'},
+    'rs186364861': {'gene':'NUDT15',  'allele':'*3',                        'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Start thiopurine at 10% of standard dose; adjust based on toxicity monitoring.',                                                                        'alert':'HIGH'},
+    'rs1800462':   {'gene':'TPMT',    'allele':'*2 (c.238G>C)',             'activity':'Decreased','phenotype':'Decreased Function',                       'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Intermediate metabolizer: reduce thiopurine starting dose by 30-70%; titrate based on hematological toxicity.',                                         'alert':'MODERATE'},
+    'rs1800460':   {'gene':'TPMT',    'allele':'*3B (c.460G>A)',            'activity':'Decreased','phenotype':'Decreased Function',                       'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Intermediate metabolizer: reduce thiopurine starting dose by 30-70%.',                                                                                   'alert':'MODERATE'},
+    'rs1142345':   {'gene':'TPMT',    'allele':'*3C (c.719A>G)',            'activity':'Decreased','phenotype':'Decreased Function',                       'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Intermediate metabolizer: reduce thiopurine starting dose by 30-70%.',                                                                                   'alert':'MODERATE'},
+    'rs3892097':   {'gene':'CYP2D6',  'allele':'*4 (c.506-1G>A)',           'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'Tamoxifen',                                         'recommendation':'Consider aromatase inhibitor (AI) rather than tamoxifen for postmenopausal ER+ patients. CYP2D6 PM have impaired conversion to active endoxifen.',       'alert':'HIGH'},
+    'rs1065852':   {'gene':'CYP2D6',  'allele':'*10 (c.100C>T)',            'activity':'0.5',     'phenotype':'Decreased Function -- Intermediate Met.',   'drugs':'Tamoxifen',                                         'recommendation':'Consider alternative hormonal therapy (AI) if clinically feasible; reduced endoxifen levels may compromise tamoxifen efficacy.',                           'alert':'MODERATE'},
+    'rs4244285':   {'gene':'CYP2C19', 'allele':'*2 (c.681G>A)',             'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'Clopidogrel, Voriconazole',                         'recommendation':'For clopidogrel: use alternative antiplatelet (prasugrel, ticagrelor). For voriconazole: dose reduction; PMs have substantially increased exposure.',      'alert':'MODERATE'},
+}
+
+def _alert_badge(alert):
+    colors_map = {'HIGH': '#dc2626', 'MODERATE': '#d97706', 'LOW': '#16a34a'}
+    c = colors_map.get(alert, '#6b7280')
+    return "<span style='background:" + c + ";color:#fff;padding:2px 7px;border-radius:10px;font-size:.62rem;font-weight:700;'>" + html.escape(alert) + "</span>"
+
+def tsv_to_html_pharmaco(path):
+    cpic_rows = []
+    if path and os.path.isfile(path):
+        with open(path) as fh:
+            reader = csv.DictReader(fh, delimiter='\t')
+            for row in reader:
+                rsid_raw = (row.get('ID') or '').strip()
+                if not rsid_raw or rsid_raw == '.':
+                    continue
+                for rsid in rsid_raw.split(';'):
+                    rsid = rsid.strip()
+                    cpic = _CPIC_TABLE.get(rsid)
+                    if cpic:
+                        cpic_rows.append({
+                            'rsid':   rsid,
+                            'gene':   cpic['gene'],
+                            'allele': cpic['allele'],
+                            'gt':     (row.get('GEN[0].GT') or '').strip() or '&mdash;',
+                            'phenotype': cpic['phenotype'],
+                            'activity':  cpic['activity'],
+                            'drugs':     cpic['drugs'],
+                            'recommendation': cpic['recommendation'],
+                            'alert':         cpic['alert'],
+                        })
+
+    if not cpic_rows:
+        return (
+            "<div class='callout-info'>"
+            "<strong>No Actionable Pharmacogenomic Variants Detected</strong><br/>"
+            "The pharmacogenomics panel (DPYD, UGT1A1, NUDT15, TPMT, CYP2D6, CYP2C19) "
+            "did not identify any germline variants with CPIC actionable dosing recommendations. "
+            "Standard dosing for fluoropyrimidines, irinotecan, thiopurines, and tamoxifen "
+            "is indicated based on pharmacogenomic genotyping."
+            "</div>"
+        )
+
+    alert_row_bg = {'HIGH': 'rgba(220,38,38,0.08)', 'MODERATE': 'rgba(217,119,6,0.08)', 'LOW': 'rgba(22,163,74,0.06)'}
+    th = (
+        "<th>Gene</th><th>rsID</th><th>Allele / Variant</th>"
+        "<th>Genotype</th><th>Phenotype</th><th>Activity Score</th>"
+        "<th>Drugs Affected</th><th>Alert</th><th>CPIC Recommendation</th>"
+    )
+    tbody = ""
+    for r in cpic_rows:
+        bg = alert_row_bg.get(r['alert'], '')
+        style = ("style='background:" + bg + ";'" if bg else "")
+        tbody += (
+            "<tr " + style + ">"
+            "<td><strong>" + html.escape(r['gene']) + "</strong></td>"
+            "<td style='font-family:monospace;font-size:.72rem;'>" + html.escape(r['rsid']) + "</td>"
+            "<td style='font-size:.72rem;'>" + html.escape(r['allele']) + "</td>"
+            "<td style='font-family:monospace;'>" + r['gt'] + "</td>"
+            "<td style='font-size:.72rem;'>" + html.escape(r['phenotype']) + "</td>"
+            "<td style='text-align:center;'>" + html.escape(str(r['activity'])) + "</td>"
+            "<td style='font-size:.72rem;'>" + html.escape(r['drugs']) + "</td>"
+            "<td>" + _alert_badge(r['alert']) + "</td>"
+            "<td style='font-size:.72rem;'>" + html.escape(r['recommendation']) + "</td>"
+            "</tr>\n"
+        )
+    note = (
+        "<p style='font-size:.72rem;color:#94a3b8;margin-top:6px;'>"
+        "CPIC = Clinical Pharmacogenomics Implementation Consortium. "
+        "Recommendations based on CPIC guidelines for DPYD (2017), UGT1A1 (2014), "
+        "NUDT15/TPMT (2018), CYP2D6/Tamoxifen (2018), CYP2C19 (2013).</p>"
+    )
+    return (
+        "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
+        "<tbody>" + tbody + "</tbody></table></div>" + note
+    )
+
+# ---------------------------------------------------------------------------
+# Clinical Trials section (ClinicalTrials.gov API v2)
+# ---------------------------------------------------------------------------
+def fetch_clinical_trials_html(corr_json_path, tmb_val, msi_val, hrd_status):
+    import urllib.request, urllib.parse, json as _json
+
+    # Determine query genes from correlation JSON
+    query_terms = []
+    if corr_json_path and os.path.isfile(corr_json_path):
+        try:
+            with open(corr_json_path) as fh:
+                cdata = _json.load(fh)
+            for r in cdata.get('results', []):
+                if r.get('acmg') in ('P', 'LP'):
+                    g = r.get('gene', '')
+                    if g and g not in query_terms:
+                        query_terms.append(g)
+            for r in cdata.get('biallelic_somatic', []):
+                g = r.get('gene', '')
+                if g and g not in query_terms:
+                    query_terms.append(g)
+        except Exception:
+            pass
+    try:
+        if float(str(tmb_val).replace('NA','0') or '0') >= 10:
+            query_terms.append('TMB-H pembrolizumab')
+    except (ValueError, TypeError):
+        pass
+    try:
+        if float(str(msi_val).replace('NA','0') or '0') >= 5.0:
+            query_terms.append('microsatellite instability MSI-H')
+    except (ValueError, TypeError):
+        pass
+    if str(hrd_status) == 'HRD+':
+        query_terms.append('BRCA homologous recombination deficiency PARP inhibitor')
+
+    if not query_terms:
+        return "<p class='warn'>No reportable findings to drive clinical trial queries.</p>"
+
+    all_trials = []
+    api_error = None
+    for term in query_terms[:4]:
+        try:
+            params = urllib.parse.urlencode({
+                'query.term': term + ' cancer',
+                'filter.overallStatus': 'RECRUITING',
+                'fields': 'NCTId,BriefTitle,Phase,OverallStatus,Condition,StartDate',
+                'pageSize': '3',
+                'format': 'json',
+            })
+            url = 'https://clinicaltrials.gov/api/v2/studies?' + params
+            req = urllib.request.Request(url, headers={'User-Agent': 'nf-sarek-clinical/1.0'})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = _json.loads(resp.read().decode('utf-8'))
+            existing_ncts = {t['nct'] for t in all_trials}
+            for s in data.get('studies', []):
+                proto  = s.get('protocolSection', {})
+                id_mod = proto.get('identificationModule', {})
+                stat   = proto.get('statusModule', {})
+                des    = proto.get('designModule', {})
+                cond   = proto.get('conditionsModule', {})
+                nct    = id_mod.get('nctId', '')
+                if nct and nct not in existing_ncts:
+                    all_trials.append({
+                        'nct':    nct,
+                        'title':  id_mod.get('briefTitle', ''),
+                        'phase':  ', '.join(des.get('phases', [])) or 'N/A',
+                        'status': stat.get('overallStatus', ''),
+                        'conds':  ', '.join(cond.get('conditions', [])[:2]),
+                        'start':  (stat.get('startDateStruct') or {}).get('date', ''),
+                        'query':  term,
+                    })
+        except Exception as e:
+            api_error = str(e)
+            break
+
+    if api_error and not all_trials:
+        return (
+            "<div class='callout-info' style='background:#fff7ed;border-color:#f97316;color:#7c2d12;'>"
+            "<strong>ClinicalTrials.gov API Unavailable</strong><br/>"
+            "Could not connect to ClinicalTrials.gov at report generation time (timeout/network). "
+            "Please search manually at <a href='https://clinicaltrials.gov' style='color:#f97316;'>clinicaltrials.gov</a> "
+            "for recruiting studies involving: " + html.escape(', '.join(query_terms[:4])) +
+            "</div>"
+        )
+
+    if not all_trials:
+        return (
+            "<div class='callout-info'>"
+            "<strong>No Recruiting Trials Found</strong><br/>"
+            "No recruiting clinical trials were found for the identified variants/biomarkers "
+            "in the ClinicalTrials.gov registry at report generation time."
+            "</div>"
+        )
+
+    th = ("<th>NCT ID</th><th>Trial Title</th><th>Phase</th>"
+          "<th>Status</th><th>Condition(s)</th><th>Start Date</th><th>Query Gene/Biomarker</th>")
+    tbody = ""
+    for t in all_trials:
+        tbody += (
+            "<tr>"
+            "<td style='font-family:monospace;font-size:.72rem;white-space:nowrap;'>"
+            + html.escape(t['nct']) + "</td>"
+            "<td style='font-size:.72rem;'>" + html.escape(t['title']) + "</td>"
+            "<td style='font-size:.72rem;white-space:nowrap;'>" + html.escape(t['phase']) + "</td>"
+            "<td style='font-size:.72rem;'>" + html.escape(t['status']) + "</td>"
+            "<td style='font-size:.72rem;'>" + html.escape(t['conds']) + "</td>"
+            "<td style='font-size:.72rem;white-space:nowrap;'>" + html.escape(t['start']) + "</td>"
+            "<td style='font-size:.72rem;'>" + html.escape(t['query']) + "</td>"
+            "</tr>\n"
+        )
+    note = (
+        "<p style='font-size:.72rem;color:#94a3b8;margin-top:6px;'>"
+        "Sourced from ClinicalTrials.gov at report generation date. "
+        "Only RECRUITING status trials shown. Eligibility must be verified before referral.</p>"
+    )
+    return (
+        "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
+        "<tbody>" + tbody + "</tbody></table></div>" + note
+    )
+
+# ---------------------------------------------------------------------------
+# Test Methodology section
+# ---------------------------------------------------------------------------
+def build_methodology_html():
+    method_css = (
+        "<style>"
+        ".meth-table { border-collapse:collapse; width:100%; font-size:.78rem; margin-top:8px; }"
+        ".meth-table th { background:#1e293b; color:#f8fafc; padding:.4rem .6rem; text-align:left; white-space:nowrap; }"
+        ".meth-table td { padding:.35rem .6rem; border-bottom:1px solid rgba(148,163,184,0.15); color:#e5e7eb; vertical-align:top; }"
+        ".meth-table tr:nth-child(even) td { background:rgba(15,23,42,0.4); }"
+        ".meth-h3 { font-size:.9rem; font-weight:700; color:#f97316; margin:18px 0 6px; border-left:3px solid #f97316; padding-left:8px; }"
+        ".meth-p { font-size:.8rem; color:#cbd5e1; line-height:1.5; margin:4px 0 10px; }"
+        "</style>"
+    )
+    overview_rows = [
+        ['Germline SNVs',     'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
+        ['Somatic SNVs',      'GATK Mutect2 v4 (tumor&ndash;normal mode)',        'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA&ndash;III'],
+        ['Somatic CNVs',      'ASCAT v3 + CNVkit v0.9 (consensus)',               'GRCh38', 'HOMDEL (CN=0), AMP (CN&ge;5), 2nd-hit LOH; 38-gene somatic panel'],
+        ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'NP&ge;5 exon intervals AND QA&ge;10 Phred; CN&ne;2 events; 90-gene germline panel'],
+        ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold &ge;5%'],
+        ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'HRD+ threshold: probability &ge;0.45; supporting biomarkers SBS3/SBS8'],
+        ['Mut. Signatures',   'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',  'COSMIC v3.4 SBS96, DBS, ID signatures; activity threshold &gt;0.05 mut/Mb'],
+        ['TMB',               'Custom (Mutect2 PASS variants / captured Mb)',     'GRCh38', 'Non-synonymous variants; gnomAD AF&gt;1% excluded; TMB-H &ge;10 mut/Mb'],
+        ['Pharmacogenomics',  'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1, NUDT15, TPMT, CYP2D6, CYP2C19; CPIC guideline annotation'],
+        ['Germline&ndash;Somatic', 'germline_somatic_correlate.py',               'N/A',    'P/LP/VUS x somatic 2nd hits; HRD/MMR pathway biomarkers'],
+    ]
+    rows_html = ""
+    for r in overview_rows:
+        rows_html += "<tr>" + "".join("<td>" + c + "</td>" for c in r) + "</tr>\n"
+    overview_table = (
+        "<div class='tbl-wrap'>"
+        "<table class='meth-table'><thead><tr>"
+        "<th>Report Section</th><th>Caller / Tool</th><th>Genome Build</th><th>Key Parameters &amp; Thresholds</th>"
+        "</tr></thead><tbody>" + rows_html + "</tbody></table></div>"
+    )
+
+    detail_sections = [
+        ('Gene Panels',
+         '<b>Germline cancer predisposition panel (90 genes):</b> BRCA1, BRCA2, TP53, ATM, PALB2, CHEK2, '
+         'MLH1, MSH2, MSH6, PMS2, APC, MUTYH, CDH1, STK11, PTEN, RB1, VHL, NF1, NF2, TSC1, TSC2, '
+         'MEN1, RET, SDHA/B/C/D, SDHAF2, MAX, TMEM127, and others. '
+         'Full list: <code>assets/gene_panels/germline_90_cancer_predisposition.txt</code>.<br/><br/>'
+         '<b>Somatic variant panel (38 oncogenes/TSGs):</b> KRAS, NRAS, BRAF, PIK3CA, PIK3R1, PTEN, '
+         'AKT1, TP53, CDKN2A, RB1, ERBB2, EGFR, ALK, MET, CDK4, CDK6, CCND1, CCND3, FGFR1/2/3, '
+         'IDH1, IDH2, SMO, PTCH1, NOTCH1, FBXW7, ARID1A, and others. '
+         'Full list: <code>assets/gene_panels/somatic_snv_panel.txt</code>.'),
+        ('TMB Calculation',
+         'Tumor Mutational Burden (TMB) = number of somatic <b>PASS</b> non-synonymous variants '
+         '(missense, nonsense, frameshift, splice) divided by the effective captured exome size (Mb). '
+         '<b>TMB-High (TMB-H) threshold: &ge;10 mut/Mb</b> (FDA pembrolizumab indication, KEYNOTE-158). '
+         'Variants in gnomAD (AF&nbsp;&gt;&nbsp;1%) are excluded as likely germline.'),
+        ('MSI &mdash; Microsatellite Instability',
+         'MSIsensorPro compares microsatellite repeat-length distributions between tumor and matched normal '
+         'using a somatic T/N model. MSI score = % unstable microsatellite sites. '
+         '<b>MSI-High (MSI-H) threshold: &ge;5%.</b> '
+         'MSI-H tumors may benefit from immune checkpoint inhibitors (anti-PD-1/PD-L1).'),
+        ('HRD &mdash; Homologous Recombination Deficiency',
+         'HRProfiler applies a logistic regression model trained on TCGA/PCAWG cohorts using '
+         'COSMIC SBS3, SBS8, ID6 signatures and copy-number features as inputs. '
+         '<b>HRD+ threshold: probability &ge;0.45.</b> '
+         'HRD+ tumors may benefit from PARP inhibitors (olaparib, rucaparib, niraparib, talazoparib). '
+         'Supporting biomarkers (SBS3/SBS8 detection, HRD probability) are reported jointly.'),
+        ('Mutational Signatures',
+         'Signatures are derived using the SigProfiler framework (COSMIC v3.4). '
+         '<b>SigProfilerMatrixGenerator</b> constructs SBS96, DBS, and ID mutation matrices from somatic VCFs. '
+         '<b>SigProfilerAssignment</b> performs constrained attribution of COSMIC reference signatures. '
+         'Reported signatures have activity &gt;0.05 mut/Mb. '
+         'Aetiology annotations from COSMIC Mutational Signatures (cancer.sanger.ac.uk/signatures).'),
+        ('ACMG/AMP Variant Classification (Germline)',
+         'Germline variants are classified per ACMG/AMP 2015 standards (Richards et al., '
+         '<i>Genetics in Medicine</i> 2015) with updated evidence weights (Tavtigian et al. 2020). '
+         'Evidence weights: PVS1 (+8), PM2 (+2), PP3_Strong (+4), PP3 (+2), PP3_Supporting (+1), PP2 (+1), '
+         'BS1 (&minus;4), BP4_Strong (&minus;4), BP4 (&minus;2). '
+         'ClinVar P/LP annotations override the score. gnomAD AF&nbsp;&gt;&nbsp;5% triggers BA1 (stand-alone benign). '
+         'Score thresholds: P &ge;10, LP 6&ndash;9, VUS &minus;5 to 5, LB &minus;9 to &minus;6, B &le;&minus;10.'),
+        ('Somatic Variant Interpretation (AMP/ASCO/CAP Tiers)',
+         'Somatic variants are tiered per AMP/ASCO/CAP 2017 guidelines using CIViC database evidence (A&ndash;E). '
+         '<b>Tier IA/IB</b>: FDA-approved or clinical-guideline therapeutic implications. '
+         '<b>Tier IIA/IIB</b>: Clinical trials or emerging evidence. '
+         '<b>Tier IIC</b>: Biologically plausible (case reports, preclinical). '
+         '<b>Tier III</b>: Variants of unknown significance (HIGH/MODERATE impact without CIViC).'),
+        ('Germline&ndash;Somatic Integration',
+         'The correlation module cross-references P/LP/VUS germline variants in cancer-predisposition genes '
+         'with (1) somatic second-hit SNVs/indels in the same gene, '
+         '(2) allele-specific copy-number loss/LOH (from ASCAT+CNVkit and GATK gCNV), and '
+         '(3) pathway-level biomarkers: HRD probability &ge;0.45 or SBS3/SBS8 for HRR genes; '
+         'TMB &ge;10 mut/Mb, MSI &ge;3.5%, or SBS6/15/20/21/26/44 for MMR genes. '
+         'Genes without a somatic second hit <i>and</i> without pathway biomarker support are excluded.'),
+    ]
+    details_html = ""
+    for title, body in detail_sections:
+        details_html += (
+            "<div class='meth-h3'>" + title + "</div>"
+            "<p class='meth-p'>" + body + "</p>"
+        )
+
+    disclaimer = (
+        "<p style='margin-top:20px;font-size:.72rem;color:#64748b;border-top:1px solid rgba(148,163,184,0.2);padding-top:10px;'>"
+        "<i>This report was generated by the GENUIT nf-sarek-clinical pipeline (nf-core/sarek v3.x). "
+        "All variant interpretations are for investigational use. Results must be confirmed in a "
+        "certified clinical laboratory before clinical decision-making. "
+        "References: GATK Best Practices; ACMG/AMP 2015 (Richards et al.); "
+        "CPIC guidelines (cpicpgx.org); COSMIC v3.4 (cancer.sanger.ac.uk); ClinicalTrials.gov.</i>"
+        "</p>"
+    )
+
+    return method_css + overview_table + details_html + disclaimer

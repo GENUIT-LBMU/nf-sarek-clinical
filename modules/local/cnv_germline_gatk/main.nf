@@ -76,10 +76,11 @@ process GATK_DETERMINE_GERMLINE_CONTIG_PLOIDY {
 
     script:
     """
+    export THEANO_FLAGS="base_compiledir=\${PWD}/.theano"
+    export HOME=\${PWD}
     mkdir -p ${sample}_ploidy
 
     gatk DetermineGermlineContigPloidy \\
-        --run-mode CASE \\
         --interval-merging-rule OVERLAPPING_ONLY \\
         --model         ${ploidy_model_dir} \\
         --input         ${counts} \\
@@ -114,6 +115,8 @@ process GATK_GERMLINE_CNV_CALLER {
 
     script:
     """
+    export THEANO_FLAGS="base_compiledir=\${PWD}/.theano"
+    export HOME=\${PWD}
     mkdir -p ${sample}_cnvcalls
 
     gatk GermlineCNVCaller \\
@@ -154,6 +157,8 @@ process GATK_POSTPROCESS_GERMLINE_CNV_CALLS {
 
     script:
     """
+    export THEANO_FLAGS="base_compiledir=\${PWD}/.theano"
+    export HOME=\${PWD}
     gatk PostprocessGermlineCNVCalls \\
         --model-shard-path         ${pon_dir} \\
         --calls-shard-path         ${cnv_calls_dir}/${sample}-calls \\
@@ -204,7 +209,7 @@ process MANE_ANNOTATE_GERMLINE_CNV {
 
     Rscript ${exon_r} \\
         --vcf  vcf_in \\
-        --MANE ${mane_txt}
+        --MANE ${mane_txt} || echo "WARNING: R annotation script failed, will use fallback" >&2
 
     # Normalise output filename: script writes files in --vcf dir
     # Move/rename to expected output

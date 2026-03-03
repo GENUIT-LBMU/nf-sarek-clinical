@@ -21,6 +21,7 @@ process SNPSIFT_DBNSFP_SOMATIC {
     input:
     tuple val(pair), path(vcf)
     path dbnsfp
+    path dbnsfp_tbi
     path snpsift_jar
 
     output:
@@ -62,7 +63,7 @@ process SNPSIFT_DBNSFP_SOMATIC {
         -f ${dbnsfp_fields} \\
         -v \\
         -db ${dbnsfp} \\
-        ${vcf} | bgzip -c > ${pair}.dbnsfp.vcf.gz
+        ${vcf} | gzip -c > ${pair}.dbnsfp.vcf.gz
     """
 }
 
@@ -90,7 +91,7 @@ process SNPSIFT_FILTER_SOMATIC {
 
     script:
     """
-    genes=\$(grep -v '^#' ${gene_panel} | tr '\\n' '|' | sed 's/|$//')
+    genes=\$(grep -v '^#' ${gene_panel} | paste -sd '|')
 
     python3 - "\$genes" ${min_dp} <<'PYEOF'
 import sys
@@ -112,7 +113,7 @@ with open("filter_expr.txt", "w") as fh:
 PYEOF
 
     java -jar ${snpsift_jar} filter "\$(cat filter_expr.txt)" ${vcf} \\
-        | bgzip -c > ${pair}.filtered.vcf.gz
+        | gzip -c > ${pair}.filtered.vcf.gz
     """
 }
 
@@ -138,18 +139,22 @@ process CIVIC_ANNOTATE {
 
     script:
     // Reference: GRCh38 → 'GRCh38', GRCh37 → 'GRCh37'
+    // Gracefully fall back to passing through the input VCF if CIViC annotation fails
+    // (CIVIC_EXTRACT already handles VCFs without CIVIC INFO fields → empty TSV)
     """
     # Ensure CIViC cache is fresh
     CIVIC_CACHE="\${PWD}/civicpy_cache.pkl"
-    civicpy update --soft --cache-save-path "\${CIVIC_CACHE}" || \\
-        civicpy update --hard --cache-save-path "\${CIVIC_CACHE}"
+    civicpy update --hard --cache-save-path "\${CIVIC_CACHE}" || true
 
-    CIVICPY_CACHE_FILE="\${CIVIC_CACHE}" \\
-    civicpy annotate-vcf \\
-        --input-vcf  ${vcf} \\
-        --output-vcf ${pair}.civic.vcf.gz \\
-        --reference  ${genome_build} \\
-        -i submitted
+    if ! CIVICPY_CACHE_FILE="\${CIVIC_CACHE}" \\
+         civicpy annotate-vcf \\
+             --input-vcf  ${vcf} \\
+             --output-vcf ${pair}.civic.vcf.gz \\
+             --reference  ${genome_build} \\
+             -i submitted 2>&1; then
+        echo "WARNING: CIViC annotation failed — passing through unannotated VCF"
+        cp ${vcf} ${pair}.civic.vcf.gz
+    fi
     """
 }
 
@@ -193,7 +198,8 @@ process SNPSIFT_EXTRACT_SOMATIC {
         "dbNSFP_clinvar_id" "dbNSFP_clinvar_clnsig" "dbNSFP_clinvar_trait" \\
         "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
         "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
-        > "${pair}.somatic_snvs.tsv"
+    | awk -F'\\t' 'BEGIN{OFS="\\t"} NR==1{print; next} {for(i=1;i<=NF;i++){n=split(\$i,a,";"); \$i=a[1]}; print}' \\
+    > "${pair}.somatic_snvs.tsv"
     """
 }
 

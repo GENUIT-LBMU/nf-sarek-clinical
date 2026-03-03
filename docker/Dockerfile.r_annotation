@@ -1,0 +1,14 @@
+FROM quay.io/biocontainers/mulled-v2-c278c7398beb73294d78639a864352abef2931ce:ba3e6d2157eac2d38d22e62ec87675e12adb1010-0
+
+LABEL maintainer="IMAXi Bioinformatics"
+LABEL description="R annotation container with optparse, dplyr, tidyr, GenomicRanges, data.table for nf-sarek-clinical"
+
+# Install additional CRAN packages needed by annotation R scripts
+# (GenomicRanges and data.table already present in base image)
+RUN Rscript -e "\
+    install.packages(c('optparse', 'dplyr', 'tidyr'), \
+        repos='https://cran.r-project.org', \
+        Ncpus=4, \
+        quiet=TRUE)"
+
+CMD ["/bin/bash"]

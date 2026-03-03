@@ -26,12 +26,14 @@ include { CNV_GERMLINE_GATK     } from '../subworkflows/local/cnv_germline_gatk/
 include { CNV_SOMATIC_GATK      } from '../subworkflows/local/cnv_somatic_gatk/main'
 include { GENE_COVERAGE         } from '../modules/local/gene_coverage/main'
 include { FINAL_REPORT          } from '../modules/local/final_report/main'
+include { CLINICAL_PDF_REPORT   } from '../modules/local/clinical_pdf_report/main'
 
 workflow SAREK_CLINICAL {
 
     // ── Reference file channels ───────────────────────────────────────────────
-    ch_dbnsfp        = params.dbnsfp      ? file(params.dbnsfp)      : error("--dbnsfp required")
-    ch_snpsift_jar   = params.snpsift_jar ? file(params.snpsift_jar) : error("--snpsift_jar required")
+    ch_dbnsfp        = params.dbnsfp      ? file(params.dbnsfp)               : error("--dbnsfp required")
+    ch_dbnsfp_tbi    = params.dbnsfp      ? file("${params.dbnsfp}.tbi")      : error("--dbnsfp required")
+    ch_snpsift_jar   = params.snpsift_jar ? file(params.snpsift_jar)          : error("--snpsift_jar required")
     ch_panel_bed     = params.panel_bed   ? file(params.panel_bed)   : []
     ch_gene_coords   = params.gene_coords_bed ? file(params.gene_coords_bed) : []
 
@@ -65,7 +67,7 @@ workflow SAREK_CLINICAL {
         "${sarek_out}/variant_calling/cnvkit/**/*.{somatic.call.cns,call.cns}"
     ).map { cns ->
         def pair   = cns.parent.name
-        def parts  = pair.tokenize('_vs_')
+        def parts  = pair.split('_vs_')
         def tumor  = parts.size() >= 2 ? parts[0] : pair
         def normal = parts.size() >= 2 ? parts[1] : 'UNKNOWN'
         [pair, tumor, normal, cns]
@@ -112,6 +114,7 @@ workflow SAREK_CLINICAL {
         GERMLINE_POSTPROCESS(
             ch_hc_vcfs,
             ch_dbnsfp,
+            ch_dbnsfp_tbi,
             ch_snpsift_jar,
             ch_germline_panel,
             ch_pharmaco_variants
@@ -148,13 +151,15 @@ workflow SAREK_CLINICAL {
         )
     }
 
-    // ── SOMATIC POSTPROCESSING (SNV + ASCAT/CNVkit + TMB + Signatures) ───────
-    if (!params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures) {
+    // ── SOMATIC POSTPROCESSING (SNV + ASCAT/CNVkit + TMB + Signatures + HRD) ─
+    ch_hrd_tsv = Channel.empty()
+    if (!params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures || !params.skip_hrd) {
         SOMATIC_POSTPROCESS(
             ch_mutect2_vcfs,
             ch_cns,
             ch_ascat,
             ch_dbnsfp,
+            ch_dbnsfp_tbi,
             ch_snpsift_jar,
             ch_somatic_snv_panel,
             ch_somatic_cnv_panel,
@@ -163,6 +168,9 @@ workflow SAREK_CLINICAL {
             ch_panel_bed,
             ch_tumor_samples
         )
+        if (!params.skip_hrd) {
+            ch_hrd_tsv = SOMATIC_POSTPROCESS.out.hrd_tsv
+        }
     }
 
     // ── SOMATIC CNV – GATK PAIRED WORKFLOW ───────────────────────────────────
@@ -202,10 +210,79 @@ workflow SAREK_CLINICAL {
         )
     }
 
+    // ── ALL-UPSTREAM-DONE GATE ────────────────────────────────────────────────
+    // Ensures FINAL_REPORT and CLINICAL_PDF_REPORT run only after every
+    // upstream process (germline SNVs, somatic SNVs, signatures, GATK CNVs,
+    // gene coverage) has finished writing its output files.
+    // Each active subworkflow contributes a trigger element; collect() waits
+    // for all of them, then maps to a single 'ready' value for combine().
+    def ch_gate = Channel.of('base')
+
+    if (!params.skip_germline_snv || !params.skip_pharmaco) {
+        ch_gate = ch_gate.mix(GERMLINE_POSTPROCESS.out.snv_tsv.map { 'g' })
+    }
+    if (!params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures || !params.skip_hrd) {
+        ch_gate = ch_gate.mix(SOMATIC_POSTPROCESS.out.somatic_snv_tsv.map { 's' })
+        if (!params.skip_signatures) {
+            ch_gate = ch_gate.mix(SOMATIC_POSTPROCESS.out.signatures_dir.map { 'sig' })
+        }
+    }
+    if (!params.skip_germline_cnv) {
+        // Use annotated_tsv (not segments_vcf) so the gate fires AFTER
+        // MANE_ANNOTATE_GERMLINE_CNV publishes its output to disk.
+        // Using segments_vcf caused a race condition where FINAL_REPORT
+        // started before the annotated TSV was available.
+        ch_gate = ch_gate.mix(CNV_GERMLINE_GATK.out.annotated_tsv.map { 'gcnv' })
+    }
+    if (!params.skip_somatic_cnv_gatk) {
+        ch_gate = ch_gate.mix(CNV_SOMATIC_GATK.out.annotated_tsv.map { 'scnv' })
+    }
+    if (!params.skip_coverage) {
+        ch_gate = ch_gate.mix(GENE_COVERAGE.out.tsv.map { 'cov' })
+    }
+
+    ch_all_done = ch_gate.collect().map { 'ready' }
+
     // ── FINAL REPORT ─────────────────────────────────────────────────────────
     if (!params.skip_report) {
+        // Join ascat_metrics with hrd_tsv (already synced with HRD process).
+        // Then combine with ch_all_done to enforce "run last" ordering.
+        // Collect germline/somatic TSVs as proper Nextflow inputs so cache
+        // is invalidated whenever their content changes.
+        ch_germ_tsv   = params.skip_germline_snv ? Channel.value(file('NO_FILE'))
+                                                  : GERMLINE_POSTPROCESS.out.snv_tsv.map { _s, f -> f }
+        ch_som_tsv    = params.skip_somatic_snv  ? Channel.value(file('NO_FILE'))
+                                                  : SOMATIC_POSTPROCESS.out.somatic_snv_tsv.map { _s, f -> f }
+
+        ch_report_input = ch_ascat_metrics
+            .join(ch_hrd_tsv, remainder: true)
+            .map { pair, met, hrd -> [pair, met, hrd ?: file('NO_FILE')] }
+            .combine(ch_all_done)
+            .map { pair, met, hrd, _ -> [pair, met, hrd] }
+            .combine(ch_germ_tsv)
+            .combine(ch_som_tsv)
+            .map { pair, met, hrd, gtsv, stsv -> [pair, met, hrd, gtsv, stsv] }
+
         FINAL_REPORT(
-            ch_ascat_metrics,
+            ch_report_input,
+            params.sarek_outdir,
+            params.run_name
+        )
+    }
+
+    // ── CLINICAL PDF REPORT ───────────────────────────────────────────────────
+    if (!params.skip_pdf_report) {
+        ch_pdf_input = ch_ascat_metrics
+            .join(ch_hrd_tsv, remainder: true)
+            .map { pair, met, hrd -> [pair, met, hrd ?: file('NO_FILE')] }
+            .combine(ch_all_done)
+            .map { pair, met, hrd, _ -> [pair, met, hrd] }
+            .combine(ch_germ_tsv)
+            .combine(ch_som_tsv)
+            .map { pair, met, hrd, gtsv, stsv -> [pair, met, hrd, gtsv, stsv] }
+
+        CLINICAL_PDF_REPORT(
+            ch_pdf_input,
             params.sarek_outdir,
             params.run_name
         )

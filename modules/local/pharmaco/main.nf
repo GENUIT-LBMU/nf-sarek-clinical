@@ -47,7 +47,7 @@ with open('_filter_expr.txt', 'w') as out:
 PYEOF
 
     java -jar ${snpsift_jar} filter "\$(cat _filter_expr.txt)" ${vcf} \\
-        | bgzip -c > ${sample}.pharmaco_filtered.vcf.gz
+        | gzip -c > ${sample}.pharmaco_filtered.vcf.gz
 
     # Extract fields
     java -jar ${snpsift_jar} extractFields -v -s ";" -e "." ${sample}.pharmaco_filtered.vcf.gz \\

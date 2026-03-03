@@ -1,0 +1,37 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# nf-sarek-clinical fixed reference parameters — IMAXi lab
+# ──────────────────────────────────────────────────────────────────────────────
+# Used by run_full.sh as: nextflow run main.nf --params-file full_pipeline.params.yml
+#
+# Dynamic parameters (set per run by run_full.sh):
+#   --sarek_outdir, --run_name, --outdir
+#
+# Only edit this file when reference databases or model paths change.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── SNV annotation ────────────────────────────────────────────────────────────
+dbnsfp:         /home/user/dbNSFP/dbNSFP4.1a.txt.gz
+snpsift_jar:    /home/user/snpEff/SnpSift.jar
+
+# ── TMB calculation (WES capture BED) ─────────────────────────────────────────
+panel_bed:      /home/user/supporting_files/hg38/agilent/S07604514_hs_hg38/S07604514_Regions.bed
+
+# ── Gene coordinates BED (for ASCAT LOH → gene overlap in parse_somatic_cnv.py)
+gene_coords_bed: /home/user/supporting_files/hg38/agilent/S07604514_hs_hg38/S07604514_Padded.withGenes.bed
+
+# ── Germline CNV (GATK gCNV) ──────────────────────────────────────────────────
+gcnv_ploidy_model:  /home/user/supporting_files/cnv/ploidy-model
+gcnv_pon_dir:       /home/user/supporting_files/cnv/PoN_CNV
+gcnv_interval_list: /home/user/supporting_files/cnv/exomas.interval_list
+gcnv_fasta:         /home/user/supporting_files/hg38/hg38.fa
+gcnv_dict:          /home/user/supporting_files/hg38/hg38.dict
+gcnv_mane_txt:      /home/user/supporting_files/cnv/exons_mane.txt
+gcnv_exon_r:        /home/user/supporting_files/cnv/exon_annotation.R
+
+# ── Somatic CNV (GATK) ────────────────────────────────────────────────────────
+somatic_pon_hdf5:        /home/user/supporting_files/cnv/wes-do-gc.pon.hdf5
+somatic_interval_list:   /home/user/supporting_files/cnv/preprocessed.interval_list
+common_snps_vcf:         /home/user/supporting_files/cnv/common_snps_preprocessed.vcf.gz
+somatic_fasta:           /home/user/supporting_files/cnv/main_chroms/hg38.main_chroms.fa
+somatic_dict:            /home/user/supporting_files/cnv/main_chroms/hg38.main_chroms.dict
+somatic_annotate_r:      /home/user/supporting_files/cnv/annotate_cnvs_complete_fixed.R

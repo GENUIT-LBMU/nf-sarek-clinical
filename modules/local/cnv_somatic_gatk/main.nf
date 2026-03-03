@@ -339,15 +339,20 @@ process MANE_ANNOTATE_SOMATIC_CNV {
     Rscript ${annotate_r} \\
         --input_dir seg_input \\
         --mane      ${mane_txt} \\
-        --output_dir output
+        --output_dir output || echo "WARNING: R annotation script exited non-zero (files may still be present)" >&2
 
-    # Normalize output: find annotated TSV regardless of exact filename
-    annotated="\$(ls output/*annotated*.tsv output/*annotated*.txt 2>/dev/null | head -1)"
+    # Use find to locate annotated output safely (find exits 0 even with no matches,
+    # unlike ls glob which exits 1 under set -e when no .tsv files exist)
+    # Prefer sample-specific file first, then any annotated file
+    annotated="\$(find output/ -maxdepth 1 -type f -name '${tumor}*annotated*' 2>/dev/null | head -1)"
+    if [[ -z "\$annotated" ]]; then
+        annotated="\$(find output/ -maxdepth 1 -type f \\( -name '*annotated*.tsv' -o -name '*annotated*.txt' \\) 2>/dev/null | sort | head -1)"
+    fi
     if [[ -n "\$annotated" ]]; then
         cp "\$annotated" ${tumor}_annotated.tsv
     else
-        # Fallback: convert called.seg to TSV if R script didn't produce output
-        echo "WARNING: annotate_cnvs_complete_fixed.R produced no annotated TSV" >&2
+        # Fallback: copy called.seg as TSV if R script produced no annotated output
+        echo "WARNING: annotate_cnvs_complete_fixed.R produced no annotated TSV, using fallback" >&2
         cp ${called_seg} ${tumor}_annotated.tsv
     fi
 
