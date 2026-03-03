@@ -5,28 +5,7 @@
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A523.04.0-23aa62.svg)](https://www.nextflow.io/)
 [![run with docker](https://img.shields.io/badge/run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 
-![Pipeline overview](docs/metro_map.svg)
-
----
-
-## Overview
-
-`nf-sarek-clinical` is a Nextflow DSL2 pipeline that takes the output of [nf-core/sarek](https://nf-co.re/sarek) (tumour–normal WES) and produces a clinical-grade molecular report (HTML + PDF).
-
-| Module | Analysis | Output |
-|--------|----------|--------|
-| **Germline SNV** | dbNSFP annotation → 90-gene panel + ACMG P/LP/VUS classification (9-tool in silico panel + REVEL + ClinVar + gnomAD rescue) | `*.germline_snvs.tsv`, `*.germline_snvs_acmg_annotated.tsv` |
-| **Pharmacogenomics** | DPYD / UGT1A1 / CYP2D6 / CYP2C19 / NUDT15 rsID filter | `*.pharmaco.tsv` |
-| **Germline CNV (GATK)** | Cohort PoN gCNV calling + MANE annotation (NP ≥ 5, QA ≥ 10) | `*_segments_annotated.tsv` |
-| **Somatic SNV** | dbNSFP + somatic panel + CIViC annotation + AMP/ASCO/CAP tier | `*.somatic_snvs.tsv`, `*.civic.exploded.tsv` |
-| **Somatic CNV (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH (38-gene panel) + somatic biallelic detection | `*_somatic_cnv_report.tsv` |
-| **Somatic CNV (GATK)** | Allele-specific copy-number with denoising PoN | `*_annotated.tsv` |
-| **TMB** | PASS + impact + depth filter → mut/Mb | `*.tmb.tsv` |
-| **Mutational Signatures** | SigProfilerMatrixGenerator + SigProfilerAssignment (COSMIC v3.4) SBS96/DBS/ID | assignment activities + 4 PNG plots |
-| **HRD** | HRProfiler: SBS + indel + CNV48 → logistic model | `*_hrd_predictions.tsv` |
-| **Gene Coverage** | Per-gene mean/min/max depth from mosdepth | `*_gene_coverage.tsv` |
-| **Germline–Somatic Correlation** | Two-hit analysis (P/LP germline + somatic second hits) + somatic biallelic detection + SBS/ID signature correlation | `correlation_section.json` |
-| **HTML + PDF Report** | Interactive HTML + printable PDF with Major Clinical Findings cards | `*_molecular_report.html`, `*_clinical_report.pdf` |
+![Pipeline overview](metro_map_sarek_clinical.png)
 
 ---
 
