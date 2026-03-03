@@ -5,48 +5,6 @@
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A523.04.0-23aa62.svg)](https://www.nextflow.io/)
 [![run with docker](https://img.shields.io/badge/run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 
-## Changelog
-
-### v1.2.0 (2026-03-03)
-
-**ACMG classification — 9-tool in silico panel:**
-- Replaced the previous 3-tool consensus check (SIFT + PolyPhen2 + MutationTaster) with a full **9-tool majority vote** panel (SIFT, SIFT4G, PolyPhen2-HDIV, PolyPhen2-HVAR, LRT, MutationTaster, MutationAssessor, FATHMM, PROVEAN). Tools are scored independently and the majority direction drives `PP3_Sup/PP3/BP4_Sup/BP4` criteria codes.
-- **Bug fix:** dbNSFP stores multi-transcript predictions as comma-separated strings (e.g. `D,D,D,D`). The previous code compared the whole string against single-character tuples, causing all multi-transcript fields to be counted as abstentions. The fix applies `.split(',')[0]` before comparison, so the primary-transcript prediction is used. Fix applied to all three copies of the in silico logic: `bin/final_report_acmg.py`, `bin/clinical_pdf_report.py`, `modules/local/snpsift_germline/main.nf` Step 4.
-
-**ACMG classification — ClinVar conflicting:**
-- **Bug fix:** `Conflicting_interpretations_of_pathogenicity` contains the Python substring `pathogenic`, causing it to be incorrectly returned as **P** in all three ACMG implementations. Fixed by checking `if 'conflicting' in clnsig: pass` before the pathogenic check in all three locations. Conflicting variants now fall through to evidence scoring and are typically classified as **VUS**.
-
-**Germline–Somatic Correlation — VUS exclusion:**
-- VUS variants are excluded from the germline–somatic correlation table. They still appear in the Germline SNV section. Only **P/LP** variants are used as first germline hits in the two-hit analysis.
-
-**Germline–Somatic Correlation — ID mutational signatures:**
-- Added support for **ID (indel) signatures** from SigProfilerAssignment output.
-- New `--sig-id` argument in `germline_somatic_correlate.py`; the Nextflow module passes `${SIG_ID}` automatically.
-- `MMR_ID_SIGNATURES = {'ID1', 'ID2'}` — canonical MMR indel signatures.
-- The JSON output now includes a `detected_id_sigs` field (in addition to `detected_sigs` for SBS).
-
-**Major Clinical Findings — PDF report:**
-- MSH2 biallelic somatic events (somatic SNV + cnLOH) now appear explicitly in the **MMR Deficiency** card with a `Biallelic somatic:` label, not just in the correlation sub-table.
-- MMR Deficiency card now triggers on ID1/ID2 detection even when no SBS MMR signatures are detected.
-- Separate signature lines: **SBS MMR signatures** and **ID MMR signatures** are displayed independently, making it clear which type was detected or absent.
-- **Double Somatic Hits** (Finding 3) now only shows genes that have biomarker support (present in the correlation results with `biomarker_match = True` or in the somatic biallelic list). Genes with two somatic SNVs but no pathway concordance are excluded.
-
-**gnomAD AF rescue (Step 1.5):**
-- For indels and any variant missing gnomAD AF from dbNSFP, a rescue call to the **Ensembl VEP REST API** retrieves the population frequency from gnomAD. The highest AF among colocated variants within ±5 bp is used. This ensures that common indel polymorphisms are correctly classified as BA1 (benign) rather than receiving a spurious PM2 score.
-
-**New output file:**
-- `*.germline_snvs_acmg_annotated.tsv` — all candidate variants (before B/LB exclusion from report) with full ACMG columns: `ACMG_class`, `ACMG_criteria`, `insil_dam`, `insil_ben`, `insil_total`.
-
-**ClinVar text display:**
-- ClinVar classification string in the germline variant table increased from 28 to 42 characters to accommodate `Conflicting_interpretations_of_pathogenicity` without truncation.
-
----
-
-### v1.0.0 (2026-03-02)
-Initial release.
-
----
-
 ## Overview
 
 `nf-sarek-clinical` is a Nextflow DSL2 pipeline that takes the output of [nf-core/sarek](https://nf-co.re/sarek) (tumour–normal WES) and produces a clinical-grade molecular report (HTML + PDF).
