@@ -193,7 +193,6 @@ process MANE_ANNOTATE_GERMLINE_CNV {
 
     input:
     tuple val(sample), path(segments_vcf_gz)
-    path exon_r         // exon_annotation.R (provided by user via --gcnv_exon_r)
     path mane_txt       // exons_mane.txt
 
     output:
@@ -207,7 +206,7 @@ process MANE_ANNOTATE_GERMLINE_CNV {
     mkdir -p vcf_in
     gunzip -c ${segments_vcf_gz} > vcf_in/${sample}_segments.vcf
 
-    Rscript ${exon_r} \\
+    Rscript ${projectDir}/bin/exon_annotation.R \\
         --vcf  vcf_in \\
         --MANE ${mane_txt} || echo "WARNING: R annotation script failed, will use fallback" >&2
 

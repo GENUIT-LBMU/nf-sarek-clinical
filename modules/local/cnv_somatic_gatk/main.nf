@@ -319,7 +319,6 @@ process MANE_ANNOTATE_SOMATIC_CNV {
           path(cr_seg),            // ${tumor}.cr.seg
           path(hets_tsv),          // ${tumor}.hets.tsv
           path(called_seg)         // ${tumor}.called.seg
-    path  annotate_r               // annotate_cnvs_complete_fixed.R
     path  mane_txt                 // exons_mane.txt
 
     output:
@@ -336,7 +335,7 @@ process MANE_ANNOTATE_SOMATIC_CNV {
     # Stage all ModelSegments files into the expected input directory
     cp ${model_final_seg} ${cr_seg} ${hets_tsv} ${called_seg} seg_input/
 
-    Rscript ${annotate_r} \\
+    Rscript ${projectDir}/bin/annotate_cnvs_complete_fixed.R \\
         --input_dir seg_input \\
         --mane      ${mane_txt} \\
         --output_dir output || echo "WARNING: R annotation script exited non-zero (files may still be present)" >&2

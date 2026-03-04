@@ -27,7 +27,7 @@ gcnv_interval_list: /path/to/refs/cnv/exomas.interval_list
 gcnv_fasta:         /path/to/refs/hg38/hg38.fa
 gcnv_dict:          /path/to/refs/hg38/hg38.dict
 gcnv_mane_txt:      /path/to/refs/cnv/exons_mane.txt
-gcnv_exon_r:        /path/to/refs/cnv/exon_annotation.R
+# exon_annotation.R is bundled in the pipeline (bin/) — no path needed
 
 # ── Somatic CNV (GATK) ────────────────────────────────────────────────────────
 somatic_pon_hdf5:        /path/to/refs/cnv/wes-do-gc.pon.hdf5
@@ -35,4 +35,4 @@ somatic_interval_list:   /path/to/refs/cnv/preprocessed.interval_list
 common_snps_vcf:         /path/to/refs/cnv/common_snps_preprocessed.vcf.gz
 somatic_fasta:           /path/to/refs/cnv/main_chroms/hg38.main_chroms.fa
 somatic_dict:            /path/to/refs/cnv/main_chroms/hg38.main_chroms.dict
-somatic_annotate_r:      /path/to/refs/cnv/annotate_cnvs_complete_fixed.R
+# annotate_cnvs_complete_fixed.R is bundled in the pipeline (bin/) — no path needed

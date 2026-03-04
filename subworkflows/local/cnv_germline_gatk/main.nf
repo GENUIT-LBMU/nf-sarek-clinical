@@ -24,8 +24,8 @@ workflow CNV_GERMLINE_GATK {
     ch_fasta            // path: reference FASTA
     ch_fasta_fai        // path: reference FASTA .fai
     ch_fasta_dict       // path: reference .dict
-    ch_exon_r           // path: exon_annotation.R
     ch_mane_txt         // path: exons_mane.txt
+    // exon_annotation.R is bundled in bin/ (from FlorPio/gatk-cnv-somatic)
 
     main:
     // ── Step 1: CollectReadCounts ─────────────────────────────────────────────
@@ -67,7 +67,6 @@ workflow CNV_GERMLINE_GATK {
     // ── Step 5: MANE Annotation ───────────────────────────────────────────────
     MANE_ANNOTATE_GERMLINE_CNV(
         GATK_POSTPROCESS_GERMLINE_CNV_CALLS.out.segments_vcf,
-        ch_exon_r,
         ch_mane_txt
     )
 

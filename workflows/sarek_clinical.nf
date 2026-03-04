@@ -130,7 +130,6 @@ workflow SAREK_CLINICAL {
         if (!params.gcnv_fasta)         error("--gcnv_fasta is required when --skip_germline_cnv false")
         if (!params.gcnv_dict)          error("--gcnv_dict is required when --skip_germline_cnv false")
         if (!params.gcnv_mane_txt)      error("--gcnv_mane_txt is required when --skip_germline_cnv false")
-        if (!params.gcnv_exon_r)        error("--gcnv_exon_r is required when --skip_germline_cnv false")
 
         def gcnv_fasta = file(params.gcnv_fasta)
         def gcnv_fai   = file("${params.gcnv_fasta}.fai")
@@ -146,7 +145,6 @@ workflow SAREK_CLINICAL {
             gcnv_fasta,
             gcnv_fai,
             file(params.gcnv_dict),
-            file(params.gcnv_exon_r),
             file(params.gcnv_mane_txt)
         )
     }
@@ -181,7 +179,6 @@ workflow SAREK_CLINICAL {
         if (!params.common_snps_vcf)       error("--common_snps_vcf is required when --skip_somatic_cnv_gatk false")
         if (!params.somatic_fasta)         error("--somatic_fasta is required when --skip_somatic_cnv_gatk false")
         if (!params.somatic_dict)          error("--somatic_dict is required when --skip_somatic_cnv_gatk false")
-        if (!params.somatic_annotate_r)    error("--somatic_annotate_r is required when --skip_somatic_cnv_gatk false")
         if (!params.gcnv_mane_txt)         error("--gcnv_mane_txt is required when --skip_somatic_cnv_gatk false")
 
         def somatic_fasta = file(params.somatic_fasta)
@@ -197,7 +194,6 @@ workflow SAREK_CLINICAL {
             somatic_fasta,
             somatic_fai,
             file(params.somatic_dict),
-            file(params.somatic_annotate_r),
             file(params.gcnv_mane_txt)
         )
     }

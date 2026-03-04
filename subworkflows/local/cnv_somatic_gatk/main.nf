@@ -38,8 +38,8 @@ workflow CNV_SOMATIC_GATK {
     ch_fasta            // path: reference FASTA (main chroms)
     ch_fasta_fai        // path: reference .fai
     ch_fasta_dict       // path: reference .dict
-    ch_annotate_r       // path: annotate_cnvs_complete_fixed.R
     ch_mane_txt         // path: exons_mane.txt
+    // annotate_cnvs_complete_fixed.R is bundled in bin/ (from FlorPio/gatk-cnv-somatic)
 
     main:
     // ── Tag each sample with patient_id and status (normal/tumor) ─────────────
@@ -153,7 +153,6 @@ workflow CNV_SOMATIC_GATK {
 
     MANE_ANNOTATE_SOMATIC_CNV(
         ch_annotate_input,
-        ch_annotate_r,
         ch_mane_txt
     )
 
