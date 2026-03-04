@@ -21,6 +21,103 @@
 
 ---
 
+## Quick Start
+
+> For a detailed walkthrough of each step, see [First-time setup](#first-time-setup) and [Running the pipeline](#running-the-pipeline) below.
+
+**1. Install Nextflow and Docker**
+
+```bash
+# Nextflow
+curl -s https://get.nextflow.io | bash
+sudo mv nextflow /usr/local/bin/
+
+# Docker — https://docs.docker.com/get-docker/
+# Java 11+ is also required (e.g. sudo apt install default-jre)
+```
+
+**2. Configure access to the private GitHub repository**
+
+Create `~/.nextflow/scm` with your GitHub credentials:
+
+```groovy
+providers {
+    github {
+        user     = 'YOUR_GITHUB_USERNAME'
+        password = 'YOUR_GITHUB_TOKEN'   // token with repo read scope
+    }
+}
+```
+
+**3. Download reference files**
+
+See [Reference files](#reference-files) for full download instructions. Required files:
+
+- dbNSFP 4.1a (`dbNSFP4.1a.txt.gz` + `.tbi`)
+- SnpSift JAR (`SnpSift.jar` from snpEff bundle)
+- hg38 FASTA + dict
+- GATK CNV Panel of Normals and interval lists (from [FlorPio/gatk-cnv-somatic](https://github.com/FlorPio/gatk-cnv-somatic))
+- MANE transcript list (`exons_mane.txt`)
+- WES capture BED file for your kit
+
+**4. Create your `lab_params.yml`**
+
+```bash
+cp /path/to/nf-sarek-clinical/full_pipeline.params.yml lab_params.yml
+# Edit lab_params.yml — replace all /path/to/ entries with your real paths
+```
+
+**5. Prepare a samplesheet**
+
+Create a CSV for nf-core/sarek (required only for Mode A — full FASTQ to report):
+
+```csv
+patient,sex,status,sample,lane,fastq_1,fastq_2
+P001,XX,0,P001_N,L001,/data/P001_N_R1.fastq.gz,/data/P001_N_R2.fastq.gz
+P001,XX,1,P001_T,L001,/data/P001_T_R1.fastq.gz,/data/P001_T_R2.fastq.gz
+```
+
+**6. Run the pipeline**
+
+*Mode A — full run (FASTQ → report):*
+
+```bash
+cd /path/to/nf-sarek-clinical
+./run_full.sh --run MY_RUN_ID --samplesheet /path/to/samplesheet.csv
+```
+
+*Mode B — post-sarek only (you already have sarek results):*
+
+```bash
+# Option B.1 — from a local clone
+./run_full.sh --run MY_RUN_ID --skip-sarek
+
+# Option B.2 — pulling directly from GitHub (no local clone needed)
+nextflow run GENUIT-LBMU/nf-sarek-clinical \
+    -profile docker \
+    -params-file lab_params.yml \
+    --sarek_outdir /path/to/sarek_results \
+    --run_name    MY_RUN_ID \
+    --outdir      /path/to/clinical_results
+```
+
+To resume after an interruption, add `-resume` to either command.
+
+**7. Check the output**
+
+Results are written to `<outdir>/` (or `<RUNS_BASE>/<RUN_ID>/clinical_results/` when using `run_full.sh`):
+
+```
+clinical_results/
+├── MY_RUN_ID_molecular_report.html   ← interactive HTML report
+├── MY_RUN_ID_clinical_report.pdf     ← printable PDF
+├── germline/                         ← germline SNV/CNV tables
+├── somatic/                          ← somatic SNV/CNV tables
+└── qc/                               ← TMB, signatures, HRD, coverage
+```
+
+---
+
 ## Report sections
 
 | # | Section | What it analyses |
