@@ -147,6 +147,7 @@ process CLINICAL_PDF_REPORT {
         --somatic-panel    "${projectDir}/assets/gene_panels/somatic_snv_panel.txt" \\
         --pharmaco    "\${PHARMACO:-}"  \\
         --corr-json   correlation_section.json \\
+        --language    "${params.report_language ?: 'en'}" \\
         --tmb-val     "\${TMB_VAL}"    \\
         --msi-val     "\${MSI_VAL}"    \\
         --loh-val     "\${LOH_VAL}"    \\

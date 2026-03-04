@@ -78,6 +78,174 @@ MARGIN_T = 2.0 * cm
 MARGIN_B = 2.2 * cm
 USABLE_W = PAGE_W - MARGIN_L - MARGIN_R   # ~553 pt
 
+# ---------------------------------------------------------------------------
+# Internationalisation (i18n) — English / Spanish
+# ---------------------------------------------------------------------------
+_LANG = 'en'
+
+_TR = {
+    'report_title':      {'en': 'GENUIT Molecular Report',          'es': 'Informe Molecular GENUIT'},
+    'meta_run':          {'en': 'Run',      'es': 'Corrida'},
+    'meta_patient':      {'en': 'Patient',  'es': 'Paciente'},
+    'meta_tumor':        {'en': 'Tumor',    'es': 'Tumor'},
+    'meta_normal':       {'en': 'Normal',   'es': 'Normal'},
+    'meta_date':         {'en': 'Date',     'es': 'Fecha'},
+    'meta_pipeline':     {'en': 'Pipeline', 'es': 'Pipeline'},
+    'footer_conf':       {'en': 'CONFIDENTIAL', 'es': 'CONFIDENCIAL'},
+    # Section headers
+    'sect_global_bm':    {'en': 'Global Biomarkers',        'es': 'Biomarcadores Globales'},
+    'sect_major_finds':  {'en': 'Major Clinical Findings',  'es': 'Hallazgos Cl\u00ednicos Principales'},
+    'sect_secondary_bm': {'en': 'Secondary Biomarkers',     'es': 'Biomarcadores Secundarios'},
+    'sect_quality':      {'en': 'Genomic Quality Metrics',  'es': 'M\u00e9tricas de Calidad Gen\u00f3mica'},
+    'sect_germline':     {'en': 'Germline Variants (ACMG Classification)',
+                          'es': 'Variantes Germinales (Clasificaci\u00f3n ACMG)'},
+    'sect_somatic':      {'en': 'Somatic Variants (AMP/ASCO/CAP Tier Classification)',
+                          'es': 'Variantes Som\u00e1ticas (Clasificaci\u00f3n AMP/ASCO/CAP)'},
+    'sect_germ_cnv':     {'en': 'Germline CNVs (GATK gCNV) \u2014 CN \u2260 2',
+                          'es': 'CNVs Germinales (GATK gCNV) \u2014 CN \u2260 2'},
+    'sect_som_cnv':      {'en': 'Somatic CNVs \u2014 Reportable Events',
+                          'es': 'CNVs Som\u00e1ticos \u2014 Eventos Reportables'},
+    'sect_seqq':         {'en': 'Sequencing Quality \u2014 Per-Gene Coverage',
+                          'es': 'Calidad de Secuenciaci\u00f3n \u2014 Cobertura por Gen'},
+    'sect_correlation':  {'en': 'Germline\u2013Somatic Correlation Analysis',
+                          'es': 'An\u00e1lisis de Correlaci\u00f3n Germinal\u2013Som\u00e1tica'},
+    # KPI labels
+    'kpi_tmb':      {'en': 'TMB (mut/Mb)',        'es': 'TMB (mut/Mb)'},
+    'kpi_msi':      {'en': 'MSI',                 'es': 'MSI'},
+    'kpi_hrd_prob': {'en': 'HRD Probability',     'es': 'Probabilidad HRD'},
+    'kpi_hrd_stat': {'en': 'HRD Status',          'es': 'Estado HRD'},
+    'kpi_wgd':      {'en': 'WGD',                 'es': 'WGD'},
+    'kpi_gi':       {'en': 'Genomic Instability', 'es': 'Inestabilidad Gen\u00f3mica'},
+    'kpi_loh':      {'en': 'LOH',                 'es': 'LOH'},
+    'kpi_ploidy':   {'en': 'Ploidy',              'es': 'Ploid\u00eda'},
+    'kpi_purity':   {'en': 'Tumor Purity (%)',    'es': 'Pureza Tumoral (%)'},
+    'kpi_cov_n':    {'en': 'Coverage Normal (X)', 'es': 'Cobertura Normal (X)'},
+    'kpi_cov_t':    {'en': 'Coverage Tumor (X)',  'es': 'Cobertura Tumor (X)'},
+    # MSI status strings
+    'msi_detected': {'en': 'MSI detected',           'es': 'MSI detectada'},
+    'msi_not_det':  {'en': 'MSI not detected (MSS)', 'es': 'MSI no detectada (MSS)'},
+    # Major findings — card titles
+    'find_hrd':     {'en': 'HRD Pathway',               'es': 'V\u00eda HRD'},
+    'find_mmr':     {'en': 'MMR Deficiency',            'es': 'Deficiencia MMR'},
+    'find_dsh':     {'en': 'Double Somatic Hits',       'es': 'Doble Impacto Som\u00e1tico'},
+    'find_cnv':     {'en': 'High-Confidence CNV Events','es': 'Eventos CNV de Alta Confianza'},
+    # Major findings — content labels
+    'hrd_status_lbl': {'en': 'HRD Status:',         'es': 'Estado HRD:'},
+    'prob_lbl':       {'en': 'probability',          'es': 'probabilidad'},
+    'germ_hit_lbl':   {'en': 'Germline hit:',        'es': 'Variante germinal:'},
+    '2nd_hits_lbl':   {'en': '2nd hit(s):',          'es': '2do impacto:'},
+    '2nd_hit_lbl':    {'en': '2nd hit:',             'es': '2do impacto:'},
+    'hrd_sigs_lbl':   {'en': 'HRD signatures:',      'es': 'Firmas HRD:'},
+    'sbs3_not_det':   {'en': 'SBS3/SBS8 not detected','es': 'SBS3/SBS8 no detectadas'},
+    'loh_det':        {'en': 'LOH detected (somatic 2nd hit)',  'es': 'LOH detectado (2do impacto)'},
+    'homdel_hit':     {'en': 'HOMDEL (CN=0, somatic 2nd hit)', 'es': 'HOMDEL (CN=0, 2do impacto)'},
+    'somatic_pfx':    {'en': 'Somatic:',             'es': 'Som\u00e1tico:'},
+    'not_detected':   {'en': 'not detected',         'es': 'no detectado'},
+    'sbs_mmr_lbl':    {'en': 'SBS MMR signatures:',  'es': 'Firmas SBS MMR:'},
+    'id_mmr_lbl':     {'en': 'ID MMR signatures:',   'es': 'Firmas ID MMR:'},
+    'not_det_f':      {'en': 'not detected',         'es': 'no detectadas'},
+    'biallelic_lbl':  {'en': 'Biallelic somatic:',   'es': 'Bial\u00e9lico som\u00e1tico:'},
+    'somatic_var_lbl':{'en': 'Somatic variant:',     'es': 'Variante som\u00e1tica:'},
+    # "No findings" message
+    'no_findings': {
+        'en': ('No major clinical findings meeting reporting criteria were identified. '
+               'Detailed variant classifications are provided in the sections below.'),
+        'es': ('No se identificaron hallazgos cl\u00ednicos principales que cumplan los criterios '
+               'de reporte. Las clasificaciones detalladas se proporcionan en las secciones siguientes.'),
+    },
+    # Disclaimer
+    'disclaimer': {
+        'en': ('<b>DISCLAIMER:</b> This report is generated for research and clinical '
+               'decision-support purposes only. Findings should be interpreted by a qualified '
+               'clinical geneticist or molecular pathologist in the context of the patient\'s '
+               'clinical history. Variant classifications follow ACMG/AMP 2015 guidelines '
+               'and are subject to revision as knowledge evolves.'),
+        'es': ('<b>AVISO LEGAL:</b> Este informe ha sido generado con fines de apoyo a la '
+               'investigaci\u00f3n y a la toma de decisiones cl\u00ednicas. Los hallazgos deben '
+               'ser interpretados por un genetista cl\u00ednico o pat\u00f3logo molecular '
+               'calificado en el contexto de la historia cl\u00ednica del paciente. Las '
+               'clasificaciones de variantes siguen las gu\u00edas ACMG/AMP 2015 y est\u00e1n '
+               'sujetas a revisi\u00f3n conforme avanza el conocimiento.'),
+    },
+    # Germline no-variants message
+    'germ_no_vars': {
+        'en': ('No pathogenic, likely pathogenic, or uncertain significance germline '
+               'variants were identified in this sample.'),
+        'es': ('No se identificaron variantes germinales patog\u00e9nicas, probablemente '
+               'patog\u00e9nicas o de significado incierto en esta muestra.'),
+    },
+    # ACMG legend labels
+    'acmg_p':   {'en': 'Pathogenic',                       'es': 'Patog\u00e9nica'},
+    'acmg_lp':  {'en': 'Likely Pathogenic',                'es': 'Prob. Patog\u00e9nica'},
+    'acmg_vus': {'en': 'Variant of Uncertain Significance', 'es': 'Variante de Signif. Incierto'},
+}
+
+
+def T(key):
+    """Return translated string for the current language, falling back to English."""
+    entry = _TR.get(key, {})
+    return entry.get(_LANG) or entry.get('en') or key
+
+
+def set_lang(lang):
+    """Set the report language globally ('en' or 'es')."""
+    global _LANG
+    _LANG = (lang or 'en').lower()
+
+
+def _fmt_hrd_prob(val):
+    """Format HRD probability: '<0.01' if very small, else 2 decimal places."""
+    try:
+        f = float(str(val).strip())
+        if f != f:
+            return 'NA'
+        if f < 0.01:
+            return '<0.01'
+        return f'{f:.2f}'
+    except (ValueError, TypeError):
+        return str(val) if val not in ('NA', None, '') else 'NA'
+
+
+def _make_kpi_cell(label, value):
+    """Create a KPI Paragraph: small grey label above large coloured value.
+    HRD+ gets red, HRD- gets green; everything else gets orange.
+    """
+    hrd_val = str(value).upper() if value else ''
+    if hrd_val.startswith('HRD+'):
+        val_colour = C_HRD_POS.hexval()
+    elif hrd_val.startswith('HRD-'):
+        val_colour = C_HRD_NEG.hexval()
+    else:
+        val_colour = '#f97316'
+    return Paragraph(
+        f'<font size="7" color="#64748b"><b>{label}</b></font><br/>'
+        f'<font size="13" color="{val_colour}"><b>{value}</b></font>',
+        styles['Normal'],
+    )
+
+
+def _build_kpi_table(kpi_list, ncols=3):
+    """Build a uniform KPI grid from [(label, value), ...] with ncols columns."""
+    cells = [_make_kpi_cell(lbl, val) for lbl, val in kpi_list]
+    while len(cells) % ncols != 0:
+        cells.append(Paragraph('', styles['Normal']))
+    rows = [cells[i:i + ncols] for i in range(0, len(cells), ncols)]
+    col_w = USABLE_W / ncols
+    tbl = Table(rows, colWidths=[col_w] * ncols)
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND',     (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
+        ('ROWBACKGROUNDS', (0, 0), (-1, -1),
+         [colors.HexColor('#ffffff'), colors.HexColor('#f1f5f9')]),
+        ('BOX',            (0, 0), (-1, -1), 0.5, C_LIGHT_BORDER),
+        ('GRID',           (0, 0), (-1, -1), 0.3, C_LIGHT_BORDER),
+        ('TOPPADDING',     (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING',  (0, 0), (-1, -1), 10),
+        ('LEFTPADDING',    (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING',   (0, 0), (-1, -1), 8),
+        ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    return tbl
+
 
 # ---------------------------------------------------------------------------
 # Gene context helpers
@@ -479,7 +647,7 @@ class FooterCanvas(BaseDocTemplate):
 def build_footer(canvas, doc):
     """Draw footer on every page."""
     canvas.saveState()
-    footer_text = 'GENUIT  \u00b7  nf-sarek-clinical  \u00b7  CONFIDENTIAL'
+    footer_text = 'GENUIT  \u00b7  nf-sarek-clinical  \u00b7  ' + T('footer_conf')
     page_text = f'Page {doc.page}'
     style = ParagraphStyle(
         'footer',
@@ -608,11 +776,15 @@ class Badge(Flowable):
 # Cover page builder
 # ---------------------------------------------------------------------------
 def build_cover_page(args, metrics, story):
-    """Append cover-page flowables to story."""
-
+    """Append cover-page flowables: header + metadata + Global Biomarkers KPI.
+    Does NOT append a PageBreak — caller continues with Major Findings.
+    """
     # ── Header banner ────────────────────────────────────────────────────────
     header_data = [[
-        Paragraph('<font color="white" size="16"><b>GENUIT Molecular Report</b></font>', styles['Normal']),
+        Paragraph(
+            f'<font color="white" size="16"><b>{T("report_title")}</b></font>',
+            styles['Normal'],
+        ),
         Paragraph(
             f'<font color="#f97316" size="9"><b>{args.pair}</b></font>',
             ParagraphStyle('hdr_right', fontName='Helvetica', fontSize=9,
@@ -635,9 +807,9 @@ def build_cover_page(args, metrics, story):
 
     # ── Metadata table ────────────────────────────────────────────────────────
     meta_rows = [
-        ['Run', args.run_name or 'N/A',   'Patient', args.patient or 'N/A'],
-        ['Tumor', args.tumor or 'N/A',    'Normal',  args.normal or 'N/A'],
-        ['Date', date.today().strftime('%Y-%m-%d'), 'Pipeline', 'nf-sarek-clinical'],
+        [T('meta_run'),   args.run_name or 'N/A', T('meta_patient'), args.patient or 'N/A'],
+        [T('meta_tumor'), args.tumor or 'N/A',    T('meta_normal'),  args.normal or 'N/A'],
+        [T('meta_date'),  date.today().strftime('%Y-%m-%d'), T('meta_pipeline'), 'nf-sarek-clinical'],
     ]
     col_w = USABLE_W / 4
     meta_table = Table(meta_rows, colWidths=[col_w] * 4)
@@ -661,80 +833,69 @@ def build_cover_page(args, metrics, story):
     story.append(meta_table)
     story.append(Spacer(1, 0.5 * cm))
 
-    # ── KPI grid (3-column) ───────────────────────────────────────────────────
-    story.append(Paragraph('Genomic Quality Metrics', STYLE_H2))
+    # ── Global Biomarkers (4-column) ──────────────────────────────────────────
+    story.append(Paragraph(T('sect_global_bm'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
     _msi_raw_pdf = metrics.get('msi', 'NA')
     try:
         _msi_pf = float(_msi_raw_pdf)
-        _msi_st = 'MSI detected' if _msi_pf >= 5.0 else 'MSI not detected (MSS)'
+        _msi_st = T('msi_detected') if _msi_pf >= 5.0 else T('msi_not_det')
         _msi_disp_pdf = _msi_st + '<br/>' + _msi_raw_pdf + '%'
     except (ValueError, TypeError):
         _msi_disp_pdf = _msi_raw_pdf
 
-    kpi_labels = [
-        ('TMB (mut/Mb)',          metrics.get('tmb',     'N/A')),
-        ('MSI',                   _msi_disp_pdf),
-        ('LOH',                   metrics.get('loh',     'N/A')),
-        ('Genomic Instability',   metrics.get('gi',      'N/A')),
-        ('WGD',                   metrics.get('wgd',     'N/A')),
-        ('Ploidy',                metrics.get('ploidy',  'N/A')),
-        ('Tumor Purity (%)',      metrics.get('purity',  'N/A')),
-        ('Coverage Normal (X)',   metrics.get('cov_n',   'N/A')),
-        ('Coverage Tumor (X)',    metrics.get('cov_t',   'N/A')),
-        ('HRD Probability',       metrics.get('hrd_prob','N/A')),
-        ('HRD Status',            metrics.get('hrd_status','N/A')),
+    _hrd_prob_disp = _fmt_hrd_prob(metrics.get('hrd_prob', 'NA'))
+
+    global_kpis = [
+        (T('kpi_tmb'),      metrics.get('tmb',        'N/A')),
+        (T('kpi_msi'),      _msi_disp_pdf),
+        (T('kpi_hrd_prob'), _hrd_prob_disp),
+        (T('kpi_hrd_stat'), metrics.get('hrd_status', 'N/A')),
     ]
+    story.append(_build_kpi_table(global_kpis, ncols=4))
+    story.append(Spacer(1, 0.4 * cm))
+    # Story continues immediately with Major Clinical Findings (no PageBreak).
 
-    def _kpi_cell(label, value):
-        hrd_val = value.upper() if isinstance(value, str) else ''
-        if label == 'HRD Status' and hrd_val.startswith('HRD+'):
-            val_colour = C_HRD_POS.hexval()
-        elif label == 'HRD Status' and hrd_val.startswith('HRD-'):
-            val_colour = C_HRD_NEG.hexval()
-        else:
-            val_colour = '#f97316'
-        cell_para = (
-            f'<font size="7" color="#64748b"><b>{label}</b></font><br/>'
-            f'<font size="13" color="{val_colour}"><b>{value}</b></font>'
-        )
-        return Paragraph(cell_para, styles['Normal'])
 
-    # Build 3-column rows
-    kpi_cells = [_kpi_cell(lbl, val) for lbl, val in kpi_labels]
-    # Pad to multiple of 3
-    while len(kpi_cells) % 3 != 0:
-        kpi_cells.append(Paragraph('', styles['Normal']))
+# ---------------------------------------------------------------------------
+# Secondary Biomarkers + Disclaimer + PageBreak  (end of page 1)
+# ---------------------------------------------------------------------------
+def build_secondary_biomarkers(metrics, story):
+    """Append Secondary Biomarkers section, Disclaimer, then PageBreak."""
+    story.append(Paragraph(T('sect_secondary_bm'), STYLE_H2))
+    story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
-    kpi_rows = [kpi_cells[i:i+3] for i in range(0, len(kpi_cells), 3)]
-    col_kpi = USABLE_W / 3
-    kpi_table = Table(kpi_rows, colWidths=[col_kpi] * 3)
-    kpi_table.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
-        ('ROWBACKGROUNDS', (0, 0), (-1, -1),
-         [colors.HexColor('#ffffff'), colors.HexColor('#f1f5f9')]),
-        ('BOX',           (0, 0), (-1, -1), 0.5, C_LIGHT_BORDER),
-        ('GRID',          (0, 0), (-1, -1), 0.3, C_LIGHT_BORDER),
-        ('TOPPADDING',    (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
-        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    story.append(kpi_table)
-    story.append(Spacer(1, 0.6 * cm))
-
-    # ── Disclaimer ────────────────────────────────────────────────────────────
-    disclaimer = (
-        '<b>DISCLAIMER:</b> This report is generated for research and clinical '
-        'decision-support purposes only. Findings should be interpreted by a qualified '
-        'clinical geneticist or molecular pathologist in the context of the patient\'s '
-        'clinical history. Variant classifications follow ACMG/AMP 2015 guidelines '
-        'and are subject to revision as knowledge evolves.'
-    )
-    story.append(Paragraph(disclaimer, STYLE_DISCLAIMER))
+    secondary_kpis = [
+        (T('kpi_wgd'),    metrics.get('wgd',    'N/A')),
+        (T('kpi_gi'),     metrics.get('gi',     'N/A')),
+        (T('kpi_loh'),    metrics.get('loh',    'N/A')),
+        (T('kpi_ploidy'), metrics.get('ploidy', 'N/A')),
+    ]
+    story.append(_build_kpi_table(secondary_kpis, ncols=4))
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(Paragraph(T('disclaimer'), STYLE_DISCLAIMER))
     story.append(PageBreak())
+
+
+# ---------------------------------------------------------------------------
+# Genomic Quality Metrics page  (always starts on a new page)
+# ---------------------------------------------------------------------------
+def build_quality_metrics_page(metrics, story):
+    """Append Genomic Quality Metrics section (Purity + Coverage) + PageBreak."""
+    story.append(Paragraph(T('sect_quality'), STYLE_H2))
+    story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
+
+    quality_kpis = [
+        (T('kpi_purity'), metrics.get('purity', 'N/A')),
+        (T('kpi_cov_n'),  metrics.get('cov_n',  'N/A')),
+        (T('kpi_cov_t'),  metrics.get('cov_t',  'N/A')),
+    ]
+    story.append(_build_kpi_table(quality_kpis, ncols=3))
+    story.append(Spacer(1, 0.6 * cm))
+    story.append(PageBreak())
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -811,14 +972,14 @@ def build_variant_table(col_headers, col_widths, data_rows, colour_col_idx=None,
 # ---------------------------------------------------------------------------
 def build_germline_section(germline_variants, story):
     """Append germline SNV section flowables to story."""
-    story.append(Paragraph('Germline Variants (ACMG Classification)', STYLE_H2))
+    story.append(Paragraph(T('sect_germline'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
     # Legend
     legend_items = [
-        ('P',   C_ACMG_P,   'Pathogenic'),
-        ('LP',  C_ACMG_LP,  'Likely Pathogenic'),
-        ('VUS', C_ACMG_VUS, 'Variant of Uncertain Significance'),
+        ('P',   C_ACMG_P,   T('acmg_p')),
+        ('LP',  C_ACMG_LP,  T('acmg_lp')),
+        ('VUS', C_ACMG_VUS, T('acmg_vus')),
     ]
     legend_parts = '&nbsp;&nbsp;&nbsp;'.join(
         f'<font color="{c.hexval()}"><b>[{lbl}]</b></font> {desc}'
@@ -828,11 +989,7 @@ def build_germline_section(germline_variants, story):
     story.append(Spacer(1, 0.2 * cm))
 
     if not germline_variants:
-        story.append(Paragraph(
-            'No pathogenic, likely pathogenic, or uncertain significance germline '
-            'variants were identified in this sample.',
-            STYLE_WARN,
-        ))
+        story.append(Paragraph(T('germ_no_vars'), STYLE_WARN))
         story.append(PageBreak())
         return
 
@@ -914,7 +1071,7 @@ def build_germline_section(germline_variants, story):
 # ---------------------------------------------------------------------------
 def build_somatic_section(somatic_variants, story, gene_ctx=None):
     """Append somatic SNV section flowables to story."""
-    story.append(Paragraph('Somatic Variants (AMP/ASCO/CAP Tier Classification)', STYLE_H2))
+    story.append(Paragraph(T('sect_somatic'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
     # Legend
@@ -1360,7 +1517,7 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
                                amp_threshold=5,
                                germline_snv_path='', somatic_snv_path=''):
     # Unified somatic CNV section: HOMDEL, AMP, LOH
-    story.append(Paragraph('Somatic CNVs \u2014 Reportable Events', STYLE_H2))
+    story.append(Paragraph(T('sect_som_cnv'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
     data = _harmonize_cnv_pdf(ascat_cnvkit_path, gatk_somatic_path,
@@ -1485,7 +1642,7 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
 
 def build_germline_cnv_section(path, story):
     """Append GATK germline CNV section: show segments with CN != 2, NP >= 5, QA >= 10."""
-    story.append(Paragraph('Germline CNVs (GATK gCNV) \u2014 CN \u2260 2', STYLE_H2))
+    story.append(Paragraph(T('sect_germ_cnv'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
     MIN_NP = 5
     MIN_QA = 10
@@ -1618,7 +1775,7 @@ def build_germline_cnv_section(path, story):
 def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, story,
                                      germline_panel_path='', somatic_panel_path=''):
     # Per-gene mean coverage as justified grid: gene name + colored value, two subsections.
-    story.append(Paragraph('Sequencing Quality \u2014 Per-Gene Coverage', STYLE_H2))
+    story.append(Paragraph(T('sect_seqq'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
     def load_panel(path):
@@ -1783,7 +1940,7 @@ def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, st
 
 
 def build_correlation_section(corr_data, story):
-    story.append(Paragraph('Germline&#8211;Somatic Correlation Analysis', STYLE_H2))
+    story.append(Paragraph(T('sect_correlation'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
     results           = (corr_data or {}).get('results', [])
@@ -1999,7 +2156,7 @@ _MMR_GENES = {
 def build_major_findings_section(args, metrics, germline_variants, somatic_variants,
                                   corr_data, story):
     """Append Major Clinical Findings summary immediately after the KPI dashboard."""
-    story.append(Paragraph('Major Clinical Findings', STYLE_H2))
+    story.append(Paragraph(T('sect_major_finds'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
     def _sf(v, d=None):
@@ -2059,34 +2216,34 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
         lines = []
         prob_str  = f'{hrd_prob:.3f}' if hrd_prob is not None else 'NA'
         stat_col  = '#ef4444' if hrd_pos else '#22c55e'
-        lines.append(f'<b>HRD Status:</b> <font color="{stat_col}"><b>{hrd_status}</b></font>'
-                     f'&nbsp;&nbsp;(probability&nbsp;=&nbsp;{prob_str})')
+        lines.append(f'<b>{T("hrd_status_lbl")}</b> <font color="{stat_col}"><b>{hrd_status}</b></font>'
+                     f'&nbsp;&nbsp;({T("prob_lbl")}&nbsp;=&nbsp;{prob_str})')
         for g in hrr_germ:
             for v in germ_plp[g]:
                 hgvsp = v.get('ANN[*].HGVS_P', '') or v.get('ANN[*].HGVS_C', '') or ''
                 ac    = v.get('_ACMG', '')
                 ac_c  = '#ef4444' if ac == 'P' else '#f97316'
-                lines.append(f'<b>Germline hit:</b> {g} '
+                lines.append(f'<b>{T("germ_hit_lbl")}</b> {g} '
                               f'<font color="{ac_c}"><b>[{ac}]</b></font> '
                               f'{hgvsp[:45] if hgvsp else ""}')
                 hits = []
                 if g in loh_genes:
-                    hits.append('LOH detected (somatic 2nd hit)')
+                    hits.append(T('loh_det'))
                 if g in homdel_genes:
-                    hits.append('HOMDEL (CN=0, somatic 2nd hit)')
+                    hits.append(T('homdel_hit'))
                 if g in som_by_gene:
                     for sv in som_by_gene[g][:2]:
                         hp2 = sv.get('ANN[*].HGVS_P', '') or sv.get('ANN[*].HGVS_C', '') or 'variant'
-                        hits.append(f'Somatic: {hp2[:30]}')
+                        hits.append(f'{T("somatic_pfx")} {hp2[:30]}')
                 if hits:
-                    lines.append('<b>2nd hit(s):</b> ' + ' | '.join(hits[:3]))
+                    lines.append(f'<b>{T("2nd_hits_lbl")}</b> ' + ' | '.join(hits[:3]))
                 else:
-                    lines.append('<b>2nd hit:</b> <font color="#6b7280">not detected</font>')
+                    lines.append(f'<b>{T("2nd_hit_lbl")}</b> <font color="#6b7280">{T("not_detected")}</font>')
         if hrd_sigs:
-            lines.append(f'<b>HRD signatures:</b> {", ".join(hrd_sigs)}')
+            lines.append(f'<b>{T("hrd_sigs_lbl")}</b> {", ".join(hrd_sigs)}')
         else:
-            lines.append('<b>HRD signatures:</b> <font color="#6b7280">SBS3/SBS8 not detected</font>')
-        findings.append(('HRD Pathway', colors.HexColor('#0ea5e9'), lines))
+            lines.append(f'<b>{T("hrd_sigs_lbl")}</b> <font color="#6b7280">{T("sbs3_not_det")}</font>')
+        findings.append((T('find_hrd'), colors.HexColor('#0ea5e9'), lines))
 
     # ── Finding 2: MMR Deficiency ────────────────────────────────────────────
     mmr_germ = [g for g in germ_plp if g in _MMR_GENES]
@@ -2110,20 +2267,20 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
                 hgvsp = v.get('ANN[*].HGVS_P', '') or v.get('ANN[*].HGVS_C', '') or ''
                 ac    = v.get('_ACMG', '')
                 ac_c  = '#ef4444' if ac == 'P' else '#f97316'
-                lines.append(f'<b>Germline hit:</b> {g} '
+                lines.append(f'<b>{T("germ_hit_lbl")}</b> {g} '
                               f'<font color="{ac_c}"><b>[{ac}]</b></font> '
                               f'{hgvsp[:45] if hgvsp else ""}')
                 hits = []
                 if g in loh_genes:
-                    hits.append('LOH detected')
+                    hits.append(T('loh_det'))
                 if g in som_by_gene:
                     for sv in som_by_gene[g][:2]:
                         hp2 = sv.get('ANN[*].HGVS_P', '') or sv.get('ANN[*].HGVS_C', '') or 'variant'
-                        hits.append(f'Somatic: {hp2[:30]}')
+                        hits.append(f'{T("somatic_pfx")} {hp2[:30]}')
                 if hits:
-                    lines.append('<b>2nd hit(s):</b> ' + ' | '.join(hits[:3]))
+                    lines.append(f'<b>{T("2nd_hits_lbl")}</b> ' + ' | '.join(hits[:3]))
                 else:
-                    lines.append('<b>2nd hit:</b> <font color="#6b7280">not detected</font>')
+                    lines.append(f'<b>{T("2nd_hit_lbl")}</b> <font color="#6b7280">{T("not_detected")}</font>')
         # Biallelic somatic MMR events (no germline anchor — e.g. MSH2 cnLOH + splice)
         for b in mmr_biallelic_som:
             g = b.get('gene', '')
@@ -2134,25 +2291,25 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
             hgvs_c = snvs[0].get('hgvs_c', '') if snvs else ''
             vaf_s  = (' VAF=' + snvs[0]['vaf']) if snvs and snvs[0].get('vaf') not in ('', '.', None) else ''
             lines.append(
-                f'<font color="#ef4444"><b>Biallelic somatic:</b></font> '
+                f'<font color="#ef4444"><b>{T("biallelic_lbl")}</b></font> '
                 f'<b>{g}</b> {hgvs_c}{vaf_s}')
-            lines.append(f'&nbsp;&nbsp;&nbsp;2nd hit: {cnv_l or snv_l}')
+            lines.append(f'&nbsp;&nbsp;&nbsp;{T("2nd_hit_lbl")} {cnv_l or snv_l}')
         if mmr_som and not mmr_germ and not mmr_biallelic_som:
             for g in mmr_som:
                 for sv in som_by_gene[g][:2]:
                     hp2  = sv.get('ANN[*].HGVS_P', '') or sv.get('ANN[*].HGVS_C', '') or ''
                     tier = sv.get('_AMP_TIER', 'III')
-                    lines.append(f'<b>Somatic variant:</b> {g} {hp2[:35]} [Tier {tier}]')
+                    lines.append(f'<b>{T("somatic_var_lbl")}</b> {g} {hp2[:35]} [Tier {tier}]')
         # Separate SBS vs ID signature lines
         if mmr_sbs_sigs:
-            lines.append(f'<b>SBS MMR signatures:</b> <font color="#ef4444">{", ".join(mmr_sbs_sigs)}</font>')
+            lines.append(f'<b>{T("sbs_mmr_lbl")}</b> <font color="#ef4444">{", ".join(mmr_sbs_sigs)}</font>')
         else:
-            lines.append('<b>SBS MMR signatures:</b> <font color="#6b7280">not detected</font>')
+            lines.append(f'<b>{T("sbs_mmr_lbl")}</b> <font color="#6b7280">{T("not_det_f")}</font>')
         if mmr_id_sigs:
-            lines.append(f'<b>ID MMR signatures:</b> <font color="#ef4444">{", ".join(mmr_id_sigs)}</font>')
+            lines.append(f'<b>{T("id_mmr_lbl")}</b> <font color="#ef4444">{", ".join(mmr_id_sigs)}</font>')
         else:
-            lines.append('<b>ID MMR signatures:</b> <font color="#6b7280">not detected</font>')
-        findings.append(('MMR Deficiency', colors.HexColor('#6366f1'), lines))
+            lines.append(f'<b>{T("id_mmr_lbl")}</b> <font color="#6b7280">{T("not_det_f")}</font>')
+        findings.append((T('find_mmr'), colors.HexColor('#6366f1'), lines))
 
     # ── Finding 3: Double Somatic Hits (only genes with biomarker support) ───
     # Only include genes already covered in correlation results or biallelic_somatic,
@@ -2175,7 +2332,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
                 imp   = sv.get('ANN[*].IMPACT', '')
                 descs.append(f'{hp[:25]} (Tier {tier}, {imp})')
             lines.append(f'<b>{g}:</b> ' + ' &nbsp;/&nbsp; '.join(descs))
-        findings.append(('Double Somatic Hits', colors.HexColor('#8b5cf6'), lines))
+        findings.append((T('find_dsh'), colors.HexColor('#8b5cf6'), lines))
 
     # ── Finding 4: High-Confidence Actionable CNVs ───────────────────────────
     hc_homdel = [r for r in cnv_data['homdel'] if r['conf'] == 'HIGH']
@@ -2190,7 +2347,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
             lines.append(
                 f'<b>AMP (CN={r["cn_p"]}):</b> <font color="#f97316"><b>{r["gene"]}</b></font>'
                 f' &nbsp; chr{r["chrom"]} — confirmed by {r["tools"]}')
-        findings.append(('High-Confidence CNV Events', colors.HexColor('#ea580c'), lines))
+        findings.append((T('find_cnv'), colors.HexColor('#ea580c'), lines))
 
     # ── Render findings as styled cards ──────────────────────────────────────
     _card_title_s = ParagraphStyle(
@@ -2203,12 +2360,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
     )
 
     if not findings:
-        story.append(Paragraph(
-            'No major clinical findings meeting reporting criteria were identified. '
-            'Detailed variant classifications are provided in the sections below.',
-            STYLE_BODY,
-        ))
-        story.append(PageBreak())
+        story.append(Paragraph(T('no_findings'), STYLE_BODY))
         return
 
     for title, hdr_color, lines in findings:
@@ -2231,8 +2383,8 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
             ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
         ]))
         story.append(KeepTogether([card_tbl, Spacer(1, 0.2 * cm)]))
-
-    story.append(PageBreak())
+    story.append(Spacer(1, 0.4 * cm))
+    # No PageBreak — story continues with Secondary Biomarkers.
 
 
 # ---------------------------------------------------------------------------
@@ -2725,6 +2877,7 @@ def parse_args():
     p.add_argument('--somatic-panel',    default='', help='Somatic gene panel list (one gene per line)')
     p.add_argument('--pharmaco',   default='',     help='Pharmacogenomics TSV (DPYD/UGT1A1 variants)')
     p.add_argument('--out',        required=True,  help='Output PDF path')
+    p.add_argument('--language',   default='en',   help='Report language: en (default) or es (Spanish)')
     # Pre-computed metric strings (passed from bash awk extractions)
     p.add_argument('--tmb-val',    default='NA',   help='TMB value string')
     p.add_argument('--msi-val',    default='NA',   help='MSI value string')
@@ -2836,12 +2989,18 @@ def main():
     hrd_prob_f = safe_float_m(hrd_prob_val)
     corr_data  = _run_correlation_script(args, tmb_f, msi_f, hrd_prob_f)
 
+    # ── Language ──────────────────────────────────────────────────────────────
+    set_lang(getattr(args, 'language', 'en') or 'en')
+
     # ── Story ─────────────────────────────────────────────────────────────────
     story = []
+    # Page 1: Global Biomarkers → Major Clinical Findings → Secondary Biomarkers
     build_cover_page(args, metrics, story)
-    # Major Findings: synthesised summary immediately after the KPI dashboard
     build_major_findings_section(args, metrics, germline_variants, somatic_variants,
                                   corr_data, story)
+    build_secondary_biomarkers(metrics, story)
+    # Page 2: Genomic Quality Metrics (Purity + Coverage)
+    build_quality_metrics_page(metrics, story)
     build_germline_section(germline_variants, story)
     build_germline_cnv_section(args.cnv_germline_gatk, story)
     build_somatic_cnv_section(
