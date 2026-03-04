@@ -9,265 +9,429 @@
 
 ---
 
-## Pipeline modes
+## What this pipeline does
 
-`nf-sarek-clinical` can be launched in three ways depending on what has already been processed:
+`nf-sarek-clinical` takes the output of [nf-core/sarek](https://nf-co.re/sarek) (tumour–normal WES) and produces a clinical-grade molecular report in HTML and PDF format. It integrates germline and somatic variant analysis, copy-number calling, mutational signatures, pharmacogenomics, and HRD scoring into a single automated workflow.
 
-| Mode | Command | When to use |
-|------|---------|-------------|
-| **Full** | `./run_full.sh` | Start from FASTQ — runs nf-core/sarek then the clinical report |
-| **Post-sarek** | `./run_full.sh --skip-sarek` | nf-core/sarek already completed; run clinical report only |
-| **Clinical only** | `nextflow run main.nf` | Explicit Nextflow call with custom parameter overrides |
+**Final deliverables per patient:**
 
-Any module can be skipped independently with `--skip_<module> true` (see [Skip flags](#skip-flags)).
+- `*_molecular_report.html` — interactive report with all findings
+- `*_clinical_report.pdf` — printable PDF with a Major Clinical Findings summary page
+- Structured TSV files for each analysis module (variant tables, CNV tables, TMB, HRD)
 
 ---
 
 ## Report sections
 
-Each section below corresponds to a block in the HTML molecular report and a chapter in the clinical PDF.
-
-### 0 · Major Clinical Findings
-
-The first page of the PDF. Automatically populated when any of the following thresholds is crossed:
-
-- **HRD** — HRProfiler probability ≥ threshold (default 0.45). Includes BRCA1/2 germline/somatic hits and detected HRD-associated signatures (SBS3, SBS8).
-- **MMR deficiency** — MMR gene P/LP germline variant, biallelic somatic MMR event, MSI score > 10 %, or MMR mutational signatures (SBS6/15/20/21/26/44, ID1/ID2).
-- **High TMB** — ≥ 10 mut/Mb.
-- **Relevant CNVs** — amplification or homozygous deletion of an oncogene or tumour suppressor in the somatic 38-gene panel.
-
----
-
-### 1 · Germline SNVs
-
-Hereditary variant analysis restricted to a configurable gene panel (default: 90 ACMG SF v3.2 hereditary cancer genes).
-
-**Filtering pipeline:**
-1. dbNSFP annotation via SnpSift — adds 9 in silico predictors, REVEL, ClinVar, gnomAD allele frequencies.
-2. Panel filter — only variants in the configured gene list are retained.
-3. Impact filter — coding variants (missense, stop, frameshift, splice) only.
-4. Depth filter — DP ≥ 5 (configurable with `--germline_min_dp`).
-5. gnomAD rescue — variants with no AF in dbNSFP are queried against the Ensembl VEP REST API to recover gnomAD AF.
-6. Population filter — gnomAD AF < 0.01 (BA1 benign excluded).
-7. ACMG classification — each variant is scored P / LP / VUS / LB / B using a rule set that includes: ClinVar status, 9-tool in silico majority vote, REVEL ≥ 0.7 (PP3), PVS1 for LoF in LoF-intolerant genes, PM2 for ultra-rare variants.
-
-**Output:** `*.germline_snvs.tsv` (P/LP/VUS only), `*.germline_snvs_acmg_annotated.tsv` (all candidates with scores), `*.germline_all_filtered.tsv` (all rejected variants with reason).
+| # | Section | What it analyses |
+|---|---------|-----------------|
+| 0 | **Major Clinical Findings** | Auto-populated summary page: HRD, MMR deficiency, high TMB, relevant CNVs |
+| 1 | **Germline–Somatic Correlation** | Two-hit events (P/LP germline + somatic second hit), biallelic somatic, signature correlation |
+| 2 | **Germline SNVs** | 90-gene hereditary cancer panel; ACMG P/LP/VUS classification with 9-tool in silico scoring, REVEL, ClinVar, gnomAD |
+| 3 | **Pharmacogenomics** | DPYD, UGT1A1, CYP2D6, CYP2C19, NUDT15 — drug-metabolism variants from germline VCF |
+| 4 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM using a pre-built cohort PoN; MANE gene/exon annotation |
+| 5 | **Somatic SNVs** | Mutect2 VCF filtered by somatic panel; AMP/ASCO/CAP tiering with CIViC evidence |
+| 6 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
+| 7 | **Somatic CNVs (GATK)** | Allele-specific paired CNV (tumour + normal BAMs); MANE annotation; diagnostic plots |
+| 8 | **TMB** | Tumour Mutational Burden in mut/Mb from PASS Mutect2 variants over WES capture size |
+| 9 | **Mutational Signatures** | SigProfilerAssignment COSMIC v3.4 SBS96/DBS/ID83 decomposition + 4 plots |
+| 10 | **HRD** | HRProfiler logistic model (SBS + indel + CNV48 features) → probability score + classification |
+| 11 | **Gene Coverage** | Per-gene mean/min/max depth from mosdepth (normal + tumour) |
 
 ---
 
-### 2 · Pharmacogenomics
+## Dependencies
 
-Identifies actionable germline variants in five drug-metabolism genes relevant to oncology treatment selection:
+### Software (install once on the host)
 
-| Gene | Drug relevance |
-|------|---------------|
-| **DPYD** | 5-fluorouracil toxicity (DPYD*2A, *13, HapB3, rs67376798) |
-| **UGT1A1** | Irinotecan toxicity (UGT1A1*28, *6) |
-| **CYP2D6** | Tamoxifen metabolism |
-| **CYP2C19** | Multiple drugs including antidepressants used in supportive care |
-| **NUDT15** | Thiopurine toxicity |
+| Tool | Minimum version | Install |
+|------|----------------|---------|
+| **Nextflow** | 23.04.0 | `curl -s https://get.nextflow.io \| bash` |
+| **Docker** | 20.10 | [docs.docker.com/get-docker](https://docs.docker.com/get-docker/) |
+| **Java** | 11 (for Nextflow) | `sudo apt install default-jre` |
 
-Variants are extracted from the germline VCF by rsID lookup. **Output:** `*.pharmaco.tsv`.
+> All bioinformatics tools (GATK, Python, R, SigProfiler, SnpSift, etc.) run inside Docker containers — **no manual tool installation is needed**.
 
----
+### nf-core/sarek (pulled automatically)
 
-### 3 · Germline CNVs (GATK gCNV)
+nf-core/sarek ≥ 3.3.0 is pulled automatically by Nextflow in Mode A. It must have been run with at minimum:
 
-Germline copy-number calling on the normal sample using a pre-built Panel-of-Normals (PoN). Runs in CASE mode against the cohort PoN — no tumour BAM required.
+```
+--tools haplotypecaller,mutect2,cnvkit,ascat,msisensorpro,snpeff
+```
 
-**Steps:** CollectReadCounts → DetermineGermlineContigPloidy → GermlineCNVCaller → PostprocessGermlineCNVCalls → MANE annotation (exon-level, bundled R script from [FlorPio/gatk-cnv-somatic](https://github.com/FlorPio/gatk-cnv-somatic)).
+### Hardware
 
-**Filters applied during annotation:** number of points ≥ 5, quality score ≥ 10.
-
-**Output:** `*_segments_annotated.tsv` — one row per segment with gene/exon overlap, copy-number call, and quality metrics.
-
----
-
-### 4 · Somatic SNVs
-
-Somatic variant interpretation from Mutect2 VCF output.
-
-**Filtering pipeline:**
-1. dbNSFP annotation — same 9-predictor panel as germline.
-2. Panel filter — somatic SNV gene list (oncogenes, TSGs, DNA repair genes).
-3. PASS + coding impact filter.
-4. CIViC annotation — variants are matched against the CIViC clinical variant database ([civicpy](https://civicpy.org)) to retrieve clinical evidence items, drug associations, and evidence level.
-5. AMP/ASCO/CAP tiering — each variant is assigned Tier IA / IB / IIC / IID / III based on clinical evidence and functional impact.
-
-**Output:** `*.somatic_snvs.tsv`, `*.civic.exploded.tsv` (one row per CIViC evidence item).
+| Resource | Minimum | Notes |
+|----------|---------|-------|
+| RAM | 32 GB | GATK gCNV peaks at ~56 GB |
+| Disk | 200 GB | Reference databases + work directory |
+| CPU | 8 cores | More = faster parallel tasks |
 
 ---
 
-### 5 · Somatic CNVs (ASCAT / CNVkit)
+## First-time setup
 
-Interprets copy-number segments from nf-core/sarek's ASCAT and CNVkit outputs, restricted to a 38-gene actionable oncogene/TSG panel.
+### Step 1 — Clone the repository
 
-**Calls reported:**
+```bash
+git clone https://github.com/GENUIT-LBMU/nf-sarek-clinical.git /path/to/nf-sarek-clinical
+cd /path/to/nf-sarek-clinical
+```
 
-| Call | Criterion |
-|------|-----------|
-| **HOMDEL** | CN = 0 (homozygous deletion) |
-| **HETDEL** | CN = 1 (heterozygous loss / haploinsufficiency) |
-| **AMP** | CN ≥ threshold (default 5, configurable with `--amp_threshold`) |
-| **LOH** | Minor allele CN = 0 with total CN ≥ 2 (ASCAT only) |
+> For the private GitHub repo, configure Git credentials first:
+> ```bash
+> git config --global credential.helper store
+> # or use SSH key added to the GENUIT-LBMU org
+> ```
 
-Also detects **somatic biallelic events**: gene present in both a germline P/LP variant (Section 1) and a somatic second hit (LOH, HOMDEL, or second somatic SNV).
+### Step 2 — Configure reference file paths
 
-**Output:** `*_somatic_cnv_report.tsv`.
+Copy and edit the params template:
+
+```bash
+cp full_pipeline.params.yml my_lab_params.yml
+```
+
+Edit `my_lab_params.yml` with your local reference file paths (see [Reference files](#reference-files) below for where to obtain each file):
+
+```yaml
+# SNV annotation
+dbnsfp:          /data/refs/dbNSFP/dbNSFP4.1a.txt.gz
+snpsift_jar:     /data/refs/snpEff/SnpSift.jar
+
+# WES capture BED (for TMB calculation)
+panel_bed:       /data/refs/hg38/agilent/S07604514_Regions.bed
+gene_coords_bed: /data/refs/hg38/agilent/S07604514_Padded.withGenes.bed
+
+# Germline GATK CNV
+gcnv_ploidy_model:  /data/refs/cnv/ploidy-model
+gcnv_pon_dir:       /data/refs/cnv/PoN_CNV
+gcnv_interval_list: /data/refs/cnv/exomas.interval_list
+gcnv_fasta:         /data/refs/hg38/hg38.fa
+gcnv_dict:          /data/refs/hg38/hg38.dict
+gcnv_mane_txt:      /data/refs/cnv/exons_mane.txt
+
+# Somatic GATK CNV
+somatic_pon_hdf5:        /data/refs/cnv/wes-do-gc.pon.hdf5
+somatic_interval_list:   /data/refs/cnv/preprocessed.interval_list
+common_snps_vcf:         /data/refs/cnv/common_snps_preprocessed.vcf.gz
+somatic_fasta:           /data/refs/cnv/main_chroms/hg38.main_chroms.fa
+somatic_dict:            /data/refs/cnv/main_chroms/hg38.main_chroms.dict
+```
+
+> The R annotation scripts (`exon_annotation.R`, `annotate_cnvs_complete_fixed.R`) are **bundled in `bin/`** — no path needed.
+
+### Step 3 — Configure sarek parameters (Mode A only)
+
+Edit `conf/sarek.config` with your lab's nf-core/sarek reference paths. These are constant across all runs:
+
+```nextflow
+params {
+    genome       = 'GATK.GRCh38'
+    wes          = true
+    save_output_as_bam = true
+    intervals    = '/data/refs/hg38/agilent/S07604514_Regions_Annotated.bed'
+    ascat_genome = 'hg38'
+    ascat_alleles = '/data/refs/hg38/ascat/ascat_alleles.zip'
+    ascat_loci    = '/data/refs/hg38/ascat/ascat_loci.zip'
+    ascat_loci_gc = '/data/refs/hg38/ascat/ascat_loci_gc.zip'
+    ascat_loci_rt = '/data/refs/hg38/ascat/ascat_loci_rt.zip'
+}
+```
+
+Also edit line 23 of `run_full.sh` to set your runs base directory:
+
+```bash
+RUNS_BASE="/your/runs/directory"   # default: /home/user/runs
+```
 
 ---
 
-### 6 · Somatic CNVs (GATK)
+## Mode A — Full pipeline (FASTQ → clinical report)
 
-Allele-specific, tumour-normal paired copy-number analysis using GATK's read-depth and allele-fraction modelling.
+Use this mode when starting from raw sequencing reads. `run_full.sh` orchestrates both phases sequentially: **Phase 1** runs nf-core/sarek (alignment, variant calling, QC) and **Phase 2** runs nf-sarek-clinical (clinical interpretation and report).
 
-**Steps:** CollectReadCounts → DenoiseReadCounts (against somatic PoN) → CollectAllelicCounts → ModelSegments → CallCopyRatioSegments → PlotDenoisedCopyRatios → PlotModeledSegments → MANE annotation (bundled R script from [FlorPio/gatk-cnv-somatic](https://github.com/FlorPio/gatk-cnv-somatic)).
+### Step 1 — Create the run directory and samplesheet
 
-Both tumour and normal BAMs are processed in parallel through steps 1–3; pairing occurs at ModelSegments. Diagnostic CR and modelled-segment plots are published alongside the annotated TSV.
+```bash
+mkdir -p /path/to/runs/20260109_1229
+```
 
-**Output:** `*_annotated.tsv` — per-segment log2 copy ratio, allele fraction, call (AMP/DEL/NEUTRAL/LOH), and overlapping MANE gene/exon.
+Create `samplesheet.csv` following nf-core/sarek format. **Sample naming is critical**: use `<patient>_N##` for the normal and `<patient>_T##` for the tumour.
+
+```csv
+patient,sex,status,sample,lane,fastq_1,fastq_2
+1229,XY,0,1229_N07,2,/path/to/reads/1229_N07_L2_1.fq.gz,/path/to/reads/1229_N07_L2_2.fq.gz
+1229,XY,1,1229_T08,1,/path/to/reads/1229_T08_L1_1.fq.gz,/path/to/reads/1229_T08_L1_2.fq.gz
+1229,XY,1,1229_T08,2,/path/to/reads/1229_T08_L2_1.fq.gz,/path/to/reads/1229_T08_L2_2.fq.gz
+```
+
+Fields:
+- `patient` — unique patient identifier (used in output filenames)
+- `sex` — `XX` (female) or `XY` (male); used by ASCAT for sex-chromosome copy-number
+- `status` — `0` = normal, `1` = tumour
+- `sample` — sample name; must follow `<patient>_N##` / `<patient>_T##`
+- `lane` — sequencing lane number (integer); multiple lanes per sample are merged automatically
+- `fastq_1` / `fastq_2` — absolute paths to gzipped FASTQ files
+
+### Step 2 — Run
+
+```bash
+cd /path/to/nf-sarek-clinical
+
+./run_full.sh \
+    --run        20260109_1229 \
+    --samplesheet /path/to/runs/20260109_1229/samplesheet.csv
+```
+
+Nextflow will create the output directories automatically:
+
+```
+/path/to/runs/20260109_1229/
+├── samplesheet.csv
+├── run.config             ← auto-generated per-run Nextflow config
+├── work/                  ← sarek intermediate files
+├── results/               ← nf-core/sarek outputs (BAMs, VCFs, QC)
+├── clinical_work/         ← nf-sarek-clinical intermediate files
+└── clinical_results/      ← final HTML + PDF reports  ← HERE
+```
+
+### Step 3 — Resume after interruption
+
+If the run stops (server reboot, OOM, etc.), resume from where it left off:
+
+```bash
+./run_full.sh \
+    --run        20260109_1229 \
+    --samplesheet /path/to/runs/20260109_1229/samplesheet.csv \
+    --resume
+```
 
 ---
 
-### 7 · TMB (Tumour Mutational Burden)
+## Mode B — Post-sarek (sarek already completed → clinical report)
 
-Counts somatic PASS variants meeting minimum quality thresholds (DP ≥ 10, AF ≥ 0.05, ≥ 10 alt reads, coding impact) and normalises by the effective capture size from the WES BED file.
+Use this mode when nf-core/sarek has already been run and you only need the clinical interpretation.
 
-TMB ≥ 10 mut/Mb triggers the "High TMB" Major Clinical Finding card.
+### Required sarek output structure
 
-**Output:** `*.tmb.tsv` — raw count, effective Mb, and TMB value.
+The pipeline expects the following directories inside `<sarek_outdir>/`:
+
+```
+results/
+├── variant_calling/
+│   ├── mutect2/<pair>/         ← somatic SNV VCFs
+│   ├── haplotypecaller/<normal>/ ← germline VCF
+│   ├── ascat/<pair>/           ← ASCAT segments + metrics
+│   ├── cnvkit/<pair>/          ← CNVkit .cns / .cnr files
+│   └── msisensorpro/<pair>/    ← MSI score file
+├── preprocessing/recalibrated/ ← BAM + BAI files (for GATK CNV)
+└── reports/mosdepth/           ← coverage summaries
+```
+
+> BAMs are required only for GATK CNV modules. If BAMs are absent, use `--skip_germline_cnv true --skip_somatic_cnv_gatk true`.
+
+### Option B.1 — Using run_full.sh (local clone)
+
+The simplest approach when working from the cloned repo directory:
+
+```bash
+cd /path/to/nf-sarek-clinical
+
+./run_full.sh \
+    --run        20260109_1229 \
+    --skip-sarek
+```
+
+This reads reference paths from `full_pipeline.params.yml` (in the pipeline dir) and uses sarek results from `/path/to/runs/20260109_1229/results/`.
+
+Resume if interrupted:
+
+```bash
+./run_full.sh --run 20260109_1229 --skip-sarek --resume
+```
+
+### Option B.2 — Pulling directly from GitHub (recommended for external users)
+
+No local clone needed. Configure Nextflow SCM credentials once:
+
+```bash
+mkdir -p ~/.nextflow
+cat > ~/.nextflow/scm <<'EOF'
+providers {
+    github {
+        user     = 'your-github-username'
+        password = 'your-personal-access-token'
+    }
+}
+EOF
+```
+
+Then run:
+
+```bash
+nextflow run GENUIT-LBMU/nf-sarek-clinical \
+    -profile docker \
+    -work-dir /path/to/runs/20260109_1229/clinical_work \
+    -params-file /path/to/my_lab_params.yml \
+    --sarek_outdir /path/to/runs/20260109_1229/results \
+    --run_name     20260109_1229 \
+    --outdir       /path/to/runs/20260109_1229/clinical_results
+```
+
+Resume if interrupted:
+
+```bash
+nextflow run GENUIT-LBMU/nf-sarek-clinical \
+    -profile docker \
+    -work-dir /path/to/runs/20260109_1229/clinical_work \
+    -params-file /path/to/my_lab_params.yml \
+    -resume \
+    --sarek_outdir /path/to/runs/20260109_1229/results \
+    --run_name     20260109_1229 \
+    --outdir       /path/to/runs/20260109_1229/clinical_results
+```
 
 ---
 
-### 8 · Mutational Signatures
+## Skip flags
 
-Decomposes the somatic SNV catalogue into COSMIC v3.4 reference signatures using SigProfilerMatrixGenerator + SigProfilerAssignment.
+Use these when a data type is missing or a module is not needed:
 
-**Matrices generated:** SBS96 (single-base substitutions), DBS (doublet-base), ID83 (small insertions/deletions).
+| Flag | Default | When to use |
+|------|---------|-------------|
+| `--skip_germline_cnv true` | `false` | No normal BAMs, or no gCNV PoN built yet |
+| `--skip_somatic_cnv true` | `false` | No ASCAT / CNVkit output from sarek |
+| `--skip_somatic_cnv_gatk true` | `false` | No tumour BAMs, or no somatic PoN |
+| `--skip_hrd true` | `false` | No ASCAT segments (required by HRProfiler) |
+| `--skip_signatures true` | `false` | Too few somatic variants (< ~50) |
+| `--skip_coverage true` | `false` | No mosdepth output from sarek |
+| `--skip_pharmaco true` | `false` | Pharmacogenomics not needed |
+| `--skip_pdf_report true` | `false` | Generate HTML only (faster) |
 
-**Output:** observed mutation matrices per type + assignment activity files (one row per COSMIC signature per sample) + 4 publication-quality PNG plots (SBS96 spectrum, SBS etiology, ID spectrum, ID etiology).
+Example — skip both GATK CNV modules and HRD:
 
-Signatures with non-zero activity are summarised in the PDF report; MMR-associated signatures (SBS6/15/20/21/26/44, ID1/ID2) feed into the Major Clinical Findings MMR card.
+```bash
+./run_full.sh --run 20260109_1229 --skip-sarek \
+    --skip_germline_cnv true \
+    --skip_somatic_cnv_gatk true \
+    --skip_hrd true
+```
 
----
+Or with `nextflow run`:
 
-### 9 · HRD (Homologous Recombination Deficiency)
-
-Runs [HRProfiler](https://github.com/FlorPio/HRProfiler-workflow) (Chopra et al., 2024) which integrates SBS signatures, indel signatures, and allele-specific CNV features (CNV48 basis) to compute an HRD probability score via a logistic regression model.
-
-Two organ-specific models are available: `BREAST` (default) and `OVARIAN`.
-
-**Output:** `*_hrd_predictions.tsv` — HRD probability and binary classification (HRD+ / HRD−) at the configured threshold.
-
----
-
-### 10 · Gene Coverage
-
-Per-gene depth statistics (mean, min, max) derived from mosdepth summary files produced by nf-core/sarek. Reported for both normal and tumour samples.
-
-**Output:** `*_gene_coverage.tsv`.
-
----
-
-### 11 · Germline–Somatic Correlation
-
-Cross-section integration that identifies clinically significant two-hit events and biomarker associations:
-
-- **Two-hit analysis** — P/LP germline variant (Section 1) + somatic second hit (somatic SNV, LOH, or HOMDEL in the same gene).
-- **Biallelic somatic events** — two independent somatic hits in the same gene (detected in Section 5, no germline variant required).
-- **Signature correlation** — detected SBS/ID mutational signatures correlated with the implicated pathways (MMR, HRD, tobacco, UV).
-- **Biomarker matching** — germline hits in genes with active therapeutic trials cross-referenced with the CIViC database.
-
-VUS variants are excluded from two-hit correlation (only P/LP used as germline first hits).
-
-**Output:** `correlation_section.json` — consumed by both the HTML and PDF report generators.
+```bash
+nextflow run GENUIT-LBMU/nf-sarek-clinical \
+    ... \
+    --skip_germline_cnv true \
+    --skip_somatic_cnv_gatk true \
+    --skip_hrd true
+```
 
 ---
 
 ## Reference files
 
-All bioinformatics **tools** are bundled inside the Docker images. The **R annotation scripts** for GATK CNV (`exon_annotation.R`, `annotate_cnvs_complete_fixed.R`) are sourced from [FlorPio/gatk-cnv-somatic](https://github.com/FlorPio/gatk-cnv-somatic) and bundled in `bin/` — no manual installation required.
+All Docker images contain the bioinformatics tools. The files below must be downloaded once and stored locally. Configure their paths in `my_lab_params.yml`.
 
-What you need to provide are the large **reference databases and PoN model files**.
-Define all paths once in `full_pipeline.params.yml` (template in the repo root).
+### dbNSFP — variant functional annotation
 
----
-
-### 1 · dbNSFP
+Download from the **Liu Lab** (free registration required):
+[sites.google.com/site/jpopgen/dbNSFP](https://sites.google.com/site/jpopgen/dbNSFP) → choose hg38 version.
 
 ```bash
-# Download from the Liu Lab (free registration):
-# https://sites.google.com/site/jpopgen/dbNSFP  →  hg38 version
-mkdir -p /path/to/refs/dbNSFP && cd /path/to/refs/dbNSFP
-tabix -s 1 -b 2 -e 2 dbNSFP4.x.txt.gz   # index after download
+mkdir -p /data/refs/dbNSFP && cd /data/refs/dbNSFP
+# After download:
+tabix -s 1 -b 2 -e 2 dbNSFP4.x.txt.gz
 ```
 
-### 2 · SnpSift
+### SnpSift — VCF filtering and field extraction
+
+Part of the **snpEff** package:
 
 ```bash
-# Download snpEff package (includes SnpSift):
-# https://pcingola.github.io/SnpEff/  →  snpEff_latest_core.zip
-mkdir -p /path/to/refs/snpEff
 wget https://snpeff.blob.core.windows.net/versions/snpEff_latest_core.zip
-unzip snpEff_latest_core.zip -d /path/to/refs/snpEff
-# SnpSift.jar → /path/to/refs/snpEff/snpEff/SnpSift.jar
+unzip snpEff_latest_core.zip -d /data/refs/snpEff
+# Jar → /data/refs/snpEff/snpEff/SnpSift.jar
 ```
 
-### 3 · hg38 reference genome
+### hg38 reference genome
+
+From the **GATK GCP bucket**:
 
 ```bash
-# From GATK GCP bucket:
-gsutil cp gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta     /path/to/refs/hg38/hg38.fa
-gsutil cp gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.fai /path/to/refs/hg38/hg38.fa.fai
-gsutil cp gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dict      /path/to/refs/hg38/hg38.dict
+gsutil cp gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta     /data/refs/hg38/hg38.fa
+gsutil cp gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.fai /data/refs/hg38/hg38.fa.fai
+gsutil cp gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dict      /data/refs/hg38/hg38.dict
 
-# Create main-chromosomes subset (required by somatic GATK CNV):
-samtools faidx hg38.fa chr1 chr2 ... chrX chrY > main_chroms/hg38.main_chroms.fa
-samtools faidx main_chroms/hg38.main_chroms.fa
-gatk CreateSequenceDictionary -R main_chroms/hg38.main_chroms.fa
+# Create main-chromosomes FASTA (required for somatic GATK CNV):
+samtools faidx /data/refs/hg38/hg38.fa chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 \
+    chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY \
+    > /data/refs/cnv/main_chroms/hg38.main_chroms.fa
+samtools faidx /data/refs/cnv/main_chroms/hg38.main_chroms.fa
+gatk CreateSequenceDictionary -R /data/refs/cnv/main_chroms/hg38.main_chroms.fa
 ```
 
-### 4 · WES capture BED
+### WES capture BED
 
-Kit-specific BED file for TMB calculation. Download from your kit vendor (e.g. [Agilent eArray](https://earray.chem.agilent.com/suredesign/)).
+Download from your kit vendor. Used to calculate the effective Mb for TMB.
 
-### 5 · MANE exon coordinates
+- **Agilent SureSelect**: [earray.chem.agilent.com/suredesign](https://earray.chem.agilent.com/suredesign/) (free registration)
+- **Twist / KAPA / Roche**: request from the manufacturer
+
+### MANE exon coordinates
 
 ```bash
 wget https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/current/MANE.GRCh38.v1.4.summary.txt.gz
-# Convert to 6-column format (chr, start, end, gene_symbol, exon, transcript_id)
-# See FlorPio/gatk-cnv-somatic for the conversion script
+gunzip MANE.GRCh38.v1.4.summary.txt.gz
+# Convert to 6-column TSV (chr, start, end, gene_symbol, exon, transcript_id)
+# Conversion script available in FlorPio/gatk-cnv-somatic
 ```
 
-### 6 · GATK CNV support files and PoN (build once)
+### GATK CNV support files and Panel of Normals
 
-All interval lists, common SNPs VCF, and PoN construction scripts are provided by:
+The complete workflow (interval preprocessing, common SNPs VCF, PoN construction) is provided at:
 **[github.com/FlorPio/gatk-cnv-somatic](https://github.com/FlorPio/gatk-cnv-somatic)**
 
 ```bash
-git clone https://github.com/FlorPio/gatk-cnv-somatic /path/to/gatk-cnv-somatic
+git clone https://github.com/FlorPio/gatk-cnv-somatic
 # Follow that repo's README to generate:
-#   exomas.interval_list            (germline FilterIntervals output)
-#   preprocessed.interval_list      (somatic PreprocessIntervals output)
-#   common_snps_preprocessed.vcf.gz (common SNPs from GATK bundle)
-#   ploidy-model/                   (DetermineGermlineContigPloidy COHORT)
-#   PoN_CNV/                        (GermlineCNVCaller COHORT)
-#   wes-do-gc.pon.hdf5              (CreateReadCountPanelOfNormals)
+#   exomas.interval_list          ← germline FilterIntervals output
+#   preprocessed.interval_list   ← somatic PreprocessIntervals output
+#   common_snps_preprocessed.vcf.gz + .tbi
+#   ploidy-model/                 ← DetermineGermlineContigPloidy (COHORT mode)
+#   PoN_CNV/                      ← GermlineCNVCaller (COHORT mode, ≥ 30 normals)
+#   wes-do-gc.pon.hdf5            ← CreateReadCountPanelOfNormals
 ```
 
-> PoN files are institution-specific (built from your cohort of ≥ 30 normals). Rebuild required if GATK version changes (`broadinstitute/gatk:4.6.2.0`).
+> PoN files are **institution-specific**: built from your own cohort of ≥ 30 normal samples with the same kit and the same GATK version (`broadinstitute/gatk:4.6.2.0`). Rebuild if GATK version changes.
+
+> The R annotation scripts (`exon_annotation.R`, `annotate_cnvs_complete_fixed.R`) from that repo are already **bundled in `bin/`** — no manual copy needed.
+
+### ASCAT resources (Mode A only)
+
+Required for ASCAT allele-specific copy-number in nf-core/sarek. Download from the **ASCAT GitHub**:
+[github.com/VanLoo-lab/ascat/tree/master/ReferenceFiles/WES](https://github.com/VanLoo-lab/ascat/tree/master/ReferenceFiles/WES)
+
+Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) and set their paths in `conf/sarek.config`.
 
 ### Suggested directory layout
 
 ```
-/path/to/refs/
+/data/refs/
 ├── dbNSFP/
-│   ├── dbNSFP4.1a.txt.gz  (+ .tbi)
+│   ├── dbNSFP4.1a.txt.gz
+│   └── dbNSFP4.1a.txt.gz.tbi
 ├── snpEff/
-│   └── SnpSift.jar
+│   └── snpEff/SnpSift.jar
 ├── hg38/
 │   ├── hg38.fa  (+ .fai, .dict)
-│   └── <kit>/<kit>_Regions.bed
+│   ├── ascat/   (alleles.zip, loci.zip, loci_gc.zip, loci_rt.zip)
+│   └── <kit>/
+│       ├── <kit>_Regions.bed
+│       ├── <kit>_Regions_Annotated.bed   ← for sarek intervals
+│       └── <kit>_Padded.withGenes.bed
 └── cnv/
     ├── exons_mane.txt
     ├── exomas.interval_list
@@ -283,134 +447,35 @@ git clone https://github.com/FlorPio/gatk-cnv-somatic /path/to/gatk-cnv-somatic
 
 ---
 
-## Running the pipeline
-
-### Option A — Full pipeline from FASTQ (recommended)
-
-#### Step 1 — Create the samplesheet
-
-```csv
-patient,sex,status,sample,lane,fastq_1,fastq_2
-1229,XY,0,1229_N07,2,/path/to/reads/1229_N07_L2_1.fq.gz,/path/to/reads/1229_N07_L2_2.fq.gz
-1229,XY,1,1229_T08,1,/path/to/reads/1229_T08_L1_1.fq.gz,/path/to/reads/1229_T08_L1_2.fq.gz
-1229,XY,1,1229_T08,2,/path/to/reads/1229_T08_L2_1.fq.gz,/path/to/reads/1229_T08_L2_2.fq.gz
-```
-
-> Sample naming convention: `<patient>_N##` for normal, `<patient>_T##` for tumor.
-
-#### Step 2 — Launch
-
-```bash
-cd /path/to/nf-sarek-clinical
-
-./run_full.sh \
-  --run        <RUN_NAME> \
-  --samplesheet /path/to/runs/<RUN_NAME>/samplesheet.csv
-```
-
-#### Common flags
-
-```bash
-./run_full.sh --run <RUN_NAME> --samplesheet /path/to/samplesheet.csv --resume   # resume after interruption
-./run_full.sh --run <RUN_NAME> --skip-sarek                                        # clinical report only
-./run_full.sh --run <RUN_NAME> --skip-sarek --resume                               # resume clinical only
-```
-
-#### Output layout
-
-```
-/path/to/runs/<RUN_NAME>/
-├── samplesheet.csv
-├── results/            ← nf-core/sarek outputs
-├── clinical_work/      ← nf-sarek-clinical work dir
-└── clinical_results/   ← HTML + PDF reports  ← final output
-```
-
----
-
-### Option B — Clinical report only (explicit Nextflow call)
-
-```bash
-cd /path/to/nf-sarek-clinical
-
-nextflow run main.nf \
-  -profile docker \
-  -work-dir /path/to/runs/MY_RUN/clinical_work \
-  --sarek_outdir  /path/to/runs/MY_RUN/results \
-  --run_name      MY_RUN \
-  --outdir        /path/to/runs/MY_RUN/clinical_results \
-  --dbnsfp        /path/to/refs/dbNSFP/dbNSFP4.1a.txt.gz \
-  --snpsift_jar   /path/to/refs/snpEff/SnpSift.jar \
-  --panel_bed     /path/to/refs/hg38/<kit>/<kit>_Regions.bed \
-  --gcnv_ploidy_model   /path/to/refs/cnv/ploidy-model \
-  --gcnv_pon_dir        /path/to/refs/cnv/PoN_CNV \
-  --gcnv_interval_list  /path/to/refs/cnv/exomas.interval_list \
-  --gcnv_fasta          /path/to/refs/hg38/hg38.fa \
-  --gcnv_dict           /path/to/refs/hg38/hg38.dict \
-  --gcnv_mane_txt       /path/to/refs/cnv/exons_mane.txt \
-  --somatic_pon_hdf5       /path/to/refs/cnv/wes-do-gc.pon.hdf5 \
-  --somatic_interval_list  /path/to/refs/cnv/preprocessed.interval_list \
-  --common_snps_vcf        /path/to/refs/cnv/common_snps_preprocessed.vcf.gz \
-  --somatic_fasta          /path/to/refs/cnv/main_chroms/hg38.main_chroms.fa \
-  --somatic_dict           /path/to/refs/cnv/main_chroms/hg38.main_chroms.dict
-```
-
-#### Skip flags {#skip-flags}
-
-| Flag | When to use |
-|------|------------|
-| `--skip_somatic_cnv true` | No ASCAT/CNVkit output |
-| `--skip_hrd true` | No ASCAT segments |
-| `--skip_germline_cnv true` | No normal BAMs / no gCNV PoN |
-| `--skip_somatic_cnv_gatk true` | No tumor BAMs / no somatic PoN |
-| `--skip_signatures true` | Too few somatic variants |
-| `--skip_coverage true` | No mosdepth results |
-| `--skip_pdf_report true` | HTML only |
-
----
-
-## Requirements
-
-| Tool | Version |
-|------|---------|
-| **Nextflow** | ≥ 23.04.0 |
-| **Docker** | ≥ 20.10 |
-| RAM | ≥ 32 GB (GATK gCNV peaks at ~56 GB) |
-| Disk | ≥ 200 GB (reference databases + work dir) |
-
-**Sarek prerequisite:** nf-core/sarek ≥ 3.3.0 with tools: `haplotypecaller,mutect2,cnvkit,ascat,msisensorpro,snpeff`
-
----
-
-## Parameters
+## Parameters reference
 
 ### Required
 
 | Parameter | Description |
 |-----------|-------------|
-| `--sarek_outdir` | Completed nf-core/sarek results directory |
-| `--run_name` | Run identifier (used in filenames and report header) |
+| `--sarek_outdir` | Path to completed nf-core/sarek results directory |
+| `--run_name` | Run identifier used in output filenames and report header |
 | `--outdir` | Where clinical results will be written |
-| `--dbnsfp` | Path to `dbNSFP4.x.txt.gz` (bgzipped + tabix indexed) |
-| `--snpsift_jar` | Path to `SnpSift.jar` |
+| `--dbnsfp` | `dbNSFP4.x.txt.gz` (bgzipped + tabix indexed) |
+| `--snpsift_jar` | `SnpSift.jar` from the snpEff package |
 
 ### SNV & TMB
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--germline_panel` | `assets/gene_panels/germline_90_cancer_predisposition.txt` | 90-gene hereditary cancer panel |
-| `--somatic_snv_panel` | `assets/gene_panels/somatic_snv_panel.txt` | Somatic SNV gene list |
-| `--germline_min_dp` | `5` | Min depth for germline variants |
-| `--panel_bed` | — | WES capture BED for TMB Mb calculation |
-| `--tmb_min_dp` | `10` | Min tumor depth for TMB |
-| `--tmb_min_af` | `0.05` | Min allele fraction for TMB |
+| `--germline_panel` | `assets/gene_panels/germline_90_cancer_predisposition.txt` | Gene list for germline SNV filter (one symbol per line) |
+| `--somatic_snv_panel` | `assets/gene_panels/somatic_snv_panel.txt` | Gene list for somatic SNV filter |
+| `--germline_min_dp` | `5` | Minimum read depth for germline variants |
+| `--panel_bed` | — | WES capture BED for TMB calculation (mut/Mb) |
+| `--tmb_min_dp` | `10` | Minimum tumour depth for TMB variants |
+| `--tmb_min_af` | `0.05` | Minimum allele fraction for TMB variants |
 
 ### HRD
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--hrd_organ` | `BREAST` | Organ model: `BREAST` or `OVARIAN` |
-| `--hrd_threshold` | `0.45` | HRD probability threshold |
+| `--hrd_threshold` | `0.45` | Probability threshold for HRD+ classification |
 
 ### Module toggles
 
@@ -420,10 +485,10 @@ nextflow run main.nf \
 | `--skip_somatic_cnv` | `false` | Skip ASCAT + CNVkit interpretation |
 | `--skip_somatic_cnv_gatk` | `false` | Skip GATK somatic CNV |
 | `--skip_signatures` | `false` | Skip mutational signatures |
-| `--skip_hrd` | `false` | Skip HRD |
+| `--skip_hrd` | `false` | Skip HRD analysis |
 | `--skip_pharmaco` | `false` | Skip pharmacogenomics |
 | `--skip_coverage` | `false` | Skip gene coverage |
-| `--skip_pdf_report` | `false` | Skip clinical PDF |
+| `--skip_pdf_report` | `false` | Skip clinical PDF (HTML only) |
 
 ---
 
@@ -433,18 +498,22 @@ nextflow run main.nf \
 clinical_results/
 ├── germline/
 │   ├── snv/extract/
-│   │   ├── *.germline_snvs.tsv
-│   │   ├── *.germline_all_filtered.tsv
-│   │   └── *.germline_snvs_acmg_annotated.tsv
-│   ├── pharmaco/            *.pharmaco.tsv
-│   └── cnv_gatk/annotated/  *_segments_annotated.tsv
+│   │   ├── *.germline_snvs.tsv                  ← P/LP/VUS variants (in report)
+│   │   ├── *.germline_all_filtered.tsv           ← all rejected with FILTER_REASON
+│   │   └── *.germline_snvs_acmg_annotated.tsv   ← all candidates + ACMG scores
+│   ├── pharmaco/
+│   │   └── *.pharmaco.tsv
+│   └── cnv_gatk/annotated/
+│       └── *_segments_annotated.tsv
 ├── somatic/
 │   ├── snv/extract/         *.somatic_snvs.tsv
 │   ├── snv/civic_extract/   *.civic.exploded.tsv
 │   ├── cnv/                 *_somatic_cnv_report.tsv
 │   ├── cnv_gatk/annotated/  *_annotated.tsv
 │   ├── tmb/                 *.tmb.tsv
-│   ├── signatures/          SBS/ID/DBS matrices + 4 PNG plots
+│   ├── signatures/
+│   │   ├── matrix_profiles/output/   SBS96/, DBS/, ID/ matrices
+│   │   └── assignment/               COSMIC v3.4 activities + 4 PNG plots
 │   └── hrd/                 *_hrd_predictions.tsv
 ├── qc/gene_coverage/        *_gene_coverage.tsv
 └── reporting/
@@ -455,15 +524,15 @@ clinical_results/
 
 ---
 
-## Gene Panels
+## Gene panels
 
-Built-in panels in `assets/gene_panels/`:
+Built-in panels bundled in `assets/gene_panels/`:
 
 - **`germline_90_cancer_predisposition.txt`** — 90 hereditary cancer genes (ACMG SF v3.2)
-- **`somatic_38_oncogenes.txt`** — 38 actionable somatic genes for CNV reporting
+- **`somatic_38_oncogenes.txt`** — 38 actionable genes for somatic CNV reporting
 - **`somatic_snv_panel.txt`** — Somatic SNV panel (oncogenes, TSGs, DNA repair)
 
-Custom panel: `--germline_panel /path/to/my_panel.txt` (one gene symbol per line).
+To use a custom panel: `--germline_panel /path/to/my_panel.txt` (one HGNC gene symbol per line).
 
 ---
 
@@ -471,12 +540,13 @@ Custom panel: `--germline_panel /path/to/my_panel.txt` (one gene symbol per line
 
 | Problem | Solution |
 |---------|---------|
-| Session lock error | `rm -f <pipeline-dir>/.nextflow/cache/*/db/LOCK` |
-| Task fails after code fix | Delete stale work dir: `rm -rf clinical_work/XX/XXXX…` then `-resume` |
-| Out of memory | Lower `process_high` memory in `conf/base.config` |
-| gCNV model version mismatch | Rebuild PoN with same GATK version (`broadinstitute/gatk:4.6.2.0`) |
-| CIViC annotation fails | Requires internet on first run; passes through unannotated on failure |
-| ACMG scores differ HTML vs PDF | Check `bin/final_report_acmg.py`, `bin/clinical_pdf_report.py`, `modules/local/snpsift_germline/main.nf` Step 4 are in sync |
+| `Session [xxx] lock file already acquired` | `rm -f <pipeline-dir>/.nextflow/cache/*/db/LOCK` |
+| Task fails after a code fix | Delete stale work dir: `rm -rf clinical_work/XX/XXXX…` then re-run with `-resume` |
+| Out of memory (GATK gCNV) | Lower `process_high` memory in `conf/base.config` (default 56 GB) |
+| gCNV: `model version mismatch` | Rebuild PoN with same GATK version (`broadinstitute/gatk:4.6.2.0`) |
+| CIViC annotation fails | Requires internet on first run; passes through unannotated on network failure |
+| ACMG classification differs HTML vs PDF | Check that `bin/final_report_acmg.py`, `bin/clinical_pdf_report.py`, and `modules/local/snpsift_germline/main.nf` Step 4 are in sync |
+| `Join mismatch` error in sarek (Mutect2) | `--tools` must be passed on the CLI in `run_full.sh`, not only in `conf/sarek.config` (already handled) |
 
 ---
 
