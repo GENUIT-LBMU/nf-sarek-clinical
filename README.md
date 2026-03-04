@@ -11,7 +11,7 @@
 
 ## What this pipeline does
 
-`nf-sarek-clinical` takes the output of [nf-core/sarek](https://nf-co.re/sarek) (tumour–normal WES) and produces a clinical-grade molecular report in HTML and PDF format. It integrates germline and somatic variant analysis, copy-number calling, mutational signatures, pharmacogenomics, and HRD scoring into a single automated workflow.
+`nf-sarek-clinical` takes the output of [nf-core/sarek](https://nf-co.re/sarek) (tumour–normal WES) and produces a clinical-grade molecular report in HTML and PDF format. It integrates germline and somatic variant analysis, copy-number calling, mutational signatures, pharmacogenomics, and HRD scoring into a single automated workflow. Also can you run in a full mode from fastq to report.
 
 **Final deliverables per patient:**
 
@@ -25,10 +25,10 @@
 
 | # | Section | What it analyses |
 |---|---------|-----------------|
-| 0 | **Major Clinical Findings** | Auto-populated summary page: HRD, MMR deficiency, high TMB, relevant CNVs |
+| 0 | **Major Clinical Findings** | Auto-populated summary page: HRD, MMR deficiency, high TMB, relevant CNVs, and pathogenic germline SNV and CNV. |
 | 1 | **Germline–Somatic Correlation** | Two-hit events (P/LP germline + somatic second hit), biallelic somatic, signature correlation |
 | 2 | **Germline SNVs** | 90-gene hereditary cancer panel; ACMG P/LP/VUS classification with 9-tool in silico scoring, REVEL, ClinVar, gnomAD |
-| 3 | **Pharmacogenomics** | DPYD, UGT1A1, CYP2D6, CYP2C19, NUDT15 — drug-metabolism variants from germline VCF |
+| 3 | **Pharmacogenomics** | DPYD, UGT1A1 — drug-metabolism variants from germline VCF |
 | 4 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM using a pre-built cohort PoN; MANE gene/exon annotation |
 | 5 | **Somatic SNVs** | Mutect2 VCF filtered by somatic panel; AMP/ASCO/CAP tiering with CIViC evidence |
 | 6 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
