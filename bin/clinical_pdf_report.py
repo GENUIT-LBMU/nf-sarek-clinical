@@ -109,6 +109,8 @@ _TR = {
                           'es': 'Calidad de Secuenciaci\u00f3n \u2014 Cobertura por Gen'},
     'sect_correlation':  {'en': 'Germline\u2013Somatic Correlation Analysis',
                           'es': 'An\u00e1lisis de Correlaci\u00f3n Germinal\u2013Som\u00e1tica'},
+    'sect_mutsig':       {'en': 'Mutational Signatures',
+                          'es': 'Firmas Mutacionales'},
     # KPI labels
     'kpi_tmb':      {'en': 'TMB (mut/Mb)',        'es': 'TMB (mut/Mb)'},
     'kpi_msi':      {'en': 'MSI',                 'es': 'MSI'},
@@ -129,6 +131,39 @@ _TR = {
     'find_mmr':     {'en': 'MMR Deficiency',            'es': 'Deficiencia MMR'},
     'find_dsh':     {'en': 'Double Somatic Hits',       'es': 'Doble Impacto Som\u00e1tico'},
     'find_cnv':     {'en': 'High-Confidence CNV Events','es': 'Eventos CNV de Alta Confianza'},
+    'find_civic':   {'en': 'CIViC Actionable Variants', 'es': 'Variantes Accionables CIViC'},
+    'civic_resist': {'en': 'Resistance',                'es': 'Resistencia'},
+    'civic_sensit': {'en': 'Sensitivity/Response',      'es': 'Sensibilidad/Respuesta'},
+    # Low-coverage warning
+    'low_cov_title': {'en': 'Low Tumor Sequencing Depth',
+                      'es': 'Baja Profundidad de Secuenciación Tumoral'},
+    'low_cov_body':  {
+        'en': ('Tumor mean coverage is <b>{cov}X</b> (recommended ≥100X for WES). '
+               'The following results may have <b>reduced sensitivity</b> and should be '
+               'interpreted with caution:'),
+        'es': ('La cobertura media del tumor es <b>{cov}X</b> (recomendado ≥100X para WES). '
+               'Los siguientes resultados pueden tener <b>sensibilidad reducida</b> y deben '
+               'interpretarse con precaución:'),
+    },
+    'low_cov_tmb':    {'en': 'TMB — underestimated due to fewer detected variants',
+                       'es': 'TMB — subestimado por menor detección de variantes'},
+    'low_cov_msi':    {'en': 'MSI — microsatellite instability detection may be unreliable',
+                       'es': 'MSI — la detección de inestabilidad microsatelital puede ser poco fiable'},
+    'low_cov_mutsig': {'en': 'Mutational Signatures — reduced mutation count limits signature decomposition accuracy',
+                       'es': 'Firmas Mutacionales — el bajo número de mutaciones limita la precisión de la descomposición'},
+    'low_cov_somatic':{'en': 'Somatic Variants — low-VAF variants may be missed',
+                       'es': 'Variantes Somáticas — pueden no detectarse variantes de baja VAF'},
+    'low_cov_cnv':    {'en': 'Somatic CNVs — copy-number segmentation has reduced resolution',
+                       'es': 'CNVs Somáticos — la segmentación de número de copias tiene resolución reducida'},
+    'low_cov_hrd':    {'en': 'HRD — probability derived from mutational signatures is unreliable with low mutation counts',
+                       'es': 'HRD — la probabilidad derivada de firmas mutacionales no es fiable con bajo conteo de mutaciones'},
+    'indeterminate':  {'en': 'Indeterminate',    'es': 'Indeterminado'},
+    'low_cov_indet':  {
+        'en': ('Result indeterminate due to low tumor sequencing depth. '
+               'Insufficient coverage compromises the quality of this analysis.'),
+        'es': ('Resultado indeterminado debido a la baja profundidad de secuenciación tumoral. '
+               'La cobertura insuficiente compromete la calidad de este análisis.'),
+    },
     # Major findings — content labels
     'hrd_status_lbl': {'en': 'HRD Status:',         'es': 'Estado HRD:'},
     'prob_lbl':       {'en': 'probability',          'es': 'probabilidad'},
@@ -833,28 +868,74 @@ def build_cover_page(args, metrics, story):
     story.append(meta_table)
     story.append(Spacer(1, 0.5 * cm))
 
+    # ── Determine low-coverage flag ────────────────────────────────────────────
+    _LOW_COV_THRESHOLD = 50   # mean X — below this, flag quality concern
+    try:
+        _cov_t_f = float(metrics.get('cov_t', 'NA'))
+    except (ValueError, TypeError):
+        _cov_t_f = None
+    is_low_cov = _cov_t_f is not None and _cov_t_f < _LOW_COV_THRESHOLD
+    metrics['is_low_cov'] = is_low_cov   # propagate to other sections
+
     # ── Global Biomarkers (4-column) ──────────────────────────────────────────
     story.append(Paragraph(T('sect_global_bm'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
-    _msi_raw_pdf = metrics.get('msi', 'NA')
-    try:
-        _msi_pf = float(_msi_raw_pdf)
-        _msi_st = T('msi_detected') if _msi_pf >= 5.0 else T('msi_not_det')
-        _msi_disp_pdf = _msi_st + '<br/>' + _msi_raw_pdf + '%'
-    except (ValueError, TypeError):
-        _msi_disp_pdf = _msi_raw_pdf
+    _indet = f'<font color="#b91c1c"><b>{T("indeterminate")}</b></font>'
 
-    _hrd_prob_disp = _fmt_hrd_prob(metrics.get('hrd_prob', 'NA'))
+    _msi_raw_pdf = metrics.get('msi', 'NA')
+    if is_low_cov:
+        _msi_disp_pdf = _indet
+    else:
+        try:
+            _msi_pf = float(_msi_raw_pdf)
+            _msi_st = T('msi_detected') if _msi_pf >= 5.0 else T('msi_not_det')
+            _msi_disp_pdf = _msi_st + '<br/>' + _msi_raw_pdf + '%'
+        except (ValueError, TypeError):
+            _msi_disp_pdf = _msi_raw_pdf
+
+    _hrd_prob_disp = _indet if is_low_cov else _fmt_hrd_prob(metrics.get('hrd_prob', 'NA'))
 
     global_kpis = [
-        (T('kpi_tmb'),      metrics.get('tmb',        'N/A')),
+        (T('kpi_tmb'),      _indet if is_low_cov else metrics.get('tmb', 'N/A')),
         (T('kpi_msi'),      _msi_disp_pdf),
         (T('kpi_hrd_prob'), _hrd_prob_disp),
-        (T('kpi_hrd_stat'), metrics.get('hrd_status', 'N/A')),
+        (T('kpi_hrd_stat'), _indet if is_low_cov else metrics.get('hrd_status', 'N/A')),
     ]
     story.append(_build_kpi_table(global_kpis, ncols=4))
     story.append(Spacer(1, 0.4 * cm))
+
+    # ── Low tumor-coverage warning ───────────────────────────────────────────
+    if is_low_cov:
+        _cov_str = f'{_cov_t_f:.0f}'
+        _warn_items = ''.join(
+            f'<br/>&nbsp;&nbsp;• {T(k)}'
+            for k in ('low_cov_tmb', 'low_cov_msi', 'low_cov_hrd',
+                      'low_cov_mutsig', 'low_cov_somatic', 'low_cov_cnv')
+        )
+        _warn_body = T('low_cov_body').format(cov=_cov_str) + _warn_items
+        _warn_s = ParagraphStyle(
+            'LowCovWarn', fontName='Helvetica', fontSize=7.5,
+            textColor=colors.HexColor('#7c2d12'), leading=11)
+        _warn_data = [[
+            Paragraph(
+                f'<font size="9"><b>⚠ {T("low_cov_title")}</b></font><br/>'
+                f'{_warn_body}',
+                _warn_s),
+        ]]
+        _warn_tbl = Table(_warn_data, colWidths=[USABLE_W])
+        _warn_tbl.setStyle(TableStyle([
+            ('BACKGROUND',   (0, 0), (-1, -1), colors.HexColor('#fef3c7')),
+            ('TOPPADDING',   (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING',(0, 0), (-1, -1), 8),
+            ('LEFTPADDING',  (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+            ('ROUNDEDCORNERS', [4]),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#f59e0b')),
+        ]))
+        story.append(_warn_tbl)
+        story.append(Spacer(1, 0.3 * cm))
+
     # Story continues immediately with Major Clinical Findings (no PageBreak).
 
 
@@ -862,7 +943,8 @@ def build_cover_page(args, metrics, story):
 # Secondary Biomarkers + Disclaimer + PageBreak  (end of page 1)
 # ---------------------------------------------------------------------------
 def build_secondary_biomarkers(metrics, story):
-    """Append Secondary Biomarkers section, Disclaimer, then PageBreak."""
+    """Append Secondary Biomarkers section and Disclaimer."""
+    story.append(PageBreak())
     story.append(Paragraph(T('sect_secondary_bm'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
@@ -875,14 +957,14 @@ def build_secondary_biomarkers(metrics, story):
     story.append(_build_kpi_table(secondary_kpis, ncols=4))
     story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('disclaimer'), STYLE_DISCLAIMER))
-    story.append(PageBreak())
 
 
 # ---------------------------------------------------------------------------
-# Genomic Quality Metrics page  (always starts on a new page)
+# Genomic Quality Metrics page
 # ---------------------------------------------------------------------------
 def build_quality_metrics_page(metrics, story):
-    """Append Genomic Quality Metrics section (Purity + Coverage) + PageBreak."""
+    """Append Genomic Quality Metrics section (Purity + Coverage)."""
+    story.append(PageBreak())
     story.append(Paragraph(T('sect_quality'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
@@ -893,7 +975,6 @@ def build_quality_metrics_page(metrics, story):
     ]
     story.append(_build_kpi_table(quality_kpis, ncols=3))
     story.append(Spacer(1, 0.6 * cm))
-    story.append(PageBreak())
 
 
 
@@ -972,6 +1053,7 @@ def build_variant_table(col_headers, col_widths, data_rows, colour_col_idx=None,
 # ---------------------------------------------------------------------------
 def build_germline_section(germline_variants, story):
     """Append germline SNV section flowables to story."""
+    story.append(PageBreak())
     story.append(Paragraph(T('sect_germline'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
@@ -990,7 +1072,6 @@ def build_germline_section(germline_variants, story):
 
     if not germline_variants:
         story.append(Paragraph(T('germ_no_vars'), STYLE_WARN))
-        story.append(PageBreak())
         return
 
     # Table columns (widths sum to USABLE_W ~553 pt)
@@ -1063,7 +1144,6 @@ def build_germline_section(germline_variants, story):
         f'Benign and likely benign variants are excluded from this report.</font>',
         styles['Normal'],
     ))
-    story.append(PageBreak())
 
 
 # ---------------------------------------------------------------------------
@@ -1071,6 +1151,7 @@ def build_germline_section(germline_variants, story):
 # ---------------------------------------------------------------------------
 def build_somatic_section(somatic_variants, story, gene_ctx=None):
     """Append somatic SNV section flowables to story."""
+    story.append(PageBreak())
     story.append(Paragraph(T('sect_somatic'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
@@ -1095,8 +1176,12 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None):
             'No somatic variants were identified in this sample.',
             STYLE_WARN,
         ))
-        story.append(PageBreak())
         return
+
+    # Sort: CIViC-annotated variants first (IA → IB → IIA → IIB → IIC → III)
+    _TIER_ORDER = {'IA': 0, 'IB': 1, 'IIA': 2, 'IIB': 3, 'IIC': 4, 'III': 5}
+    somatic_variants = sorted(somatic_variants,
+                               key=lambda v: _TIER_ORDER.get(v.get('_AMP_TIER', 'III'), 5))
 
     # Table columns – Widths sum to USABLE_W (~516 pt available after badge col)
     col_headers = [
@@ -1218,8 +1303,6 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None):
                     ('VALIGN',      (0, 0), (-1, -1), 'TOP'),
                 ]))
                 story.append(KeepTogether([block_tbl, Spacer(1, 0.15 * cm)]))
-
-    story.append(PageBreak())
 
 
 # ---------------------------------------------------------------------------
@@ -1387,6 +1470,104 @@ def build_signature_plots_pdf(act_path, sig_type, story):
             'COSMIC Signature Assignment \u2014 ' + sig_type, USABLE_W * 0.55)
 
 
+# ---------------------------------------------------------------------------
+# Mutational Signatures section
+# ---------------------------------------------------------------------------
+_SIG_AETIOLOGY = {
+    'SBS1':  'Deamination of 5-methylcytosine (ageing)',
+    'SBS2':  'APOBEC cytidine deaminase',
+    'SBS3':  'Defective homologous recombination (HRD)',
+    'SBS4':  'Tobacco mutagen exposure',
+    'SBS5':  'Clock-like replication errors',
+    'SBS6':  'Mismatch repair deficiency (MMR)',
+    'SBS7a': 'UV light exposure',
+    'SBS7b': 'UV light exposure',
+    'SBS8':  'Defective homologous recombination',
+    'SBS13': 'APOBEC cytidine deaminase',
+    'SBS15': 'MMR deficiency (MLH1 hypermethylation)',
+    'SBS18': 'Reactive oxygen species damage',
+    'SBS20': 'MMR deficiency + POLD1 mutation',
+    'SBS21': 'MMR deficiency (MSI-H)',
+    'SBS26': 'MMR deficiency',
+    'SBS30': 'Defective base excision repair (NTHL1)',
+    'SBS44': 'MMR deficiency',
+    'ID1':   'Replication slippage at homopolymers',
+    'ID2':   'Replication slippage — MMR-related',
+    'ID3':   'Tobacco smoking',
+    'ID4':   'Unknown aetiology',
+    'ID5':   'Unknown aetiology',
+    'ID6':   'Homologous recombination deficiency',
+    'ID7':   'Replication slippage at microsatellites',
+    'ID8':   'Non-homologous end joining',
+    'ID13':  'UV light exposure',
+}
+
+
+def build_mutational_signatures_section(args, story):
+    """Mutational Signatures section: detected-signature summary table + spectrum plots."""
+    story.append(PageBreak())
+    story.append(Paragraph(T('sect_mutsig'), STYLE_H2))
+    story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
+
+    sig_sbs96 = getattr(args, 'sig_sbs96', None) or ''
+    sig_id    = getattr(args, 'sig_id', None) or ''
+
+    def _read_activities(act_path):
+        """Return list of (sig_name, activity_int) for detected sigs (activity > 0)."""
+        if not act_path or not os.path.isfile(act_path):
+            return []
+        _, rows = read_tsv(act_path)
+        if not rows:
+            return []
+        row = rows[0]  # single sample per run
+        detected = []
+        for col, val in row.items():
+            if not col or col.lower() in ('samples', 'sample', ''):
+                continue
+            try:
+                v = float(val)
+            except (ValueError, TypeError):
+                continue
+            if v > 0:
+                detected.append((col, int(round(v))))
+        return sorted(detected, key=lambda x: -x[1])
+
+    sbs_activities = _read_activities(sig_sbs96)
+    id_activities  = _read_activities(sig_id)
+
+    if sbs_activities or id_activities:
+        col_headers = ['Signature', 'Type', 'Mutations Attributed', 'COSMIC Aetiology']
+        col_widths  = [USABLE_W * w for w in [0.13, 0.07, 0.20, 0.60]]
+        rows_data   = []
+        for sig, act in sbs_activities:
+            rows_data.append([sig, 'SBS', str(act),
+                               _SIG_AETIOLOGY.get(sig, 'See COSMIC mutational signatures database')])
+        for sig, act in id_activities:
+            rows_data.append([sig, 'ID', str(act),
+                               _SIG_AETIOLOGY.get(sig, 'See COSMIC mutational signatures database')])
+        tbl = build_variant_table(col_headers, col_widths, rows_data)
+        story.append(tbl)
+        story.append(Spacer(1, 0.3 * cm))
+        n_total = sum(a for _, a in sbs_activities) + sum(a for _, a in id_activities)
+        story.append(Paragraph(
+            f'<font size="7" color="#64748b">'
+            f'{len(sbs_activities) + len(id_activities)} signature(s) detected '
+            f'({len(sbs_activities)} SBS, {len(id_activities)} ID) — '
+            f'{n_total} total mutations attributed. '
+            f'COSMIC v3.4 reference signatures.</font>',
+            styles['Normal'],
+        ))
+    else:
+        story.append(Paragraph(
+            'No mutational signatures detected above threshold.', STYLE_WARN))
+
+    story.append(Spacer(1, 0.4 * cm))
+    if sig_sbs96 and os.path.isfile(sig_sbs96):
+        build_signature_plots_pdf(sig_sbs96, 'SBS96', story)
+    if sig_id and os.path.isfile(sig_id):
+        build_signature_plots_pdf(sig_id, 'ID', story)
+
+
 def _load_cnv_panel(path):
     genes = set()
     if not path or not os.path.isfile(path):
@@ -1515,10 +1696,31 @@ def _harmonize_cnv_pdf(ascat_cnvkit_path, gatk_somatic_path,
 def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
                                somatic_panel_path, germline_panel_path, story,
                                amp_threshold=5,
-                               germline_snv_path='', somatic_snv_path=''):
+                               germline_snv_path='', somatic_snv_path='',
+                               is_low_cov=False):
     # Unified somatic CNV section: HOMDEL, AMP, LOH
+    story.append(PageBreak())
     story.append(Paragraph(T('sect_som_cnv'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
+
+    if is_low_cov:
+        _indet_s = ParagraphStyle('CnvIndet', parent=styles['Normal'],
+                                   fontSize=8, textColor=colors.HexColor('#7c2d12'), leading=12)
+        _indet_data = [[Paragraph(
+            f'<b>⚠ {T("indeterminate")}</b><br/>{T("low_cov_indet")}',
+            _indet_s)]]
+        _indet_tbl = Table(_indet_data, colWidths=[USABLE_W])
+        _indet_tbl.setStyle(TableStyle([
+            ('BACKGROUND',   (0, 0), (-1, -1), colors.HexColor('#fef3c7')),
+            ('TOPPADDING',   (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING',(0, 0), (-1, -1), 8),
+            ('LEFTPADDING',  (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+            ('ROUNDEDCORNERS', [4]),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#f59e0b')),
+        ]))
+        story.append(_indet_tbl)
+        return
 
     data = _harmonize_cnv_pdf(ascat_cnvkit_path, gatk_somatic_path,
                                somatic_panel_path, germline_panel_path, amp_threshold)
@@ -1637,19 +1839,35 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
         f'{len(data["amp"])} AMP \u2022 '
         f'{len(data["loh"])} LOH',
         note_s))
+
+
+def build_germline_cnv_section(path, story, germline_panel_path=''):
+    """Append GATK germline CNV section: show segments with CN != 2.
+
+    Two-tier filtering:
+      - Panel genes (germline cancer-predisposition panel): QA >= 4 only
+        → even single-exon deletions in clinically relevant genes are retained;
+          NP is not filtered because small CNVs (1-3 exons) are common and critical
+      - Non-panel genes: NP >= 5, QA >= 10 (stricter to reduce noise)
+    """
     story.append(PageBreak())
-
-
-def build_germline_cnv_section(path, story):
-    """Append GATK germline CNV section: show segments with CN != 2, NP >= 5, QA >= 10."""
     story.append(Paragraph(T('sect_germ_cnv'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
-    MIN_NP = 5
-    MIN_QA = 10
+    MIN_QA_PANEL = 4
+    MIN_NP_OTHER = 5
+    MIN_QA_OTHER = 10
+
+    # Load panel genes for relaxed filtering
+    panel_genes = set()
+    if germline_panel_path and os.path.isfile(germline_panel_path):
+        with open(germline_panel_path) as _pf:
+            for _line in _pf:
+                g = _line.strip().split('\t')[0].strip()
+                if g and not g.startswith('#'):
+                    panel_genes.add(g)
 
     if not path or not os.path.isfile(path):
         story.append(Paragraph('Germline CNV (GATK) file not found.', STYLE_WARN))
-        story.append(PageBreak())
         return
 
     import csv as _csv
@@ -1684,15 +1902,22 @@ def build_germline_cnv_section(path, story):
         if gene and gene not in segments[key]['genes']:
             segments[key]['genes'].append(gene)
 
-    # Apply NP >= MIN_NP AND QA >= MIN_QA filter
+    # Two-tier filter: relaxed for panel genes, strict for others
     filtered = []
     for key in seg_order:
         seg = segments[key]
         try:
-            if int(seg['np']) >= MIN_NP and int(seg.get('qa', '0') or '0') >= MIN_QA:
-                filtered.append(seg)
+            np_val = int(seg['np'])
+            qa_val = int(seg.get('qa', '0') or '0')
         except (ValueError, TypeError):
-            pass
+            continue
+        has_panel_gene = any(g in panel_genes for g in seg['genes'])
+        if has_panel_gene:
+            if qa_val >= MIN_QA_PANEL:
+                filtered.append(seg)
+        else:
+            if np_val >= MIN_NP_OTHER and qa_val >= MIN_QA_OTHER:
+                filtered.append(seg)
 
     if not filtered:
         # Styled callout box
@@ -1708,7 +1933,7 @@ def build_germline_cnv_section(path, story):
                 '<b>Germline CNV Analysis \u2014 No Reportable Events</b><br/>'
                 'The GATK germline copy-number variant analysis did not identify '
                 'any copy-number alterations (CN \u2260 2) meeting the quality '
-                'thresholds (NP \u2265 5 intervals and QA \u2265 10) in the germline '
+                'thresholds (panel genes: QA \u2265 4; other genes: NP \u2265 5, QA \u2265 10) in the germline '
                 'cancer predisposition panel. The raw annotated segments are '
                 'available for manual review in:<br/>'
                 '\u00a0\u00a0<i>clinical_results/germline/cnv_gatk/annotated/</i>',
@@ -1726,7 +1951,6 @@ def build_germline_cnv_section(path, story):
             ('ROUNDEDCORNERS', [4]),
         ]))
         story.append(callout_tbl)
-        story.append(PageBreak())
         return
 
     def cn_type(alt, cn_str):
@@ -1765,16 +1989,16 @@ def build_germline_cnv_section(path, story):
     note_style = ParagraphStyle('CnvNote', parent=styles['Normal'],
                                 fontSize=6, textColor=colors.Color(0.6, 0.7, 0.8))
     story.append(Paragraph(
-        str(len(filtered)) + ' segment(s) shown (NP \u2265 5 and QA \u2265 10). Quality: '
+        str(len(filtered)) + ' segment(s) shown (panel genes: QA \u2265 4; other: NP \u2265 5, QA \u2265 10). Quality: '
         'High (QS \u226530), Medium (QS 10\u201329), Low (QS <10 \u2014 manual review recommended).',
         note_style))
     story.append(tbl)
-    story.append(PageBreak())
 
 
 def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, story,
                                      germline_panel_path='', somatic_panel_path=''):
     # Per-gene mean coverage as justified grid: gene name + colored value, two subsections.
+    story.append(PageBreak())
     story.append(Paragraph(T('sect_seqq'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
@@ -1936,10 +2160,10 @@ def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, st
         f'Thresholds: \u226520X adequate \u2022 \u226550X good \u2022 \u2265100X excellent.</font>',
         styles['Normal'],
     ))
-    story.append(PageBreak())
 
 
 def build_correlation_section(corr_data, story):
+    story.append(PageBreak())
     story.append(Paragraph(T('sect_correlation'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
@@ -1951,7 +2175,6 @@ def build_correlation_section(corr_data, story):
             'No germline P/LP/VUS variants or somatic biallelic events available '
             'for correlation analysis.',
             STYLE_WARN))
-        story.append(PageBreak())
         return
 
     metrics = corr_data.get('metrics', {})
@@ -2137,8 +2360,6 @@ def build_correlation_section(corr_data, story):
         ]))
         story.append(sb_tbl)
 
-    story.append(PageBreak())
-
 
 # ---------------------------------------------------------------------------
 # Major Findings section
@@ -2155,7 +2376,8 @@ _MMR_GENES = {
 
 def build_major_findings_section(args, metrics, germline_variants, somatic_variants,
                                   corr_data, story):
-    """Append Major Clinical Findings summary immediately after the KPI dashboard."""
+    """Append Major Clinical Findings section."""
+    story.append(PageBreak())
     story.append(Paragraph(T('sect_major_finds'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
@@ -2349,6 +2571,60 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
                 f' &nbsp; chr{r["chrom"]} — confirmed by {r["tools"]}')
         findings.append((T('find_cnv'), colors.HexColor('#ea580c'), lines))
 
+    # ── Finding 5: CIViC Actionable Variants (Level A or B, SUPPORTS) ────────
+    civic_path = getattr(args, 'civic', '') or ''
+    if civic_path and os.path.isfile(civic_path):
+        import csv as _csv_civ
+        civic_findings = {}  # (gene, var_name) -> {'level': X, 'resist': set, 'sensit': set}
+        with open(civic_path) as _cf:
+            # Fix header: first column may contain literal \t (bug in CIVIC_EXTRACT)
+            raw_header = _cf.readline().rstrip('\n')
+            # Expand literal \t in the first column so DictReader keys are correct
+            real_header = raw_header.replace('\\t', '\t')
+            cols = real_header.split('\t')
+            reader = _csv_civ.DictReader(_cf, fieldnames=cols, delimiter='\t')
+            for cr in reader:
+                lvl = str(cr.get('CIViC Evidence Level', '') or '').strip().upper()
+                if lvl not in ('A', 'B'):
+                    continue
+                direction = str(cr.get('CIViC Entity Direction', '') or '').strip().upper()
+                if direction != 'SUPPORTS':
+                    continue
+                sig = str(cr.get('CIViC Entity Significance', '') or '').strip().upper()
+                if 'SENSITIVITY' not in sig and 'RESISTANCE' not in sig:
+                    continue
+                gene     = str(cr.get('SYMBOL', '') or '').strip()
+                var_name = str(cr.get('CIViC Variant Name', '') or '').strip()
+                if not gene or not var_name:
+                    continue
+                therapy  = str(cr.get('CIViC Entity Therapies', '') or '—').strip()
+                key = (gene, var_name)
+                if key not in civic_findings:
+                    civic_findings[key] = {'level': lvl, 'resist': set(), 'sensit': set()}
+                # Keep highest level (A > B)
+                if lvl < civic_findings[key]['level']:
+                    civic_findings[key]['level'] = lvl
+                if 'RESISTANCE' in sig:
+                    civic_findings[key]['resist'].add(therapy[:40])
+                else:
+                    civic_findings[key]['sensit'].add(therapy[:40])
+
+        civ_lines = []
+        for (gene, var_name), data in sorted(civic_findings.items()):
+            lvl = data['level']
+            if data['resist']:
+                ts = ', '.join(sorted(data['resist'])[:3])
+                civ_lines.append(
+                    f'<b>{gene} {var_name}</b> [Level {lvl}] '
+                    f'— <font color="#ef4444"><b>{T("civic_resist")}:</b></font> {ts}')
+            if data['sensit']:
+                ts = ', '.join(sorted(data['sensit'])[:3])
+                civ_lines.append(
+                    f'<b>{gene} {var_name}</b> [Level {lvl}] '
+                    f'— <font color="#16a34a"><b>{T("civic_sensit")}:</b></font> {ts}')
+        if civ_lines:
+            findings.append((T('find_civic'), colors.HexColor('#0f766e'), civ_lines))
+
     # ── Render findings as styled cards ──────────────────────────────────────
     _card_title_s = ParagraphStyle(
         'card_title', fontName='Helvetica-Bold', fontSize=9,
@@ -2399,14 +2675,6 @@ _CPIC_TABLE = {
     'rs56038477':  {'gene':'DPYD',    'allele':'HapB3 (c.1236G>A, E412E)', 'activity':'0.5',    'phenotype':'Decreased Function — Intermediate Met.', 'drugs':'5-FU, Capecitabine, Tegafur',                         'recommendation':'Reduce starting dose by 25–50%; titrate based on toxicity and pharmacokinetics.',                                                                                     'alert':'MODERATE'},
     'rs4148323':   {'gene':'UGT1A1',  'allele':'*28 ([TA]7)',               'activity':'Reduced','phenotype':'Reduced UGT1A1 Activity',                'drugs':'Irinotecan, Belinostat, Nilotinib',                    'recommendation':'*28/*28 homozygous: reduce irinotecan starting dose by ≥30%. *1/*28 heterozygous: standard dose acceptable; monitor for diarrhea and neutropenia.',                  'alert':'MODERATE'},
     'rs3064744':   {'gene':'UGT1A1',  'allele':'*28 TA7 repeat',           'activity':'Reduced','phenotype':'Reduced UGT1A1 Activity',                'drugs':'Irinotecan',                                          'recommendation':'Consider reduced irinotecan starting dose; monitor for SN-38-related toxicity.',                                                                                    'alert':'MODERATE'},
-    'rs116855232': {'gene':'NUDT15',  'allele':'*2 (c.415C>T, p.Arg139Cys)','activity':'0',     'phenotype':'No Function — Poor Metabolizer',         'drugs':'Mercaptopurine (6-MP), Azathioprine, Thioguanine',    'recommendation':'Start thiopurine at 10% of standard dose; adjust based on hematological toxicity and TGN nucleotide levels.',                                                        'alert':'HIGH'},
-    'rs186364861': {'gene':'NUDT15',  'allele':'*3',                        'activity':'0',     'phenotype':'No Function — Poor Metabolizer',         'drugs':'Mercaptopurine (6-MP), Azathioprine, Thioguanine',    'recommendation':'Start thiopurine at 10% of standard dose; dose adjustment based on toxicity monitoring and TGN levels.',                                                          'alert':'HIGH'},
-    'rs1800462':   {'gene':'TPMT',    'allele':'*2 (c.238G>C, p.Ala80Pro)', 'activity':'Decreased','phenotype':'Decreased Function',                  'drugs':'Mercaptopurine (6-MP), Azathioprine, Thioguanine',    'recommendation':'Intermediate metabolizer: reduce thiopurine starting dose by 30–70%; titrate based on hematological toxicity.',                                                      'alert':'MODERATE'},
-    'rs1800460':   {'gene':'TPMT',    'allele':'*3B (c.460G>A, p.Ala154Thr)','activity':'Decreased','phenotype':'Decreased Function',                 'drugs':'Mercaptopurine (6-MP), Azathioprine, Thioguanine',    'recommendation':'Intermediate metabolizer: reduce thiopurine starting dose by 30–70%.',                                                                                             'alert':'MODERATE'},
-    'rs1142345':   {'gene':'TPMT',    'allele':'*3C (c.719A>G, p.Tyr240Cys)','activity':'Decreased','phenotype':'Decreased Function',                 'drugs':'Mercaptopurine (6-MP), Azathioprine, Thioguanine',    'recommendation':'Intermediate metabolizer: reduce thiopurine starting dose by 30–70%.',                                                                                             'alert':'MODERATE'},
-    'rs3892097':   {'gene':'CYP2D6',  'allele':'*4 (c.506-1G>A)',           'activity':'0',     'phenotype':'No Function — Poor Metabolizer',         'drugs':'Tamoxifen',                                          'recommendation':'Consider aromatase inhibitor (AI) rather than tamoxifen for postmenopausal ER+ patients. CYP2D6 PM have severely impaired conversion of tamoxifen to active endoxifen.', 'alert':'HIGH'},
-    'rs1065852':   {'gene':'CYP2D6',  'allele':'*10 (c.100C>T, p.Pro34Ser)','activity':'0.5',  'phenotype':'Decreased Function — Intermediate Met.', 'drugs':'Tamoxifen',                                          'recommendation':'Consider alternative hormonal therapy (AI) if clinically feasible; reduced endoxifen levels may compromise tamoxifen efficacy.',                                        'alert':'MODERATE'},
-    'rs4244285':   {'gene':'CYP2C19', 'allele':'*2 (c.681G>A)',             'activity':'0',     'phenotype':'No Function — Poor Metabolizer',         'drugs':'Clopidogrel, Voriconazole',                          'recommendation':'For clopidogrel: use alternative antiplatelet (prasugrel, ticagrelor). For voriconazole: consider dose reduction; PMs have substantially increased drug exposure.',     'alert':'MODERATE'},
 }
 
 C_PGX_HIGH     = colors.HexColor('#dc2626')
@@ -2497,9 +2765,9 @@ def build_pharmaco_section(pharmaco_path, story):
         callout_data = [[
             Paragraph(
                 '<b>No Actionable Pharmacogenomic Variants Detected</b><br/>'
-                'The pharmacogenomics panel (DPYD, UGT1A1, NUDT15, TPMT, CYP2D6, CYP2C19) '
+                'The pharmacogenomics panel (DPYD, UGT1A1) '
                 'did not identify any germline variants with CPIC actionable dosing recommendations. '
-                'Standard dosing for fluoropyrimidines, irinotecan, thiopurines, and tamoxifen '
+                'Standard dosing for fluoropyrimidines and irinotecan '
                 'is indicated based on pharmacogenomic genotyping.',
                 ParagraphStyle('Callout', parent=getSampleStyleSheet()['Normal'],
                                fontSize=8, fontName='Helvetica', textColor=colors.HexColor('#1e3a8a'),
@@ -2521,8 +2789,7 @@ def build_pharmaco_section(pharmaco_path, story):
     story.append(Spacer(1, 6))
     story.append(Paragraph(
         '<i>CPIC = Clinical Pharmacogenomics Implementation Consortium. '
-        'Recommendations based on CPIC guidelines for DPYD (2017), UGT1A1 (2014), '
-        'NUDT15/TPMT (2018), CYP2D6/Tamoxifen (2018), CYP2C19 (2013). '
+        'Recommendations based on CPIC guidelines for DPYD (2017) and UGT1A1 (2014). '
         'rsID lookup against PharmGKB / CPIC variant annotations.</i>',
         ParagraphStyle('Note', parent=getSampleStyleSheet()['Normal'],
                        fontSize=6.5, fontName='Helvetica-Oblique',
@@ -2730,7 +2997,7 @@ def build_methodology_section(story):
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Features: SBS + ID + CN48 signatures; HRD+ threshold: probability >=0.45'],
         ['Mut. Signatures',    'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',   'COSMIC v3.4 SBS96, DBS and ID signatures; de novo + assignment on WES data'],
         ['TMB',                'Custom calculation from Mutect2 PASS variants',    'GRCh38', 'Non-synonymous PASS variants / effective capture Mb; TMB-H threshold >=10 mut/Mb'],
-        ['Pharmacogenomics',   'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1, NUDT15, TPMT, CYP2D6, CYP2C19 rsIDs; CPIC annotation'],
+        ['Pharmacogenomics',   'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1 rsIDs; CPIC annotation'],
         ['Germline–Somatic',   'Custom integration script (germline_somatic_correlate.py)', 'N/A', 'P/LP germline variants cross-referenced with somatic 2nd hits and HRD/MMR biomarkers'],
     ]
 
@@ -2994,15 +3261,18 @@ def main():
 
     # ── Story ─────────────────────────────────────────────────────────────────
     story = []
-    # Page 1: Global Biomarkers → Major Clinical Findings → Secondary Biomarkers
+    # Each section starts on a new page (leading PageBreak inside each build_* function).
+    # Cover page is always page 1 (no leading PageBreak).
     build_cover_page(args, metrics, story)
     build_major_findings_section(args, metrics, germline_variants, somatic_variants,
                                   corr_data, story)
     build_secondary_biomarkers(metrics, story)
-    # Page 2: Genomic Quality Metrics (Purity + Coverage)
     build_quality_metrics_page(metrics, story)
     build_germline_section(germline_variants, story)
-    build_germline_cnv_section(args.cnv_germline_gatk, story)
+    build_germline_cnv_section(args.cnv_germline_gatk, story,
+                               germline_panel_path=getattr(args, 'germline_panel', '') or '')
+    build_somatic_section(somatic_variants, story, gene_ctx=gene_ctx_data)
+    build_mutational_signatures_section(args, story)
     build_somatic_cnv_section(
         getattr(args, 'cnv_somatic', '') or '',
         getattr(args, 'cnv_gatk_somatic', '') or '',
@@ -3011,20 +3281,14 @@ def main():
         story,
         germline_snv_path=args.germline or '',
         somatic_snv_path=args.somatic or '',
+        is_low_cov=metrics.get('is_low_cov', False),
     )
-    build_somatic_section(somatic_variants, story, gene_ctx=gene_ctx_data)
     build_correlation_section(corr_data, story)
     # Pharmacogenomics with CPIC dose recommendations
     build_pharmaco_section(getattr(args, 'pharmaco', '') or '', story)
     # Clinical Trials — recruiting studies for identified variants/biomarkers
     build_clinical_trials_section(corr_data, metrics.get('tmb', 'NA'),
                                    metrics.get('msi', 'NA'), metrics.get('hrd_status', 'NA'), story)
-    # Mutational signature plots (spectrum + COSMIC assignment images)
-    if args.sig_sbs96 and os.path.isfile(args.sig_sbs96):
-        build_signature_plots_pdf(args.sig_sbs96, 'SBS96', story)
-    sig_id_path = getattr(args, 'sig_id', None)
-    if sig_id_path and os.path.isfile(sig_id_path):
-        build_signature_plots_pdf(sig_id_path, 'ID', story)
     # Sequencing Quality
     build_sequencing_quality_section(
         getattr(args, 'gene_cov_n', '') or '',

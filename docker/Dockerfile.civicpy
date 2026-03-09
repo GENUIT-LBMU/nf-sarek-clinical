@@ -12,13 +12,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install civicpy
-# Pin version for reproducibility; bump as needed
+# Install civicpy (5.x for compatibility with current nightly cache format)
 RUN pip install --no-cache-dir \
-    civicpy==3.1.0
+    civicpy==5.2.0
 
-# Pre-populate the CIViC local cache to avoid network calls at runtime
-# (cache is refreshed with `civicpy update --soft` on first run anyway)
-RUN python3 -c "import civicpy; civicpy.update_cache()" || true
+# Pre-populate the CIViC cache at build time by downloading the nightly pkl.
+# Using --soft: downloads remote pre-built cache (avoids GraphQL rebuild).
+# This cache is bundled in the image so runtime annotation works offline.
+RUN civicpy update --soft || true
 
 CMD ["/bin/bash"]

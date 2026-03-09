@@ -27,3 +27,4 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+lab_params.yml

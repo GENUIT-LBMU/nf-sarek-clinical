@@ -20,6 +20,7 @@ process CLINICAL_PDF_REPORT {
 
     input:
     tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv)
+    path civic_tsv
     val sarek_outdir
     val run_name
 
@@ -50,7 +51,7 @@ process CLINICAL_PDF_REPORT {
     # ── Locate input files ─────────────────────────────────────────────────────
     SNV_GERMLINE="\$(find \${OUT_DIR}/germline/snv/extract   -name "\${NORMAL}*.germline_snvs.tsv" 2>/dev/null | head -1 || true)"
     SNV_SOMATIC="\$(find \${OUT_DIR}/somatic/snv/extract     -name "\${PAIR}*.somatic_snvs.tsv"   2>/dev/null | head -1 || true)"
-    CIVIC_TSV="\$(find \${OUT_DIR}/somatic/snv/civic_extract -name "\${PAIR}*.civic.exploded.tsv" 2>/dev/null | head -1 || true)"
+    CIVIC_TSV="${civic_tsv}"
     TMB_FILE="\$(find \${OUT_DIR}/somatic/tmb                -name "\${PAIR}*.tmb.tsv"            2>/dev/null | head -1 || true)"
     MSI_FILE="\$(find ${sarek_outdir}/variant_calling/msisensorpro -name "\${PAIR}" -type f       2>/dev/null | head -1 || true)"
     COV_N="\$(find ${sarek_outdir}/reports/mosdepth          -name "\${NORMAL}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"

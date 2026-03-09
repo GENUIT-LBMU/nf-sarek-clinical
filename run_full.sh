@@ -107,10 +107,18 @@ echo "════════════════════════�
 
 cd "${PIPELINE_DIR}"
 
+# Use lab_params.yml (real paths) when present; fall back to full_pipeline.params.yml (template)
+if [[ -f "${PIPELINE_DIR}/lab_params.yml" ]]; then
+    PARAMS_FILE="${PIPELINE_DIR}/lab_params.yml"
+else
+    PARAMS_FILE="${PIPELINE_DIR}/full_pipeline.params.yml"
+fi
+echo "  Using params file: ${PARAMS_FILE}"
+
 nextflow run main.nf \
     -profile docker \
     -work-dir "${RUN_DIR}/clinical_work" \
-    -params-file "${PIPELINE_DIR}/full_pipeline.params.yml" \
+    -params-file "${PARAMS_FILE}" \
     ${NF_RESUME} \
     --sarek_outdir  "${SAREK_OUTDIR}" \
     --run_name      "${RUN_NAME}" \

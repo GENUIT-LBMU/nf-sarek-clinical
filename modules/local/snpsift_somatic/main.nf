@@ -142,9 +142,10 @@ process CIVIC_ANNOTATE {
     // Gracefully fall back to passing through the input VCF if CIViC annotation fails
     // (CIVIC_EXTRACT already handles VCFs without CIVIC INFO fields → empty TSV)
     """
-    # Ensure CIViC cache is fresh
+    # Refresh cache using pre-built nightly pkl (--soft: skips GraphQL rebuild,
+    # downloads remote pkl only if cache is absent or stale).
     CIVIC_CACHE="\${PWD}/civicpy_cache.pkl"
-    civicpy update --hard --cache-save-path "\${CIVIC_CACHE}" || true
+    civicpy update --soft --cache-save-path "\${CIVIC_CACHE}" || true
 
     if ! CIVICPY_CACHE_FILE="\${CIVIC_CACHE}" \\
          civicpy annotate-vcf \\
@@ -224,28 +225,27 @@ process CIVIC_EXTRACT {
 
     script:
     // 39-field CIViC explode (pipe-delimited INFO/CIVIC → TSV columns)
+    // Note: use printf with format string (not bash variable) to ensure real tab chars in header
     """
-    HEADER="CHROM\\tPOS\\tREF\\tALT\\tAllele\\tConsequence\\tSYMBOL\\tEntrez Gene ID\\t"
-    HEADER+=\$(printf "Feature_type\\tFeature\\tHGVSc\\tHGVSp\\t")
-    HEADER+=\$(printf "CIViC Variant Name\\tCIViC Variant ID\\tCIViC Variant Aliases\\tCIViC Variant URL\\t")
-    HEADER+=\$(printf "CIViC Molecular Profile Name\\tCIViC Molecular Profile ID\\tCIViC Molecular Profile Aliases\\tCIViC Molecular Profile URL\\t")
-    HEADER+=\$(printf "CIViC HGVS\\tAllele Registry ID\\tClinVar IDs\\tCIViC Molecular Profile Score\\t")
-    HEADER+=\$(printf "CIViC Entity Type\\tCIViC Entity ID\\tCIViC Entity URL\\tCIViC Entity Source\\t")
-    HEADER+=\$(printf "CIViC Entity Variant Origin\\tCIViC Entity Status\\tCIViC Entity Significance\\t")
-    HEADER+=\$(printf "CIViC Entity Direction\\tCIViC Entity Disease\\tCIViC Entity Therapies\\t")
-    HEADER+=\$(printf "CIViC Entity Therapy Interaction Type\\tCIViC Evidence Phenotypes\\t")
-    HEADER+=\$(printf "CIViC Evidence Level\\tCIViC Evidence Rating\\t")
-    HEADER+=\$(printf "CIViC Assertion ACMG Codes\\tCIViC Assertion AMP Category\\t")
-    HEADER+=\$(printf "CIViC Assertion NCCN Guideline\\tCIViC Assertion Regulatory Approval\\tCIViC Assertion FDA Companion Test")
+    # Write header with real tab characters (printf interprets \\t as tab)
+    printf "CHROM\\tPOS\\tREF\\tALT\\tAllele\\tConsequence\\tSYMBOL\\tEntrez Gene ID\\t" > ${pair}.civic.exploded.tsv
+    printf "Feature_type\\tFeature\\tHGVSc\\tHGVSp\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC Variant Name\\tCIViC Variant ID\\tCIViC Variant Aliases\\tCIViC Variant URL\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC Molecular Profile Name\\tCIViC Molecular Profile ID\\tCIViC Molecular Profile Aliases\\tCIViC Molecular Profile URL\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC HGVS\\tAllele Registry ID\\tClinVar IDs\\tCIViC Molecular Profile Score\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC Entity Type\\tCIViC Entity ID\\tCIViC Entity URL\\tCIViC Entity Source\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC Entity Variant Origin\\tCIViC Entity Status\\tCIViC Entity Significance\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC Entity Direction\\tCIViC Entity Disease\\tCIViC Entity Therapies\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC Entity Therapy Interaction Type\\tCIViC Evidence Phenotypes\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC Evidence Level\\tCIViC Evidence Rating\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC Assertion ACMG Codes\\tCIViC Assertion AMP Category\\t" >> ${pair}.civic.exploded.tsv
+    printf "CIViC Assertion NCCN Guideline\\tCIViC Assertion Regulatory Approval\\tCIViC Assertion FDA Companion Test\\n" >> ${pair}.civic.exploded.tsv
 
     # Check if CIViC annotation was added
     if ! bcftools view -h ${vcf} | grep -q '^##INFO=<ID=CIVIC'; then
         echo "WARNING: No CIVIC INFO field found in ${pair} — producing empty TSV"
-        printf "%s\\n" "\$HEADER" > ${pair}.civic.exploded.tsv
         exit 0
     fi
-
-    printf "%s\\n" "\$HEADER" > ${pair}.civic.exploded.tsv
 
     bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%INFO/CIVIC\\n' \\
         -i 'INFO/CIVIC!=""' ${vcf} \\

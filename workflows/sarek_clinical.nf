@@ -249,6 +249,8 @@ workflow SAREK_CLINICAL {
                                                   : GERMLINE_POSTPROCESS.out.snv_tsv.map { _s, f -> f }
         ch_som_tsv    = params.skip_somatic_snv  ? Channel.value(file('NO_FILE'))
                                                   : SOMATIC_POSTPROCESS.out.somatic_snv_tsv.map { _s, f -> f }
+        ch_civic_tsv  = params.skip_somatic_snv  ? Channel.value(file('NO_FILE'))
+                                                  : SOMATIC_POSTPROCESS.out.civic_tsv.map { _s, f -> f }
 
         ch_report_input = ch_ascat_metrics
             .join(ch_hrd_tsv, remainder: true)
@@ -279,6 +281,7 @@ workflow SAREK_CLINICAL {
 
         CLINICAL_PDF_REPORT(
             ch_pdf_input,
+            ch_civic_tsv,
             params.sarek_outdir,
             params.run_name
         )
