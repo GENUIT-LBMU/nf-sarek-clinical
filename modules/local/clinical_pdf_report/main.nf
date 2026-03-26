@@ -113,6 +113,7 @@ process CLINICAL_PDF_REPORT {
         --somatic       "\${SNV_SOMATIC:-}"    \\
         --cnv           "\${CNV_SOMATIC:-}"    \\
         --cnv-germline  "\${CNV_GERM_GATK:-}" \\
+        --germline-panel "${projectDir}/assets/gene_panels/germline_103_cancer_predisposition.txt" \\
         --sig           "\${SIG_SBS96:-}"      \\
         --sig-id        "\${SIG_ID:-}"         \\
         --tumor         "\${TUMOR}"            \\
@@ -144,7 +145,7 @@ process CLINICAL_PDF_REPORT {
         --gene-ctx    "${projectDir}/assets/gene_annotations/somatic_gene_context.tsv" \\
         --gene-cov-n       "\${GENE_COV_N:-}" \\
         --gene-cov-t       "\${GENE_COV_T:-}" \\
-        --germline-panel   "${projectDir}/assets/gene_panels/germline_90_cancer_predisposition.txt" \\
+        --germline-panel   "${projectDir}/assets/gene_panels/germline_103_cancer_predisposition.txt" \\
         --somatic-panel    "${projectDir}/assets/gene_panels/somatic_snv_panel.txt" \\
         --pharmaco    "\${PHARMACO:-}"  \\
         --corr-json   correlation_section.json \\

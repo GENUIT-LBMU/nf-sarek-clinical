@@ -479,55 +479,66 @@ def classify_acmg_with_criteria(row):
     if gnomad_af is None or gnomad_af < 0.001:
         score += 2
         criteria.append('PM2')
+    # -- Computational evidence (PP3 / BP4) --
+    # ClinGen SVI: REVEL and the 9-tool panel are evaluated together.
+    # If they disagree, neither PP3 nor BP4 is applied.
+    revel_dir = 0
+    revel_str = 0
+    revel_lbl = ''
     if revel is not None:
         if revel >= 0.932:
-            score += 4
-            criteria.append('PP3_St')
+            revel_dir = 1; revel_str = 4; revel_lbl = 'PP3_St'
         elif revel >= 0.644:
-            score += 2
-            criteria.append('PP3')
+            revel_dir = 1; revel_str = 2; revel_lbl = 'PP3'
         elif revel >= 0.5:
-            score += 1
-            criteria.append('PP3_Sup')
+            revel_dir = 1; revel_str = 1; revel_lbl = 'PP3_Sup'
+        elif revel < 0.15:
+            revel_dir = -1; revel_str = 4; revel_lbl = 'BP4_St'
+        elif revel < 0.29:
+            revel_dir = -1; revel_str = 2; revel_lbl = 'BP4'
+
+    dam, ben = _count_insil_pdf(row)
+    total = dam + ben
+    panel_dir = 0
+    panel_str = 0
+    panel_lbl = ''
+    if total > 0:
+        if ben > dam:
+            panel_dir = -1
+            ratio = ben / total
+            if ratio >= 0.75:
+                panel_str = 2; panel_lbl = 'BP4({}/{})'.format(ben, total)
+            else:
+                panel_str = 1; panel_lbl = 'BP4_Sup({}/{})'.format(ben, total)
+        elif dam > ben:
+            panel_dir = 1
+            ratio = dam / total
+            if ratio >= 0.75:
+                panel_str = 2; panel_lbl = 'PP3({}/{})'.format(dam, total)
+            else:
+                panel_str = 1; panel_lbl = 'PP3_Sup({}/{})'.format(dam, total)
+
+    if revel_dir != 0 and panel_dir != 0:
+        if revel_dir == panel_dir:
+            if revel_str >= panel_str:
+                score += revel_dir * revel_str; criteria.append(revel_lbl)
+            else:
+                score += panel_dir * panel_str; criteria.append(panel_lbl)
+    elif revel_dir != 0:
+        score += revel_dir * revel_str; criteria.append(revel_lbl)
+    elif panel_dir != 0:
+        score += panel_dir * panel_str; criteria.append(panel_lbl)
 
     # Benign evidence
     if gnomad_af is not None and gnomad_af > 0.01:
         score -= 4
         criteria.append('BS1')
-    if revel is not None:
-        if revel < 0.15:
-            score -= 4
-            criteria.append('BP4_St')
-        elif revel < 0.29:
-            score -= 2
-            criteria.append('BP4')
-
-    # 9-tool in silico majority vote
-    dam, ben = _count_insil_pdf(row)
-    total = dam + ben
-    if total > 0:
-        if ben > dam:
-            ratio = ben / total
-            if ratio >= 0.75:
-                score -= 2
-                criteria.append('BP4({}/{})'.format(ben, total))
-            else:
-                score -= 1
-                criteria.append('BP4_Sup({}/{})'.format(ben, total))
-        elif dam > ben:
-            ratio = dam / total
-            if ratio >= 0.75:
-                score += 2
-                criteria.append('PP3({}/{})'.format(dam, total))
-            else:
-                score += 1
-                criteria.append('PP3_Sup({}/{})'.format(dam, total))
 
     if score >= 10:
         cls = 'P'
     elif score >= 6:
         cls = 'LP'
-    elif score <= -6:
+    elif score <= -2:
         cls = 'LB'
     else:
         cls = 'VUS'
@@ -1844,20 +1855,15 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
 def build_germline_cnv_section(path, story, germline_panel_path=''):
     """Append GATK germline CNV section: show segments with CN != 2.
 
-    Two-tier filtering:
-      - Panel genes (germline cancer-predisposition panel): QA >= 4 only
-        → even single-exon deletions in clinically relevant genes are retained;
-          NP is not filtered because small CNVs (1-3 exons) are common and critical
-      - Non-panel genes: NP >= 5, QA >= 10 (stricter to reduce noise)
+    Only panel genes (103-gene cancer-predisposition panel) are reported.
+    Filter: QA >= 4 (no NP filter — small CNVs of 1-3 exons are clinically critical).
     """
     story.append(PageBreak())
     story.append(Paragraph(T('sect_germ_cnv'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
-    MIN_QA_PANEL = 4
-    MIN_NP_OTHER = 5
-    MIN_QA_OTHER = 10
+    MIN_QA = 4
 
-    # Load panel genes for relaxed filtering
+    # Load panel genes
     panel_genes = set()
     if germline_panel_path and os.path.isfile(germline_panel_path):
         with open(germline_panel_path) as _pf:
@@ -1902,22 +1908,21 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
         if gene and gene not in segments[key]['genes']:
             segments[key]['genes'].append(gene)
 
-    # Two-tier filter: relaxed for panel genes, strict for others
+    # Filter: only panel genes with QA >= MIN_QA
     filtered = []
     for key in seg_order:
         seg = segments[key]
         try:
-            np_val = int(seg['np'])
             qa_val = int(seg.get('qa', '0') or '0')
         except (ValueError, TypeError):
             continue
-        has_panel_gene = any(g in panel_genes for g in seg['genes'])
-        if has_panel_gene:
-            if qa_val >= MIN_QA_PANEL:
-                filtered.append(seg)
-        else:
-            if np_val >= MIN_NP_OTHER and qa_val >= MIN_QA_OTHER:
-                filtered.append(seg)
+        if qa_val < MIN_QA:
+            continue
+        # Keep only panel genes in the segment
+        panel_hits = [g for g in seg['genes'] if g in panel_genes]
+        if panel_hits:
+            seg['genes'] = panel_hits
+            filtered.append(seg)
 
     if not filtered:
         # Styled callout box
@@ -1933,7 +1938,7 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
                 '<b>Germline CNV Analysis \u2014 No Reportable Events</b><br/>'
                 'The GATK germline copy-number variant analysis did not identify '
                 'any copy-number alterations (CN \u2260 2) meeting the quality '
-                'thresholds (panel genes: QA \u2265 4; other genes: NP \u2265 5, QA \u2265 10) in the germline '
+                'threshold (QA \u2265 4) in the 103-gene germline '
                 'cancer predisposition panel. The raw annotated segments are '
                 'available for manual review in:<br/>'
                 '\u00a0\u00a0<i>clinical_results/germline/cnv_gatk/annotated/</i>',
@@ -3021,7 +3026,7 @@ def build_methodology_section(story):
         '<b>Germline cancer predisposition panel (90 genes):</b> Includes BRCA1, BRCA2, TP53, '
         'ATM, PALB2, CHEK2, MLH1, MSH2, MSH6, PMS2, APC, MUTYH, CDH1, STK11, PTEN, RB1, VHL, '
         'NF1, NF2, TSC1, TSC2, MEN1, RET, SDHA/B/C/D, SDHAF2, MAX, TMEM127, and others. '
-        'Full panel list available in assets/gene_panels/germline_90_cancer_predisposition.txt.',
+        'Full panel list available in assets/gene_panels/germline_103_cancer_predisposition.txt.',
         STYLE_BODY))
     story.append(Paragraph(
         '<b>Somatic variant panel (38 oncogenes/TSGs):</b> KRAS, NRAS, BRAF, PIK3CA, PIK3R1, '

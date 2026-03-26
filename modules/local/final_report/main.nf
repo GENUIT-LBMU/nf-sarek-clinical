@@ -149,6 +149,7 @@ process FINAL_REPORT {
         --somatic       "\${SNV_SOMATIC}" \
         --cnv           "\${CNV_SOMATIC}" \
         --cnv-germline  "\${CNV_GERM_GATK}" \
+        --germline-panel "${projectDir}/assets/gene_panels/germline_103_cancer_predisposition.txt" \
         --sig           "\${SIG_SBS96}" \
         --tumor         "\${TUMOR}" \
         --tmb           "\${TMB_VAL}" \
@@ -255,11 +256,11 @@ sig_id        = "\${SIG_ID}"
 cnv_germ_gatk = "\${CNV_GERM_GATK}"
 cnv_som_gatk  = "\${CNV_SOM_GATK}"
 
-# ---------------------------------------------------------------------------
+# ----
 # CNV harmonisation helpers
-# ---------------------------------------------------------------------------
+# ----
 _SOMATIC_38_PANEL = "${projectDir}/assets/gene_panels/somatic_38_oncogenes.txt"
-_GERMLINE_PANEL   = "${projectDir}/assets/gene_panels/germline_90_cancer_predisposition.txt"
+_GERMLINE_PANEL   = "${projectDir}/assets/gene_panels/germline_103_cancer_predisposition.txt"
 _AMP_THRESHOLD    = 5
 
 def _load_panel(path):
@@ -456,16 +457,16 @@ files = {
     "HRD Predictions":     "\${HRD_FILE}",
 }
 
-# ---------------------------------------------------------------------------
+# ----
 # ACMG classification
-# ---------------------------------------------------------------------------
+# ----
 import sys as _sys
 _sys.path.insert(0, '${projectDir}/bin')
 from final_report_acmg import acmg_criteria_list, acmg_class, _BENIGN_CRIT
 
-# ---------------------------------------------------------------------------
+# ----
 # CIViC / AMP tier
-# ---------------------------------------------------------------------------
+# ----
 def load_civic_index(path):
     # Returns dict: (chrom, pos, ref, alt) -> {'level': best_level, 'disease': ..., 'therapy': ..., 'significance': ...}
     index = {}
@@ -516,18 +517,18 @@ def amp_tier(row, hdr, civic_index):
         return 'III'
     return 'IV'
 
-# ---------------------------------------------------------------------------
+# ----
 # Load CIViC index once
-# ---------------------------------------------------------------------------
+# ----
 civic_index = load_civic_index(files['CIViC annotation'])
 
-# ---------------------------------------------------------------------------
+# ----
 import sys as _sys3; _sys3.path.insert(0, '${projectDir}/bin')
 from final_report_sections import (_CPIC_TABLE, _alert_badge, tsv_to_html_pharmaco, fetch_clinical_trials_html, build_methodology_html)
 
-# ---------------------------------------------------------------------------
+# ----
 # Generic TSV -> HTML table
-# ---------------------------------------------------------------------------
+# ----
 def tsv_to_html(path, title):
     if not path or not os.path.isfile(path):
         return "<p class='warn'>File not found: " + html.escape(path or "N/A") + "</p>"
@@ -545,9 +546,9 @@ def tsv_to_html(path, title):
     return ("<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
             "<tbody>" + tbody + "</tbody></table></div>")
 
-# ---------------------------------------------------------------------------
+# ----
 # Germline SNV table with ACMG classification
-# ---------------------------------------------------------------------------
+# ----
 def tsv_to_html_germline(path):
     if not path or not os.path.isfile(path):
         return "<p class='warn'>File not found: " + html.escape(path or "N/A") + "</p>"
@@ -653,9 +654,9 @@ def tsv_to_html_germline(path):
         "<tbody id='tbl-germline'>" + tbody + "</tbody></table></div>"
     )
 
-# ---------------------------------------------------------------------------
+# ----
 # Somatic SNV table with AMP tier classification
-# ---------------------------------------------------------------------------
+# ----
 def tsv_to_html_somatic(path, civic_idx):
     if not path or not os.path.isfile(path):
         return "<p class='warn'>File not found: " + html.escape(path or "N/A") + "</p>"
@@ -777,15 +778,13 @@ def tsv_to_html_somatic(path, civic_idx):
         "<tbody id='tbl-somatic'>" + tbody + "</tbody></table></div>"
     )
 
-# ---------------------------------------------------------------------------
+# ----
 # Germline CNV GATK table: CN != 2, deduplicated by segment, quality-badged
-# ---------------------------------------------------------------------------
+# ----
 def tsv_to_html_germline_cnv(path):
-    # Columns: CHROM POS END ID REF ALT QUAL FILTER GT CN NP QA QS QSE QSS gen exon
-    # One row per exon -> group by (CHROM, POS, END) to get segment-level view.
-    # Filter: CN != 2 AND NP >= 5 AND QA >= 10.
-    MIN_NP = 5
-    MIN_QA = 10
+    # One row per exon -> group by (CHROM, POS, END). Only panel genes, QA >= 4.
+    MIN_QA = 4
+    _panel_genes = _load_panel(_GERMLINE_PANEL)
     if not path or not os.path.isfile(path):
         return "<p class='warn'>Germline CNV (GATK) file not found: " + html.escape(path or "N/A") + "</p>"
     with open(path) as fh:
@@ -824,26 +823,26 @@ def tsv_to_html_germline_cnv(path):
         gene = row.get('gen','').strip()
         if gene and gene not in segments[key]['genes']:
             segments[key]['genes'].append(gene)
-    # Quality filter: NP >= MIN_NP AND QA >= MIN_QA
+    # Filter: only panel genes with QA >= MIN_QA
     filtered = []
     for key in seg_order:
         seg = segments[key]
         try:
-            np_val = int(seg['np'])
-        except (ValueError, TypeError):
-            np_val = 0
-        try:
             qa_val = int(seg.get('qa', '0') or '0')
         except (ValueError, TypeError):
             qa_val = 0
-        if np_val >= MIN_NP and qa_val >= MIN_QA:
+        if qa_val < MIN_QA:
+            continue
+        panel_hits = [g for g in seg['genes'] if g in _panel_genes]
+        if panel_hits:
+            seg['genes'] = panel_hits
             filtered.append(seg)
     if not filtered:
         return (
             "<div class='callout-info'>"
             "<strong>No Reportable Germline CNV Events</strong><br>"
             "The GATK germline copy-number variant analysis did not identify any CN &ne; 2 events "
-            "meeting quality thresholds (NP &ge; 5 and QA &ge; 10) in the germline cancer predisposition panel. "
+            "meeting quality threshold (QA &ge; 4) in the 103-gene germline cancer predisposition panel. "
             "Raw annotated segments are available for review in "
             "<code>germline/cnv_gatk/annotated/</code>."
             "</div>"
@@ -900,9 +899,9 @@ def tsv_to_html_germline_cnv(path):
         "<tbody>" + tbody + "</tbody></table></div>"
     )
 
-# ---------------------------------------------------------------------------
+# ----
 # Signature table helper
-# ---------------------------------------------------------------------------
+# ----
 SBS_ETIOLOGY_HTML = {
     "SBS1":  ("Clock-like",          "#4e79a7"),
     "SBS2":  ("APOBEC",              "#f28e2b"),
@@ -1009,9 +1008,9 @@ def hrd_status_color(v):
     if v.upper().startswith("HRD-"):  return "#22c55e"
     return "#f97316"
 
-# ---------------------------------------------------------------------------
+# ----
 # Signature plots: prefer new custom PNGs; fall back to SigProfiler PDFs
-# ---------------------------------------------------------------------------
+# ----
 def sig_plots_to_html(act_path, sig_type):
     # act_path: path to Assignment_Solution_Activities.txt
     # sig_type: 'SBS96', 'DBS', or 'ID'
@@ -1081,9 +1080,9 @@ def sig_plots_to_html(act_path, sig_type):
         return ""
     return "<div style='display:flex;flex-direction:column;gap:6px;margin-top:8px;'>" + "".join(parts) + "</div>"
 
-# ---------------------------------------------------------------------------
+# ----
 # Precompute KPI cards
-# ---------------------------------------------------------------------------
+# ----
 kpi_cards = ""
 for k, v in metrics.items():
     color = hrd_status_color(v) if k == "HRD Status" else "var(--accent)"
@@ -1094,9 +1093,9 @@ for k, v in metrics.items():
         "</div>"
     )
 
-# ---------------------------------------------------------------------------
+# ----
 # Gene coverage quality table (dual-sample: Normal + Tumor side-by-side)
-# ---------------------------------------------------------------------------
+# ----
 def build_coverage_quality_html(path_n, path_t, normal_name, tumor_name):
     # Return HTML for the per-gene coverage quality section.
 
@@ -1181,9 +1180,9 @@ def build_coverage_quality_html(path_n, path_t, normal_name, tumor_name):
         + "<tbody>" + tbody + "</tbody></table></div>"
     )
 
-# ---------------------------------------------------------------------------
+# ----
 # Build sections
-# ---------------------------------------------------------------------------
+# ----
 sections = ""
 
 # Germline SNVs — specialized table with ACMG
@@ -1260,9 +1259,9 @@ sections += ("<section><h2>Clinical Trials &#8212; Relevant Recruiting Studies</
 # Test Methodology -- final section
 sections += "<section><h2>Test Methodology</h2>" + build_methodology_html() + "</section>\\n"
 
-# ---------------------------------------------------------------------------
+# ----
 # CSS
-# ---------------------------------------------------------------------------
+# ----
 _css = (
     ':root { --bg:#020617; --fg:#f8fafc; --accent:#f97316; --line:rgba(148,163,184,0.2); }'
     'body { background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; margin:0; padding:0; }'
@@ -1325,9 +1324,9 @@ _css = (
     '}'
 )
 
-# ---------------------------------------------------------------------------
+# ----
 # JavaScript (single-quoted strings throughout)
-# ---------------------------------------------------------------------------
+# ----
 _js = (
     "<script>"
     "function filterGermline(show) {"
@@ -1384,9 +1383,9 @@ _js = (
     "</script>"
 )
 
-# ---------------------------------------------------------------------------
+# ----
 # Assemble final page
-# ---------------------------------------------------------------------------
+# ----
 page = (
     '<!doctype html>\\n<html lang="en">\\n<head>\\n'
     '  <meta charset="utf-8"/>\\n'

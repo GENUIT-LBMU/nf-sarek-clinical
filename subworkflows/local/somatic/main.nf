@@ -50,7 +50,7 @@ workflow SOMATIC_POSTPROCESS {
         SNPSIFT_DBNSFP_SOMATIC.out.vcf,
         ch_somatic_snv_panel,
         ch_snpsift_jar,
-        params.tmb_min_dp
+        params.filters.somatic_snv.min_dp
     )
 
     CIVIC_ANNOTATE(
@@ -89,9 +89,9 @@ workflow SOMATIC_POSTPROCESS {
     TMB_FILTER(
         ch_mutect2_vcfs,
         ch_snpsift_jar,
-        params.tmb_min_dp,
-        params.tmb_min_af,
-        params.tmb_min_alt_reads
+        params.filters.somatic_snv.min_dp,
+        params.filters.somatic_snv.min_af,
+        params.filters.somatic_snv.min_alt_reads
     )
 
     TMB_CALCULATE(
@@ -106,7 +106,7 @@ workflow SOMATIC_POSTPROCESS {
 
     MUTSIG_FILTER(
         ch_mutsig_input,
-        params.tmb_min_alt_reads  // reuse ALT_MIN
+        params.filters.somatic_snv.min_alt_reads  // reuse ALT_MIN
     )
 
     // Collect all filtered VCFs into a staging directory for SigProfiler

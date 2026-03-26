@@ -50,6 +50,6 @@ process SOMATIC_CNV_INTERPRET {
         --sample       ${pair} \\
         --out_tsv      ${pair}_somatic_cnv_report.tsv \\
         --out_txt      ${pair}_somatic_cnv_report.txt \\
-        --amp_threshold ${params.amp_threshold}
+        --amp_threshold ${params.filters.somatic_cnv.amp_threshold}
     """
 }

@@ -133,7 +133,7 @@ process SNPSIFT_EXTRACT_GERMLINE {
     """
     printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\n" > ${sample}.germline_snvs.tsv
     touch ${sample}.germline_all_filtered.tsv
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
     """
 
     script:
@@ -168,13 +168,15 @@ process SNPSIFT_EXTRACT_GERMLINE {
         "${sample}.germline_snvs_raw.tsv" > "${sample}.germline_all_extracted.tsv"
     rm -f "${sample}.germline_snvs_raw.tsv"
 
-    # ── Step 1.5: gnomAD AF rescue via Ensembl VEP REST API ──────────────────────
+    # ── Step 1.5: gnomAD AF rescue (Ensembl VEP + gnomAD GraphQL fallback) ───────
     #   dbNSFP only covers SNVs — for indels the gnomAD AF column is empty.
-    #   This step queries the Ensembl VEP REST API (/vep/human/region) for any
-    #   variant missing a gnomAD AF, filling the field before the BA1 filter runs.
-    #   The Ensembl VEP endpoint returns gnomAD exome+genome frequencies for both
-    #   SNVs and indels using standard GRCh38 VCF coordinates.
-    #   Falls back gracefully (silent, no change) if the network is unavailable.
+    #   This step queries:
+    #     1) Ensembl VEP REST API (/vep/human/region) — fast, but often lacks
+    #        gnomAD frequencies for indels (no colocated_variants returned).
+    #     2) gnomAD GraphQL API (gnomad.broadinstitute.org/api) as fallback
+    #        when Ensembl returns no frequency data.  Uses gnomAD v4 dataset.
+    #   Adds a gnomAD_AF_source column:  dbNSFP | ensembl | gnomad_api | .
+    #   Falls back gracefully if the network is unavailable.
     python3 - <<'PYEOF_GNOMAD'
 import sys, json, os, time
 try:
@@ -184,14 +186,16 @@ try:
 except ImportError:
     _NET = False
 
-ENSEMBL = 'https://rest.ensembl.org'
-MAX_Q   = 50     # safety cap: max variants to rescue per sample
-SLEEP   = 0.35   # seconds between API calls (Ensembl limit: ~15 req/s)
+ENSEMBL   = 'https://rest.ensembl.org'
+GNOMAD_GQL = 'https://gnomad.broadinstitute.org/api'
+MAX_Q     = 50     # safety cap: max variants to rescue per sample
+SLEEP     = 0.35   # seconds between API calls
 
-def vep_gnomad_af(chrom, pos, ref, alt):
-    # Return max gnomAD AF from Ensembl VEP colocated_variants, or None on error.
+# ── Source 1: Ensembl VEP ──────────────────────────────────────────────────
+def _ensembl_gnomad_af(chrom, pos, ref, alt):
+    # Return (af, True) from Ensembl VEP, or (None, False) if no freq data.
     if not _NET:
-        return None
+        return None, False
     c   = chrom.lstrip('chr') or chrom
     end = int(pos) + len(ref) - 1
     url = ('{b}/vep/human/region/{c}:{p}-{e}:1/{a}'
@@ -202,27 +206,61 @@ def vep_gnomad_af(chrom, pos, ref, alt):
             req = Request(url, headers={'Accept': 'application/json'})
             with urlopen(req, timeout=20) as r:
                 results = json.loads(r.read().decode())
-            best = 0.0
+            best = None
             for entry in results:
                 for cv in entry.get('colocated_variants', []):
                     for pop, pdata in cv.get('frequencies', {}).items():
-                        af = float(pdata.get('af') or 0.0)
-                        if af > best:
+                        af = float(pdata.get('af') or 0)
+                        if best is None or af > best:
                             best = af
-            return best
+            return best, (best is not None)
         except HTTPError as e:
             if e.code in (429, 503):
                 time.sleep(2 ** (attempt + 1))
                 continue
-            sys.stderr.write('[gnomAD rescue] HTTP ' + str(e.code) + ' for ' +
-                             chrom + ':' + pos + ' ' + ref + '>' + alt + '\\n')
+            return None, False
+        except (URLError, Exception):
+            return None, False
+    return None, False
+
+# ── Source 2: gnomAD GraphQL API (v4) ──────────────────────────────────────
+def _gnomad_graphql_af(chrom, pos, ref, alt):
+    # Return max(exome,genome) AF from gnomAD v4 GraphQL, or None.
+    if not _NET:
+        return None
+    c = chrom.lstrip('chr') or chrom
+    vid = c + '-' + str(pos) + '-' + ref + '-' + alt
+    query = '{ variant(variantId: "' + vid + '", dataset: gnomad_r4) { exome { af } genome { af } } }'
+    body = json.dumps({'query': query}).encode()
+    for attempt in range(3):
+        try:
+            req = Request(GNOMAD_GQL,
+                          data=body,
+                          headers={'Content-Type': 'application/json',
+                                   'Accept': 'application/json'})
+            with urlopen(req, timeout=30) as r:
+                data = json.loads(r.read().decode())
+            v = (data.get('data') or {}).get('variant')
+            if v is None:
+                return None      # variant not in gnomAD
+            best = 0.0
+            for subset in ('exome', 'genome'):
+                sub = v.get(subset)
+                if sub and sub.get('af') is not None:
+                    af = float(sub['af'])
+                    if af > best:
+                        best = af
+            return best
+        except HTTPError as e:
+            if e.code in (429, 502, 503):
+                time.sleep(2 ** (attempt + 1))
+                continue
             return None
-        except (URLError, Exception) as e:
-            sys.stderr.write('[gnomAD rescue] ' + chrom + ':' + pos + ' ' +
-                             ref + '>' + alt + ': ' + str(e) + '\\n')
+        except (URLError, Exception):
             return None
     return None
 
+# ── Main: iterate variants, rescue missing AFs ────────────────────────────
 TSV = '${sample}.germline_all_extracted.tsv'
 TMP = '${sample}.germline_all_extracted_rescue_tmp.tsv'
 
@@ -241,31 +279,57 @@ ref_i    = hdr.get('REF',   -1)
 alt_i    = hdr.get('ALT',   -1)
 
 if af_i < 0 or chr_i < 0:
-    sys.exit(0)   # column not present — skip silently
+    sys.exit(0)
+
+# Add gnomAD_AF_source column
+hdr_list.append('gnomAD_AF_source')
+src_i = len(hdr_list) - 1
 
 n = 0
 with open(TMP, 'w') as out:
-    out.write(lines[0] + '\\n')
+    out.write('\\t'.join(hdr_list) + '\\n')
     for line in lines[1:]:
         row = line.split('\\t')
-        while len(row) < len(hdr_list):   # guard against truncated rows
+        while len(row) < src_i:
             row.append('.')
+        row.append('.')          # gnomAD_AF_source placeholder
+
         af_val = row[af_i].strip()
-        if af_val in ('', '.', 'NA') and n < MAX_Q:
+        needs_rescue = af_val in ('', '.', 'NA', '0', '0.0', '0.00')
+
+        if not needs_rescue:
+            row[src_i] = 'dbNSFP'
+        elif n < MAX_Q:
             ch  = row[chr_i] if chr_i < len(row) else ''
             pos = row[pos_i] if pos_i < len(row) else ''
             ref = row[ref_i] if ref_i < len(row) else ''
             alt = row[alt_i] if alt_i < len(row) else ''
             if ch and pos and ref not in ('', '.') and alt not in ('', '.'):
-                af = vep_gnomad_af(ch, pos, ref, alt)
-                if af is not None:
+                # Try Ensembl VEP first
+                af, has_freq = _ensembl_gnomad_af(ch, pos, ref, alt)
+                source = None
+                if has_freq and af is not None and af > 0:
+                    source = 'ensembl'
+                # Fallback: gnomAD GraphQL API (also when Ensembl returns 0.0)
+                if source is None:
+                    time.sleep(SLEEP)
+                    af_gql = _gnomad_graphql_af(ch, pos, ref, alt)
+                    if af_gql is not None:
+                        af = af_gql
+                        source = 'gnomad_api'
+                    elif has_freq and af is not None:
+                        # Ensembl had data (0.0) and gnomAD has no entry
+                        source = 'ensembl'
+                if source and af is not None:
                     row[af_i] = str(af)
+                    row[src_i] = source
                     n += 1
                     sys.stderr.write(
                         '[gnomAD rescue] ${sample} ' + ch + ':' + pos +
-                        ' ' + ref + '>' + alt + ' AF=' + str(af) + '\\n'
+                        ' ' + ref + '>' + alt + ' AF=' + str(af) +
+                        ' (' + source + ')\\n'
                     )
-                    time.sleep(SLEEP)
+                time.sleep(SLEEP)
         out.write('\\t'.join(row) + '\\n')
 
 sys.stderr.write('[gnomAD rescue] ${sample}: rescued ' + str(n) + ' variant(s)\\n')
@@ -519,44 +583,70 @@ def acmg_criteria_list(row, hdr):
         score += 2
         criteria.append('PM2')
 
+    # -- Computational evidence (PP3 / BP4) --
+    # ClinGen SVI: REVEL and the 9-tool in silico panel are evaluated together.
+    # If they disagree (one pathogenic, the other benign), neither PP3 nor BP4
+    # is applied.  Only concordant evidence or a single source counts.
+    revel_dir = 0   # +1 = pathogenic, -1 = benign, 0 = neutral/missing
+    revel_str = 0   # strength value for score
+    revel_lbl = ''
     try:
         revel = float(col('dbNSFP_REVEL_score'))
         if revel >= 0.932:
-            score += 4; criteria.append('PP3_St')
+            revel_dir = 1; revel_str = 4; revel_lbl = 'PP3_St'
         elif revel >= 0.644:
-            score += 2; criteria.append('PP3')
+            revel_dir = 1; revel_str = 2; revel_lbl = 'PP3'
         elif revel >= 0.5:
-            score += 1; criteria.append('PP3_Sup')
-        if revel < 0.15:
-            score -= 4; criteria.append('BP4_St')
+            revel_dir = 1; revel_str = 1; revel_lbl = 'PP3_Sup'
+        elif revel < 0.15:
+            revel_dir = -1; revel_str = 4; revel_lbl = 'BP4_St'
         elif revel < 0.29:
-            score -= 2; criteria.append('BP4')
+            revel_dir = -1; revel_str = 2; revel_lbl = 'BP4'
     except (ValueError, TypeError):
         pass
+
+    dam, ben = _count_insil(col)
+    total = dam + ben
+    panel_dir = 0   # +1 = pathogenic, -1 = benign
+    panel_str = 0
+    panel_lbl = ''
+    if total > 0:
+        if ben > dam:
+            panel_dir = -1
+            ratio = ben / total
+            if ratio >= 0.75:
+                panel_str = 2; panel_lbl = 'BP4({}/{})'.format(ben, total)
+            else:
+                panel_str = 1; panel_lbl = 'BP4_Sup({}/{})'.format(ben, total)
+        elif dam > ben:
+            panel_dir = 1
+            ratio = dam / total
+            if ratio >= 0.75:
+                panel_str = 2; panel_lbl = 'PP3({}/{})'.format(dam, total)
+            else:
+                panel_str = 1; panel_lbl = 'PP3_Sup({}/{})'.format(dam, total)
+
+    # Apply only if REVEL and panel agree (or only one has data)
+    if revel_dir != 0 and panel_dir != 0:
+        if revel_dir == panel_dir:
+            # Concordant: use the stronger of the two
+            if revel_str >= panel_str:
+                score += revel_dir * revel_str; criteria.append(revel_lbl)
+            else:
+                score += panel_dir * panel_str; criteria.append(panel_lbl)
+        # else: discordant → neither PP3 nor BP4 applied
+    elif revel_dir != 0:
+        score += revel_dir * revel_str; criteria.append(revel_lbl)
+    elif panel_dir != 0:
+        score += panel_dir * panel_str; criteria.append(panel_lbl)
 
     if gnomad > 0.01:
         score -= 4
         criteria.append('BS1')
 
-    dam, ben = _count_insil(col)
-    total = dam + ben
-    if total > 0:
-        if ben > dam:
-            ratio = ben / total
-            if ratio >= 0.75:
-                score -= 2; criteria.append('BP4({}/{})'.format(ben, total))
-            else:
-                score -= 1; criteria.append('BP4_Sup({}/{})'.format(ben, total))
-        elif dam > ben:
-            ratio = dam / total
-            if ratio >= 0.75:
-                score += 2; criteria.append('PP3({}/{})'.format(dam, total))
-            else:
-                score += 1; criteria.append('PP3_Sup({}/{})'.format(dam, total))
-
     if score >= 10:   return 'P', criteria
     if score >= 6:    return 'LP', criteria
-    if score <= -6:   return 'LB', criteria
+    if score <= -2:   return 'LB', criteria
     return 'VUS', criteria
 
 # --- Annotate all candidate variants ---

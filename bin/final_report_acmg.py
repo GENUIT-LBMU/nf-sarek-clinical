@@ -104,57 +104,68 @@ def acmg_criteria_list(row, hdr):
         score += 2
         criteria.append('PM2')
 
-    # REVEL (primary continuous in silico score)
+    # -- Computational evidence (PP3 / BP4) --
+    # ClinGen SVI: REVEL and the 9-tool panel are evaluated together.
+    # If they disagree, neither PP3 nor BP4 is applied.
+    revel_dir = 0
+    revel_str = 0
+    revel_lbl = ''
     try:
         revel = float(col('dbNSFP_REVEL_score'))
         if revel >= 0.932:
-            score += 4
-            criteria.append('PP3_St')
+            revel_dir = 1; revel_str = 4; revel_lbl = 'PP3_St'
         elif revel >= 0.644:
-            score += 2
-            criteria.append('PP3')
+            revel_dir = 1; revel_str = 2; revel_lbl = 'PP3'
         elif revel >= 0.5:
-            score += 1
-            criteria.append('PP3_Sup')
-        if revel < 0.15:
-            score -= 4
-            criteria.append('BP4_St')
+            revel_dir = 1; revel_str = 1; revel_lbl = 'PP3_Sup'
+        elif revel < 0.15:
+            revel_dir = -1; revel_str = 4; revel_lbl = 'BP4_St'
         elif revel < 0.29:
-            score -= 2
-            criteria.append('BP4')
+            revel_dir = -1; revel_str = 2; revel_lbl = 'BP4'
     except (ValueError, TypeError):
         pass
+
+    dam, ben = _count_insil(col)
+    total = dam + ben
+    panel_dir = 0
+    panel_str = 0
+    panel_lbl = ''
+    if total > 0:
+        if ben > dam:
+            panel_dir = -1
+            ratio = ben / total
+            if ratio >= 0.75:
+                panel_str = 2; panel_lbl = 'BP4({}/{})'.format(ben, total)
+            else:
+                panel_str = 1; panel_lbl = 'BP4_Sup({}/{})'.format(ben, total)
+        elif dam > ben:
+            panel_dir = 1
+            ratio = dam / total
+            if ratio >= 0.75:
+                panel_str = 2; panel_lbl = 'PP3({}/{})'.format(dam, total)
+            else:
+                panel_str = 1; panel_lbl = 'PP3_Sup({}/{})'.format(dam, total)
+
+    if revel_dir != 0 and panel_dir != 0:
+        if revel_dir == panel_dir:
+            if revel_str >= panel_str:
+                score += revel_dir * revel_str; criteria.append(revel_lbl)
+            else:
+                score += panel_dir * panel_str; criteria.append(panel_lbl)
+    elif revel_dir != 0:
+        score += revel_dir * revel_str; criteria.append(revel_lbl)
+    elif panel_dir != 0:
+        score += panel_dir * panel_str; criteria.append(panel_lbl)
 
     if gnomad > 0.01:
         score -= 4
         criteria.append('BS1')
 
-    # ── In silico majority vote (9-tool panel) ────────────────────────────────
-    dam, ben = _count_insil(col)
-    total = dam + ben
-    if total > 0:
-        if ben > dam:
-            ratio = ben / total
-            if ratio >= 0.75:
-                score -= 2
-                criteria.append('BP4({}/{})'.format(ben, total))
-            else:
-                score -= 1
-                criteria.append('BP4_Sup({}/{})'.format(ben, total))
-        elif dam > ben:
-            ratio = dam / total
-            if ratio >= 0.75:
-                score += 2
-                criteria.append('PP3({}/{})'.format(dam, total))
-            else:
-                score += 1
-                criteria.append('PP3_Sup({}/{})'.format(dam, total))
-
     if score >= 10:
         return 'P', criteria
     if score >= 6:
         return 'LP', criteria
-    if score <= -6:
+    if score <= -2:
         return 'LB', criteria
     return 'VUS', criteria
 

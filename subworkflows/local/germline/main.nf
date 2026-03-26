@@ -35,7 +35,7 @@ workflow GERMLINE_POSTPROCESS {
         SNPSIFT_DBNSFP_GERMLINE.out.vcf,
         ch_germline_panel,
         ch_snpsift_jar,
-        params.germline_min_dp
+        params.filters.germline_snv.min_dp
     )
 
     SNPSIFT_EXTRACT_GERMLINE(

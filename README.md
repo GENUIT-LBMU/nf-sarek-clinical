@@ -11,12 +11,22 @@
 
 ## What this pipeline does
 
-`nf-sarek-clinical` takes the output of [nf-core/sarek](https://nf-co.re/sarek) (tumour–normal WES) and produces a clinical-grade molecular report in HTML and PDF format. It integrates germline and somatic variant analysis, copy-number calling, mutational signatures, pharmacogenomics, and HRD scoring into a single automated workflow. Also can you run in a full mode from fastq to report.
+`nf-sarek-clinical` takes the output of [nf-core/sarek](https://nf-co.re/sarek) (tumour–normal WES) and produces a clinical-grade molecular report in HTML and PDF format. It integrates germline and somatic variant analysis, copy-number calling, mutational signatures, CIViC clinical evidence, pharmacogenomics, and HRD scoring into a single automated workflow. It can also run in full mode from FASTQ to report.
+
+**Key features:**
+
+- ACMG 2015 germline classification with 9-tool in silico panel + REVEL (ClinGen SVI concordance rule)
+- CIViC Level A/B actionable somatic variant annotation
+- Germline–somatic correlation: two-hit analysis for MMR/HRR pathways
+- Mutational signatures (SBS/DBS/ID) with COSMIC v3.4 aetiology mapping
+- Low-coverage QC warnings (biomarkers flagged as indeterminate when tumour depth < 50X)
+- Bilingual reports (English / Spanish)
+- All filtering thresholds centralised in `conf/filters.config`
 
 **Final deliverables per patient:**
 
 - `*_molecular_report.html` — interactive report with all findings
-- `*_clinical_report.pdf` — printable PDF with a Major Clinical Findings summary page
+- `*_clinical_report.pdf` — printable PDF with KPI dashboard and Major Clinical Findings summary
 - Structured TSV files for each analysis module (variant tables, CNV tables, TMB, HRD)
 
 ---
@@ -122,18 +132,19 @@ clinical_results/
 
 | # | Section | What it analyses |
 |---|---------|-----------------|
-| 0 | **Major Clinical Findings** | Auto-populated summary page: HRD, MMR deficiency, high TMB, relevant CNVs, and pathogenic germline SNV and CNV. |
-| 1 | **Germline–Somatic Correlation** | Two-hit events (P/LP germline + somatic second hit), biallelic somatic, signature correlation |
-| 2 | **Germline SNVs** | 90-gene hereditary cancer panel; ACMG P/LP/VUS classification with 9-tool in silico scoring, REVEL, ClinVar, gnomAD |
-| 3 | **Pharmacogenomics** | DPYD, UGT1A1 — drug-metabolism variants from germline VCF |
-| 4 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM using a pre-built cohort PoN; MANE gene/exon annotation |
-| 5 | **Somatic SNVs** | Mutect2 VCF filtered by somatic panel; AMP/ASCO/CAP tiering with CIViC evidence |
-| 6 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
-| 7 | **Somatic CNVs (GATK)** | Allele-specific paired CNV (tumour + normal BAMs); MANE annotation; diagnostic plots |
-| 8 | **TMB** | Tumour Mutational Burden in mut/Mb from PASS Mutect2 variants over WES capture size |
-| 9 | **Mutational Signatures** | SigProfilerAssignment COSMIC v3.4 SBS96/DBS/ID83 decomposition + 4 plots |
-| 10 | **HRD** | HRProfiler logistic model (SBS + indel + CNV48 features) → probability score + classification |
-| 11 | **Gene Coverage** | Per-gene mean/min/max depth from mosdepth (normal + tumour) |
+| 0 | **Cover Page / KPI Dashboard** | Global biomarkers (TMB, MSI, HRD, ploidy, purity, coverage) with low-coverage QC warnings when tumour mean depth < 50X |
+| 1 | **Major Clinical Findings** | Auto-populated summary: HRD pathway, MMR deficiency (SBS + ID signatures), CIViC Level A/B actionable variants, high-confidence CNVs, pathogenic germline hits |
+| 2 | **Germline–Somatic Correlation** | Two-hit events (P/LP germline + somatic second hit), biallelic somatic, MMR/HRR pathway integration |
+| 3 | **Germline SNVs** | 103-gene hereditary cancer panel; ACMG P/LP/VUS classification with 9-tool in silico panel, REVEL (ClinGen SVI concordance), ClinVar, gnomAD AF rescue |
+| 4 | **Pharmacogenomics** | DPYD, UGT1A1 — drug-metabolism variants from germline VCF |
+| 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM; only 103-gene panel reported (QA >= 4); MANE exon annotation |
+| 6 | **Somatic SNVs** | Mutect2 VCF filtered by somatic panel; AMP/ASCO/CAP tiering sorted by tier; CIViC actionable evidence |
+| 7 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
+| 8 | **Somatic CNVs (GATK)** | Allele-specific paired CNV (tumour + normal BAMs); MANE annotation; diagnostic plots |
+| 9 | **TMB** | Tumour Mutational Burden in mut/Mb from PASS Mutect2 variants over WES capture size |
+| 10 | **Mutational Signatures** | SigProfilerAssignment COSMIC v3.4 SBS96/DBS/ID83 decomposition with COSMIC aetiology mapping |
+| 11 | **HRD** | HRProfiler logistic model (SBS + indel + CNV48 features) → probability score + classification |
+| 12 | **Gene Coverage** | Per-gene mean/min/max depth from mosdepth (normal + tumour) |
 
 ---
 
@@ -560,12 +571,11 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--germline_panel` | `assets/gene_panels/germline_90_cancer_predisposition.txt` | Gene list for germline SNV filter (one symbol per line) |
+| `--germline_panel` | `assets/gene_panels/germline_103_cancer_predisposition.txt` | Gene list for germline SNV/CNV filter (one symbol per line) |
 | `--somatic_snv_panel` | `assets/gene_panels/somatic_snv_panel.txt` | Gene list for somatic SNV filter |
-| `--germline_min_dp` | `5` | Minimum read depth for germline variants |
 | `--panel_bed` | — | WES capture BED for TMB calculation (mut/Mb) |
-| `--tmb_min_dp` | `10` | Minimum tumour depth for TMB variants |
-| `--tmb_min_af` | `0.05` | Minimum allele fraction for TMB variants |
+
+> All filtering thresholds (germline SNV depth/VAF, somatic TMB DP/AF, ACMG scores, biomarker cutoffs, etc.) are centralised in **`conf/filters.config`**. Edit that file to adjust any threshold — individual `--tmb_min_dp`-style CLI params are deprecated.
 
 ### HRD
 
@@ -597,14 +607,14 @@ clinical_results/
 │   ├── snv/extract/
 │   │   ├── *.germline_snvs.tsv                  ← P/LP/VUS variants (in report)
 │   │   ├── *.germline_all_filtered.tsv           ← all rejected with FILTER_REASON
-│   │   └── *.germline_snvs_acmg_annotated.tsv   ← all candidates + ACMG scores
+│   │   └── *.germline_snvs_acmg_annotated.tsv   ← all candidates + ACMG class/criteria/in-silico scores
 │   ├── pharmaco/
-│   │   └── *.pharmaco.tsv
+│   │   └── *.pharmaco.tsv                        ← DPYD + UGT1A1 PGx variants
 │   └── cnv_gatk/annotated/
-│       └── *_segments_annotated.tsv
+│       └── *_segments_annotated.tsv              ← GATK gCNV segments (MANE-annotated)
 ├── somatic/
 │   ├── snv/extract/         *.somatic_snvs.tsv
-│   ├── snv/civic_extract/   *.civic.exploded.tsv
+│   ├── snv/civic_extract/   *.civic.exploded.tsv  ← CIViC Level A/B/C/D evidence
 │   ├── cnv/                 *_somatic_cnv_report.tsv
 │   ├── cnv_gatk/annotated/  *_annotated.tsv
 │   ├── tmb/                 *.tmb.tsv
@@ -614,10 +624,28 @@ clinical_results/
 │   └── hrd/                 *_hrd_predictions.tsv
 ├── qc/gene_coverage/        *_gene_coverage.tsv
 └── reporting/
-    ├── *_molecular_report.html
-    ├── *_molecular_report.txt
-    └── *_clinical_report.pdf
+    ├── *_molecular_report.html    ← interactive HTML with data tables
+    ├── *_molecular_report.txt     ← plain-text input summary
+    ├── *_clinical_report.pdf      ← printable PDF (KPI dashboard + Major Clinical Findings)
+    └── correlation_section.json   ← structured germline-somatic correlation data
 ```
+
+---
+
+## Filtering thresholds (`conf/filters.config`)
+
+All variant filtering, ACMG classification, and clinical biomarker thresholds are centralised in a single file. Edit `conf/filters.config` to adjust any cutoff — no need to touch individual modules.
+
+| Section | Key parameters | Description |
+|---------|---------------|-------------|
+| `germline_snv` | `min_dp=5`, `vaf_min_high=0.25`, `vaf_min_moderate=0.35`, `vaf_max=0.75`, `multi_hit_distance=30`, `multi_hit_vaf=0.40`, `gnomad_rescue_max=50` | Germline SNV depth, VAF, multi-hit same-exon, gnomAD API rescue |
+| `germline_cnv` | `min_qa=4` | Germline CNV quality (only panel genes are reported) |
+| `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
+| `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
+| `acmg` | `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, REVEL thresholds, `score_p=10`, `score_lp=6`, `score_lb=-2` | ACMG 2015 classification: population frequency, REVEL, in silico panel, final score cutoffs |
+| `biomarkers` | `tmb_high=10.0`, `msi_high=3.5`, `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds |
+| `qc` | `low_cov_threshold=50` | Tumor coverage warning |
+| `signatures` | `min_activity=0.05`, MMR/HRD signature lists | Mutational signature reporting |
 
 ---
 
@@ -625,7 +653,7 @@ clinical_results/
 
 Built-in panels bundled in `assets/gene_panels/`:
 
-- **`germline_90_cancer_predisposition.txt`** — 90 hereditary cancer genes (ACMG SF v3.2)
+- **`germline_103_cancer_predisposition.txt`** — 103 hereditary cancer genes (ACMG SF v3.2 + ESMO)
 - **`somatic_38_oncogenes.txt`** — 38 actionable genes for somatic CNV reporting
 - **`somatic_snv_panel.txt`** — Somatic SNV panel (oncogenes, TSGs, DNA repair)
 
@@ -638,10 +666,11 @@ To use a custom panel: `--germline_panel /path/to/my_panel.txt` (one HGNC gene s
 | Problem | Solution |
 |---------|---------|
 | `Session [xxx] lock file already acquired` | `rm -f <pipeline-dir>/.nextflow/cache/*/db/LOCK` |
+| `Can't lock file: .nextflow/history` | Don't run multiple Nextflow instances from the same pipeline directory simultaneously. Run them sequentially or use separate `-work-dir` paths |
 | Task fails after a code fix | Delete stale work dir: `rm -rf clinical_work/XX/XXXX…` then re-run with `-resume` |
 | Out of memory (GATK gCNV) | Lower `process_high` memory in `conf/base.config` (default 56 GB) |
 | gCNV: `model version mismatch` | Rebuild PoN with same GATK version (`broadinstitute/gatk:4.6.2.0`) |
-| CIViC annotation fails | Requires internet on first run; passes through unannotated on network failure |
+| CIViC annotation fails | Requires internet on first run (downloads nightly cache); passes through unannotated on network failure |
 | ACMG classification differs HTML vs PDF | Check that `bin/final_report_acmg.py`, `bin/clinical_pdf_report.py`, and `modules/local/snpsift_germline/main.nf` Step 4 are in sync |
 | `Join mismatch` error in sarek (Mutect2) | `--tools` must be passed on the CLI in `run_full.sh`, not only in `conf/sarek.config` (already handled) |
 
@@ -653,7 +682,7 @@ If you use `nf-sarek-clinical` in your research, please cite:
 
 - **nf-core/sarek**: Garcia M, et al. (2020). *Genome Medicine*.
 - **dbNSFP**: Liu X, et al. (2020). *Genome Medicine*.
-- **CIViC/civicpy**: Griffith M, et al. (2017). *Nature Genetics*.
+- **CIViC/civicpy** (v5.2.0): Griffith M, et al. (2017). *Nature Genetics*.
 - **SigProfilerAssignment**: Bergstrom EN, et al. (2022). *Cell Genomics*.
 - **HRProfiler**: Chopra N, et al. (2024). [github.com/FlorPio/HRProfiler-workflow](https://github.com/FlorPio/HRProfiler-workflow).
 - **GATK CNV workflow**: [github.com/FlorPio/gatk-cnv-somatic](https://github.com/FlorPio/gatk-cnv-somatic).

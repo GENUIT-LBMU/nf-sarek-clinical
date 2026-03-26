@@ -207,16 +207,15 @@ def load_germline_variants(path):
     return variants
 
 
-def load_germline_cnv_variants(path):
-    """Load GATK gCNV germline deletions (CN<2, NP>=5, QA>=10) as pseudo-germline variants.
+def load_germline_cnv_variants(path, panel_genes=None):
+    """Load GATK gCNV germline deletions (CN<2, QA>=4) in panel genes.
 
     Returns one record per gene per segment with affected exons listed.
     Duplications (CN>2) are excluded — they are not classic 1st TSG hits.
-    NP >= 5  : segment must span at least 5 exon capture intervals (avoids single-probe artefacts)
-    QA >= 10 : ALT allele Phred quality >= 10 (~90% confidence in the DEL/DUP genotype call)
+    Only genes in the germline cancer-predisposition panel are reported.
+    QA >= 4 : ALT allele Phred quality >= 4 (~60% confidence in the DEL/DUP call)
     """
-    MIN_NP = 5
-    MIN_QA = 10
+    MIN_QA = 4
     variants = []
     if not path or not os.path.isfile(path):
         return variants
@@ -262,12 +261,15 @@ def load_germline_cnv_variants(path):
 
     for key in seg_order:
         seg = segments[key]
-        if seg['np'] < MIN_NP or seg.get('qa', 0) < MIN_QA:
+        if seg.get('qa', 0) < MIN_QA:
             continue
         cn  = seg['cn']
         locus = seg['chrom'] + ':' + seg['pos'] + '-' + seg['end']
         for gene, exon_set in seg['genes'].items():
             if not gene or gene in ('.', 'NA'):
+                continue
+            # Only report panel genes
+            if panel_genes and gene.upper() not in panel_genes:
                 continue
             # Format exon list
             exons_sorted = sorted(exon_set)
@@ -597,7 +599,18 @@ def run_correlation(args):
     germ_snv_variants   = load_germline_variants(args.germline)
     for v in germ_snv_variants:
         v.setdefault('variant_type', 'SNV')   # tag source type
-    germ_cnv_variants   = load_germline_cnv_variants(getattr(args, 'cnv_germline', None) or '')
+    # Load panel genes for CNV filtering
+    _panel_genes = set()
+    _panel_path = getattr(args, 'germline_panel', '') or ''
+    if _panel_path and os.path.isfile(_panel_path):
+        with open(_panel_path) as _pf:
+            for _ln in _pf:
+                _g = _ln.strip().split('\t')[0].strip().upper()
+                if _g and not _g.startswith('#'):
+                    _panel_genes.add(_g)
+    germ_cnv_variants   = load_germline_cnv_variants(
+        getattr(args, 'cnv_germline', None) or '',
+        panel_genes=_panel_genes or None)
     germ_variants       = germ_snv_variants + germ_cnv_variants
 
     somatic_snv_by_gene = load_somatic_snv_by_gene(args.somatic)
@@ -967,6 +980,7 @@ def parse_args():
     ap.add_argument('--msi',       default='0', help='MSI value (%)')
     ap.add_argument('--hrd',       default='0', help='HRD probability (0-1)')
     ap.add_argument('--html-out',  default='',  help='Output HTML fragment file')
+    ap.add_argument('--germline-panel', default='', help='Germline gene panel file (one gene per line)')
     ap.add_argument('--json-out',  default='',  help='Output JSON file for PDF')
     return ap.parse_args()
 

@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gene Coverage** module: mosdepth regions BED → per-gene mean/min/max coverage via R/data.table
 - **Final Report** module: interactive HTML report with KPI dashboard (TMB, MSI, LOH, GI, WGD, ploidy, purity, coverage) + data tables
 - Built-in gene panels:
-  - `germline_90_cancer_predisposition.txt` (90 genes, ACMG SF v3.2 + ESMO)
+  - `germline_103_cancer_predisposition.txt` (103 genes, ACMG SF v3.2 + ESMO)
   - `somatic_38_oncogenes.txt` (38 actionable somatic targets)
   - `somatic_snv_panel.txt` (60+ somatic SNV panel)
   - `pharmacogenomics_dpyd_variants.txt` (DPYD + UGT1A1 PGx variants)

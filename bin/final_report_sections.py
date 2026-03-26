@@ -272,10 +272,10 @@ def build_methodology_html():
 
     detail_sections = [
         ('Gene Panels',
-         '<b>Germline cancer predisposition panel (90 genes):</b> BRCA1, BRCA2, TP53, ATM, PALB2, CHEK2, '
+         '<b>Germline cancer predisposition panel (103 genes):</b> BRCA1, BRCA2, TP53, ATM, PALB2, CHEK2, '
          'MLH1, MSH2, MSH6, PMS2, APC, MUTYH, CDH1, STK11, PTEN, RB1, VHL, NF1, NF2, TSC1, TSC2, '
          'MEN1, RET, SDHA/B/C/D, SDHAF2, MAX, TMEM127, and others. '
-         'Full list: <code>assets/gene_panels/germline_90_cancer_predisposition.txt</code>.<br/><br/>'
+         'Full list: <code>assets/gene_panels/germline_103_cancer_predisposition.txt</code>.<br/><br/>'
          '<b>Somatic variant panel (38 oncogenes/TSGs):</b> KRAS, NRAS, BRAF, PIK3CA, PIK3R1, PTEN, '
          'AKT1, TP53, CDKN2A, RB1, ERBB2, EGFR, ALK, MET, CDK4, CDK6, CCND1, CCND3, FGFR1/2/3, '
          'IDH1, IDH2, SMO, PTCH1, NOTCH1, FBXW7, ARID1A, and others. '
