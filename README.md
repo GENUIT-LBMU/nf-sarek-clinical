@@ -651,13 +651,41 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 
 ## Gene panels
 
-Built-in panels bundled in `assets/gene_panels/`:
+Built-in panels bundled in `assets/gene_panels/`. To use a custom panel: `--germline_panel /path/to/my_panel.txt` (one HGNC symbol per line).
 
-- **`germline_103_cancer_predisposition.txt`** — 103 hereditary cancer genes (ACMG SF v3.2 + ESMO)
-- **`somatic_38_oncogenes.txt`** — 38 actionable genes for somatic CNV reporting
-- **`somatic_snv_panel.txt`** — Somatic SNV panel (oncogenes, TSGs, DNA repair)
+### Germline SNV + CNV panel (103 genes)
 
-To use a custom panel: `--germline_panel /path/to/my_panel.txt` (one HGNC gene symbol per line).
+**File:** `germline_103_cancer_predisposition.txt` | **Used by:** Germline SNV filtering (HIGH/MODERATE impact) + Germline CNV reporting (CN!=2, QA>=4)
+
+Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.
+
+<details><summary>Full gene list (click to expand)</summary>
+
+AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, CDKN2A, CFTR, CHEK2, CTNNA1, CTRC, DICER1, EGFR, ENG, EPCAM, ERBB2, FANCC, FANCD2, FANCM, FGFR1, FGFR2, FGFR3, FH, FLCN, GREM1, HOXB13, KIF1B, KIT, KRAS, LZTR1, MAX, MBD4, MDM2, MDM4, MEN1, MET, MITF, MLH1, MLH3, MSH2, MSH3, MSH6, MUTYH, MYC, NBN, NF1, NF2, NTHL1, PALB2, PDGFRA, PIK3CA, PMS2, POLD1, POLE, POT1, PRKAR1A, PTCH1, PTEN, RAD51C, RB1, RECQL, RECQL4, RET, RNF43, RPS20, SDHA, SDHAF2, SDHB, SDHC, SDHD, SMAD4, SMARCA4, SMARCB1, SMARCE1, SPINK1, STK11, SUFU, TMEM127, TP53, TSC1, TSC2, VHL, WRN
+
+</details>
+
+### Somatic SNV panel (60 genes)
+
+**File:** `somatic_snv_panel.txt` | **Used by:** Mutect2 somatic SNV/indel filtering (HIGH/MODERATE impact)
+
+Covers actionable oncogenes, tumor suppressors, and DNA repair genes.
+
+<details><summary>Full gene list (click to expand)</summary>
+
+APC, AR, ARAF, ATM, ATR, B2M, BLM, BRAF, BRCA1, BRCA2, BRIP1, CDH1, CDKN1B, CDKN2B, CDKN2C, CHEK2, CTNNB1, EGFR, ERBB2, FBXW7, FGFR2, GNAS, IDH1, IDH2, KIT, KRAS, MAP2K1, MEN1, MLH1, MLH3, MSH2, MSH6, MTOR, NF1, NOTCH3, NRAS, NTHL1, NTRK1, NTRK3, PALB2, PDGFRA, PDGFRB, PIK3CA, PIK3R1, PMS2, POLD1, POLE, PTEN, RECQL4, RET, RNF43, ROS1, SDHA, SDHD, SETD2, SMAD4, SMARCA4, STK11, TP53, WRN
+
+</details>
+
+### Somatic CNV panel (38 genes)
+
+**File:** `somatic_38_oncogenes.txt` | **Used by:** ASCAT/CNVkit somatic CNV reporting (HOMDEL CN=0, AMP CN>=5, 2nd-hit LOH)
+
+<details><summary>Full gene list (click to expand)</summary>
+
+APC, B2M, BLM, BRAF, BRCA1, BRCA2, CTNNB1, EGFR, EPCAM, ERBB2, FBXW7, KRAS, MAP2K1, MEN1, MET, MLH1, MLH3, MSH2, MSH3, MSH6, MTOR, MYC, NOTCH3, NRAS, PALB2, PIK3CA, PIK3R1, PMS2, POLD1, POLE, PTEN, RECQL4, RNF43, SDHA, SDHD, SMAD4, TP53, WRN
+
+</details>
 
 ---
 

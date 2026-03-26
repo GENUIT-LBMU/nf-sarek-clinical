@@ -1994,7 +1994,7 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
     note_style = ParagraphStyle('CnvNote', parent=styles['Normal'],
                                 fontSize=6, textColor=colors.Color(0.6, 0.7, 0.8))
     story.append(Paragraph(
-        str(len(filtered)) + ' segment(s) shown (panel genes: QA \u2265 4; other: NP \u2265 5, QA \u2265 10). Quality: '
+        str(len(filtered)) + ' segment(s) shown (103-gene panel only, QA \u2265 4). Quality: '
         'High (QS \u226530), Medium (QS 10\u201329), Low (QS <10 \u2014 manual review recommended).',
         note_style))
     story.append(tbl)
@@ -2996,8 +2996,8 @@ def build_methodology_section(story):
     overview_data = [
         ['Germline SNVs',      'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
         ['Somatic SNVs',       'GATK Mutect2 v4 (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
-        ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene panel'],
-        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'NP>=5 exon intervals AND QA>=10 Phred quality; CN!=2 reported for 90-gene panel'],
+        ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
+        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=4 Phred quality; CN!=2 reported for 103-gene germline panel only'],
         ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold >=5%'],
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Features: SBS + ID + CN48 signatures; HRD+ threshold: probability >=0.45'],
         ['Mut. Signatures',    'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',   'COSMIC v3.4 SBS96, DBS and ID signatures; de novo + assignment on WES data'],
@@ -3023,16 +3023,33 @@ def build_methodology_section(story):
     # ── Detailed subsections ──────────────────────────────────────────────────
     story.append(Paragraph('Gene Panels', STYLE_SUB))
     story.append(Paragraph(
-        '<b>Germline cancer predisposition panel (90 genes):</b> Includes BRCA1, BRCA2, TP53, '
-        'ATM, PALB2, CHEK2, MLH1, MSH2, MSH6, PMS2, APC, MUTYH, CDH1, STK11, PTEN, RB1, VHL, '
-        'NF1, NF2, TSC1, TSC2, MEN1, RET, SDHA/B/C/D, SDHAF2, MAX, TMEM127, and others. '
-        'Full panel list available in assets/gene_panels/germline_103_cancer_predisposition.txt.',
+        '<b>Germline SNV + CNV panel (103 genes):</b> Used for germline SNV filtering '
+        '(HIGH/MODERATE impact variants) and germline CNV reporting (CN\u22602, QA\u22654). '
+        'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
+        '<font size="5.5">AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, '
+        'BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, '
+        'CDKN2A, CFTR, CHEK2, CTNNA1, CTRC, DICER1, EGFR, ENG, EPCAM, ERBB2, FANCC, FANCD2, FANCM, '
+        'FGFR1, FGFR2, FGFR3, FH, FLCN, GREM1, HOXB13, KIF1B, KIT, KRAS, LZTR1, MAX, MBD4, MDM2, '
+        'MDM4, MEN1, MET, MITF, MLH1, MLH3, MSH2, MSH3, MSH6, MUTYH, MYC, NBN, NF1, NF2, NTHL1, '
+        'PALB2, PDGFRA, PIK3CA, PMS2, POLD1, POLE, POT1, PRKAR1A, PTCH1, PTEN, RAD51C, RB1, RECQL, '
+        'RECQL4, RET, RNF43, RPS20, SDHA, SDHAF2, SDHB, SDHC, SDHD, SMAD4, SMARCA4, SMARCB1, '
+        'SMARCE1, SPINK1, STK11, SUFU, TMEM127, TP53, TSC1, TSC2, VHL, WRN</font>',
         STYLE_BODY))
     story.append(Paragraph(
-        '<b>Somatic variant panel (38 oncogenes/TSGs):</b> KRAS, NRAS, BRAF, PIK3CA, PIK3R1, '
-        'PTEN, AKT1, TP53, CDKN2A, RB1, ERBB2, EGFR, ALK, MET, CDK4, CDK6, CCND1, CCND3, '
-        'FGFR1/2/3, IDH1, IDH2, SMO, PTCH1, NOTCH1, FBXW7, ARID1A, and others. '
-        'Full panel: assets/gene_panels/somatic_snv_panel.txt.',
+        '<b>Somatic SNV panel (60 genes):</b> Used for Mutect2 somatic SNV/indel filtering '
+        '(HIGH/MODERATE impact). Covers actionable oncogenes, tumor suppressors, and DNA repair genes.<br/>'
+        '<font size="5.5">APC, AR, ARAF, ATM, ATR, B2M, BLM, BRAF, BRCA1, BRCA2, BRIP1, CDH1, CDKN1B, '
+        'CDKN2B, CDKN2C, CHEK2, CTNNB1, EGFR, ERBB2, FBXW7, FGFR2, GNAS, IDH1, IDH2, KIT, KRAS, '
+        'MAP2K1, MEN1, MLH1, MLH3, MSH2, MSH6, MTOR, NF1, NOTCH3, NRAS, NTHL1, NTRK1, NTRK3, PALB2, '
+        'PDGFRA, PDGFRB, PIK3CA, PIK3R1, PMS2, POLD1, POLE, PTEN, RECQL4, RET, RNF43, ROS1, SDHA, '
+        'SDHD, SETD2, SMAD4, SMARCA4, STK11, TP53, WRN</font>',
+        STYLE_BODY))
+    story.append(Paragraph(
+        '<b>Somatic CNV panel (38 genes):</b> Used for ASCAT/CNVkit somatic copy-number event '
+        'reporting: HOMDEL (CN=0), AMP (CN\u22655), and 2nd-hit LOH.<br/>'
+        '<font size="5.5">APC, B2M, BLM, BRAF, BRCA1, BRCA2, CTNNB1, EGFR, EPCAM, ERBB2, FBXW7, '
+        'KRAS, MAP2K1, MEN1, MET, MLH1, MLH3, MSH2, MSH3, MSH6, MTOR, MYC, NOTCH3, NRAS, PALB2, '
+        'PIK3CA, PIK3R1, PMS2, POLD1, POLE, PTEN, RECQL4, RNF43, SDHA, SDHD, SMAD4, TP53, WRN</font>',
         STYLE_BODY))
 
     story.append(Paragraph('TMB Calculation', STYLE_SUB))

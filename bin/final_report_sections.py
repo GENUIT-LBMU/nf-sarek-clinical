@@ -251,8 +251,8 @@ def build_methodology_html():
     overview_rows = [
         ['Germline SNVs',     'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
         ['Somatic SNVs',      'GATK Mutect2 v4 (tumor&ndash;normal mode)',        'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA&ndash;III'],
-        ['Somatic CNVs',      'ASCAT v3 + CNVkit v0.9 (consensus)',               'GRCh38', 'HOMDEL (CN=0), AMP (CN&ge;5), 2nd-hit LOH; 38-gene somatic panel'],
-        ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'NP&ge;5 exon intervals AND QA&ge;10 Phred; CN&ne;2 events; 90-gene germline panel'],
+        ['Somatic CNVs',      'ASCAT v3 + CNVkit v0.9 (consensus)',               'GRCh38', 'HOMDEL (CN=0), AMP (CN&ge;5), 2nd-hit LOH; 38-gene somatic CNV panel'],
+        ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;4 Phred; CN&ne;2 events; 103-gene germline panel only'],
         ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold &ge;5%'],
         ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'HRD+ threshold: probability &ge;0.45; supporting biomarkers SBS3/SBS8'],
         ['Mut. Signatures',   'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',  'COSMIC v3.4 SBS96, DBS, ID signatures; activity threshold &gt;0.05 mut/Mb'],
@@ -272,14 +272,35 @@ def build_methodology_html():
 
     detail_sections = [
         ('Gene Panels',
-         '<b>Germline cancer predisposition panel (103 genes):</b> BRCA1, BRCA2, TP53, ATM, PALB2, CHEK2, '
-         'MLH1, MSH2, MSH6, PMS2, APC, MUTYH, CDH1, STK11, PTEN, RB1, VHL, NF1, NF2, TSC1, TSC2, '
-         'MEN1, RET, SDHA/B/C/D, SDHAF2, MAX, TMEM127, and others. '
-         'Full list: <code>assets/gene_panels/germline_103_cancer_predisposition.txt</code>.<br/><br/>'
-         '<b>Somatic variant panel (38 oncogenes/TSGs):</b> KRAS, NRAS, BRAF, PIK3CA, PIK3R1, PTEN, '
-         'AKT1, TP53, CDKN2A, RB1, ERBB2, EGFR, ALK, MET, CDK4, CDK6, CCND1, CCND3, FGFR1/2/3, '
-         'IDH1, IDH2, SMO, PTCH1, NOTCH1, FBXW7, ARID1A, and others. '
-         'Full list: <code>assets/gene_panels/somatic_snv_panel.txt</code>.'),
+         '<b>Germline SNV + CNV panel (103 genes)</b> &mdash; Used for germline SNV filtering '
+         '(HIGH/MODERATE impact) and germline CNV reporting (CN&ne;2, QA&ge;4). '
+         'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
+         '<span style="font-size:0.75em; color:#94a3b8;">'
+         'AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, '
+         'BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, '
+         'CDKN2A, CFTR, CHEK2, CTNNA1, CTRC, DICER1, EGFR, ENG, EPCAM, ERBB2, FANCC, FANCD2, FANCM, '
+         'FGFR1, FGFR2, FGFR3, FH, FLCN, GREM1, HOXB13, KIF1B, KIT, KRAS, LZTR1, MAX, MBD4, MDM2, '
+         'MDM4, MEN1, MET, MITF, MLH1, MLH3, MSH2, MSH3, MSH6, MUTYH, MYC, NBN, NF1, NF2, NTHL1, '
+         'PALB2, PDGFRA, PIK3CA, PMS2, POLD1, POLE, POT1, PRKAR1A, PTCH1, PTEN, RAD51C, RB1, RECQL, '
+         'RECQL4, RET, RNF43, RPS20, SDHA, SDHAF2, SDHB, SDHC, SDHD, SMAD4, SMARCA4, SMARCB1, '
+         'SMARCE1, SPINK1, STK11, SUFU, TMEM127, TP53, TSC1, TSC2, VHL, WRN'
+         '</span><br/><br/>'
+         '<b>Somatic SNV panel (60 genes)</b> &mdash; Used for Mutect2 somatic SNV/indel filtering '
+         '(HIGH/MODERATE impact). Covers actionable oncogenes, tumor suppressors, and DNA repair genes.<br/>'
+         '<span style="font-size:0.75em; color:#94a3b8;">'
+         'APC, AR, ARAF, ATM, ATR, B2M, BLM, BRAF, BRCA1, BRCA2, BRIP1, CDH1, CDKN1B, '
+         'CDKN2B, CDKN2C, CHEK2, CTNNB1, EGFR, ERBB2, FBXW7, FGFR2, GNAS, IDH1, IDH2, KIT, KRAS, '
+         'MAP2K1, MEN1, MLH1, MLH3, MSH2, MSH6, MTOR, NF1, NOTCH3, NRAS, NTHL1, NTRK1, NTRK3, PALB2, '
+         'PDGFRA, PDGFRB, PIK3CA, PIK3R1, PMS2, POLD1, POLE, PTEN, RECQL4, RET, RNF43, ROS1, SDHA, '
+         'SDHD, SETD2, SMAD4, SMARCA4, STK11, TP53, WRN'
+         '</span><br/><br/>'
+         '<b>Somatic CNV panel (38 genes)</b> &mdash; Used for ASCAT/CNVkit somatic copy-number event '
+         'reporting: HOMDEL (CN=0), AMP (CN&ge;5), and 2nd-hit LOH.<br/>'
+         '<span style="font-size:0.75em; color:#94a3b8;">'
+         'APC, B2M, BLM, BRAF, BRCA1, BRCA2, CTNNB1, EGFR, EPCAM, ERBB2, FBXW7, '
+         'KRAS, MAP2K1, MEN1, MET, MLH1, MLH3, MSH2, MSH3, MSH6, MTOR, MYC, NOTCH3, NRAS, PALB2, '
+         'PIK3CA, PIK3R1, PMS2, POLD1, POLE, PTEN, RECQL4, RNF43, SDHA, SDHD, SMAD4, TP53, WRN'
+         '</span>'),
         ('TMB Calculation',
          'Tumor Mutational Burden (TMB) = number of somatic <b>PASS</b> non-synonymous variants '
          '(missense, nonsense, frameshift, splice) divided by the effective captured exome size (Mb). '
