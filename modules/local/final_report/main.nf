@@ -673,8 +673,9 @@ def tsv_to_html_somatic(path, civic_idx):
         ('Gene',         'ANN[*].GENE'),
         ('HGVS_c',       'ANN[*].HGVS_C'),
         ('HGVS_p',       'ANN[*].HGVS_P'),
-        ('Impact',       'ANN[*].IMPACT'),
-        ('VAF',          'GEN[1].AF'),
+        ('Effect',       'ANN[*].EFFECT'),
+        ('VAF',          None),
+        ('Call',         None),
         ('CIViC Level',  None),
         ('Disease',      None),
         ('Therapy',      None),
@@ -700,10 +701,10 @@ def tsv_to_html_somatic(path, civic_idx):
 
     filter_bar = (
         "<div class='filter-bar'>"
-        "<span style='font-size:.78rem;color:rgba(226,232,240,0.7);align-self:center;'>Somatic filter:</span>"
+        "<span style='font-size:.78rem;color:rgba(226,232,240,0.7);'>Somatic:</span>"
         "<button class='filter-btn som-filter-btn active' data-filter='all' onclick='filterSomatic(this.dataset.filter)'>All</button>"
-        "<button class='filter-btn som-filter-btn' data-filter='ti-tii' onclick='filterSomatic(this.dataset.filter)'>Tier I + II</button>"
-        "<button class='filter-btn som-filter-btn' data-filter='ti' onclick='filterSomatic(this.dataset.filter)'>Tier I only</button>"
+        "<button class='filter-btn som-filter-btn' data-filter='ti-tii' onclick='filterSomatic(this.dataset.filter)'>Tier I+II</button>"
+        "<button class='filter-btn som-filter-btn' data-filter='ti' onclick='filterSomatic(this.dataset.filter)'>Tier I</button>"
         "</div>"
     )
 
@@ -734,12 +735,31 @@ def tsv_to_html_somatic(path, civic_idx):
         conseq_text = gene_consequence(ctx_role, impact_val, effect_val) if ctx_role else ''
         row_id = "ctx-" + str(id(line))
 
+        vaf_raw = get_col(row, 'GEN[1].AF')
+        try:
+            vaf_val = float(vaf_raw.split(',')[0])
+            vaf_str = '{:.3f}'.format(vaf_val)
+            low_vaf = vaf_val < 0.05
+        except (ValueError, IndexError):
+            vaf_str = vaf_raw or '.'
+            low_vaf = False
+        callers_raw = get_col(row, 'Callers') or 'Mutect2'
+        callers_html = ("<span style='color:#166534;font-weight:bold;'>M+S</span>"
+            if 'Strelka2' in callers_raw else "<span style='color:#92400e;font-weight:bold;'>M</span>")
+
         tds = ""
         for disp_name, raw_col in disp_cols:
             if disp_name == 'Locus':
                 toggle_btn = ("<button class='ctx-toggle' onclick='toggleCtx(this)' "
                               "aria-label='Toggle gene context'>&#9654;</button> ")
                 tds += "<td style='white-space:nowrap;'>" + toggle_btn + html.escape(locus) + "</td>"
+            elif disp_name == 'VAF':
+                if low_vaf:
+                    tds += "<td style='color:#b91c1c;font-weight:bold;'>" + html.escape(vaf_str) + " &#9888;</td>"
+                else:
+                    tds += "<td>" + html.escape(vaf_str) + "</td>"
+            elif disp_name == 'Call':
+                tds += "<td style='text-align:center;'>" + callers_html + "</td>"
             elif disp_name == 'CIViC Level':
                 tds += "<td>" + html.escape(civic_level) + "</td>"
             elif disp_name == 'Disease':
@@ -766,11 +786,10 @@ def tsv_to_html_somatic(path, civic_idx):
                           + summary_p + conseq_p
                           + "</div>")
             tbody += ("<tr class='ctx-row' data-tier='" + tier + "' style='display:none;'>"
-                      "<td colspan='10'>" + ctx_inner + "</td></tr>\\n")
+                      "<td colspan='11'>" + ctx_inner + "</td></tr>\\n")
         else:
-            # Empty placeholder so toggleCtx can always find a sibling
             tbody += ("<tr class='ctx-row' data-tier='" + tier + "' style='display:none;'>"
-                      "<td colspan='10'><div class='ctx-box'><em style='color:#888;'>No annotation available for this gene.</em></div></td></tr>\\n")
+                      "<td colspan='11'><em style='color:#888;'>No annotation.</em></td></tr>\\n")
 
     return (
         filter_bar +

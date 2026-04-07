@@ -1160,27 +1160,53 @@ def build_germline_section(germline_variants, story):
 # ---------------------------------------------------------------------------
 # Somatic section
 # ---------------------------------------------------------------------------
+def _somatic_row(v, include_civic=False):
+    """Extract display fields from a somatic variant dict."""
+    civic = v.get('_CIVIC') or {}
+    gene   = trunc(v.get('ANN[*].GENE', '-'), 20)
+    hgvsc  = trunc(v.get('ANN[*].HGVS_C', '-'), 32)
+    hgvsp  = trunc(v.get('ANN[*].HGVS_P', '-'), 28)
+    effect = trunc(v.get('ANN[*].EFFECT', '-'), 22)
+    af_raw = v.get('GEN[1].AF', v.get('GEN[1].AD', '-'))
+    try:
+        af_val = float(str(af_raw).split(',')[0])
+        af_str = f'{af_val:.3f}'
+        low_vaf = af_val < 0.05
+    except (ValueError, TypeError):
+        af_str = trunc(af_raw, 8)
+        low_vaf = False
+    # VAF cell with low-VAF warning
+    if low_vaf:
+        vaf_cell = Paragraph(
+            f'<font color="#b91c1c"><b>{af_str}</b></font>'
+            f'<br/><font size="5" color="#b91c1c">\u26a0 low</font>',
+            ParagraphStyle('vaf_warn', fontSize=7, fontName='Helvetica',
+                           textColor=C_TEXT, leading=8, alignment=TA_CENTER))
+    else:
+        vaf_cell = af_str
+    callers_raw = v.get('Callers', 'Mutect2')
+    if 'Strelka2' in callers_raw:
+        callers_cell = Paragraph(
+            '<font size="5.5" color="#166534">M+S</font>',
+            ParagraphStyle('cal2', fontSize=5.5, alignment=TA_CENTER, leading=7))
+    else:
+        callers_cell = Paragraph(
+            '<font size="5.5" color="#92400e">M</font>',
+            ParagraphStyle('cal1', fontSize=5.5, alignment=TA_CENTER, leading=7))
+    tier = v.get('_AMP_TIER', 'III')
+    if include_civic:
+        disease = trunc(civic.get('CIViC Entity Disease', '-'), 30)
+        therapy = trunc(civic.get('CIViC Entity Therapies', '-'), 30)
+        evid    = trunc(civic.get('CIViC Evidence Level', '-'), 3)
+        return [gene, hgvsc, hgvsp, effect, vaf_cell, callers_cell, evid, disease, therapy, tier]
+    return [gene, hgvsc, hgvsp, effect, vaf_cell, callers_cell, tier]
+
+
 def build_somatic_section(somatic_variants, story, gene_ctx=None):
-    """Append somatic SNV section flowables to story."""
+    """Append somatic SNV section: CIViC actionable table + other variants table."""
     story.append(PageBreak())
     story.append(Paragraph(T('sect_somatic'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
-
-    # Legend
-    tier_legend = [
-        ('IA',  C_AMP_IA_IB,   'FDA-approved therapy (same cancer type)'),
-        ('IB',  C_AMP_IA_IB,   'FDA-approved therapy (diff cancer type / clinical trial)'),
-        ('IIA', C_AMP_IIA_IIB, 'Well-powered study (same cancer type)'),
-        ('IIB', C_AMP_IIA_IIB, 'Well-powered study (diff cancer type)'),
-        ('IIC', C_AMP_IIC,     'Case reports / clinical trials'),
-        ('III', C_AMP_III,     'Uncertain clinical significance'),
-    ]
-    legend_text = '&nbsp;&nbsp;&nbsp;'.join(
-        f'<font color="{c.hexval()}"><b>[{t}]</b></font> {d}'
-        for t, c, d in tier_legend
-    )
-    story.append(Paragraph(f'<font size="6.5">{legend_text}</font>', styles['Normal']))
-    story.append(Spacer(1, 0.2 * cm))
 
     if not somatic_variants:
         story.append(Paragraph(
@@ -1189,51 +1215,77 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None):
         ))
         return
 
-    # Sort: CIViC-annotated variants first (IA → IB → IIA → IIB → IIC → III)
+    # Split into CIViC actionable (Tier I/II) vs other (Tier III)
     _TIER_ORDER = {'IA': 0, 'IB': 1, 'IIA': 2, 'IIB': 3, 'IIC': 4, 'III': 5}
-    somatic_variants = sorted(somatic_variants,
-                               key=lambda v: _TIER_ORDER.get(v.get('_AMP_TIER', 'III'), 5))
+    actionable = [v for v in somatic_variants if v.get('_AMP_TIER', 'III') not in ('III',)]
+    other      = [v for v in somatic_variants if v.get('_AMP_TIER', 'III') == 'III']
+    actionable.sort(key=lambda v: _TIER_ORDER.get(v.get('_AMP_TIER', 'III'), 5))
 
-    # Table columns – Widths sum to USABLE_W (~516 pt available after badge col)
-    col_headers = [
-        'Gene', 'HGVS_c', 'HGVS_p', 'Impact', 'VAF',
-        'CIViC Lvl', 'Disease', 'Therapy', 'AMP Tier'
-    ]
-    col_widths = [45, 80, 75, 40, 28, 38, 90, 90, 30]
-
-    data_rows = []
-    for v in somatic_variants:
-        civic = v.get('_CIVIC') or {}
-        gene   = trunc(v.get('ANN[*].GENE', '-'), 18)
-        hgvsc  = trunc(v.get('ANN[*].HGVS_C', '-'), 28)
-        hgvsp  = trunc(v.get('ANN[*].HGVS_P', '-'), 24)
-        impact = trunc(v.get('ANN[*].IMPACT', '-'), 12)
-        af_raw = v.get('GEN[1].AF', v.get('GEN[1].AD', '-'))
-        try:
-            af_val = float(str(af_raw).split(',')[0])
-            af_str = f'{af_val:.3f}'
-        except (ValueError, TypeError):
-            af_str = trunc(af_raw, 8)
-        civic_lvl  = trunc(civic.get('CIViC Evidence Level', '-'), 3)
-        disease    = trunc(civic.get('CIViC Entity Disease', '-'), 28)
-        therapy    = trunc(civic.get('CIViC Entity Therapies', '-'), 28)
-        tier       = v.get('_AMP_TIER', 'III')
-        data_rows.append([gene, hgvsc, hgvsp, impact, af_str,
-                           civic_lvl, disease, therapy, tier])
-
-    def _amp_bg(val):
-        return amp_colour(val.strip())
-
-    tbl = build_variant_table(
-        col_headers, col_widths, data_rows,
-        colour_col_idx=8, colour_fn=_amp_bg,
-    )
-    story.append(tbl)
-    story.append(Spacer(1, 0.3 * cm))
+    # Legend
+    _legend_style = ParagraphStyle('som_legend', fontSize=6, leading=8,
+                                    textColor=colors.HexColor('#64748b'))
     story.append(Paragraph(
-        f'<font size="7" color="#64748b">'
-        f'{len(somatic_variants)} somatic variant(s) shown (all tiers). '
-        f'CIViC annotations based on database snapshot at analysis date.</font>',
+        '<b>Callers:</b> <font color="#166534">M+S</font> = Mutect2 + Strelka2 (consensus) '
+        '&nbsp; <font color="#92400e">M</font> = Mutect2 only '
+        '&nbsp;&nbsp; <font color="#b91c1c">\u26a0 low</font> = VAF &lt; 5%',
+        _legend_style))
+    story.append(Spacer(1, 0.2 * cm))
+
+    # ── Table 1: CIViC Actionable Variants (Tier I/II) ─────────────────────
+    if actionable:
+        story.append(Paragraph(
+            '<b>Clinically Actionable Variants</b> (CIViC Level A\u2013D, AMP Tier I\u2013II)',
+            ParagraphStyle('sub_h', fontSize=8, fontName='Helvetica-Bold',
+                           textColor=C_TEXT, spaceBefore=2, spaceAfter=4)))
+
+        act_headers = ['Gene', 'HGVS_c', 'HGVS_p', 'Effect', 'VAF',
+                        'Call', 'Evid', 'Disease', 'Therapy', 'Tier']
+        act_widths  = [45, 85, 75, 65, 32, 25, 25, 80, 88, 30]
+
+        act_rows = [_somatic_row(v, include_civic=True) for v in actionable]
+
+        tbl_act = build_variant_table(
+            act_headers, act_widths, act_rows,
+            colour_col_idx=9, colour_fn=lambda v: amp_colour(v.strip()),
+        )
+        story.append(tbl_act)
+        story.append(Spacer(1, 0.15 * cm))
+        story.append(Paragraph(
+            f'<font size="6" color="#64748b">'
+            f'{len(actionable)} actionable variant(s). '
+            f'CIViC annotations based on database snapshot at analysis date.</font>',
+            styles['Normal']))
+    else:
+        story.append(Paragraph(
+            '<b>Clinically Actionable Variants:</b> None identified (no CIViC Level A\u2013D matches).',
+            ParagraphStyle('no_act', fontSize=7.5, textColor=colors.HexColor('#64748b'),
+                           spaceBefore=2, spaceAfter=4)))
+
+    # ── Table 2: Other Somatic Variants (Tier III) ─────────────────────────
+    if other:
+        story.append(Spacer(1, 0.3 * cm))
+        story.append(Paragraph(
+            '<b>Other Somatic Variants</b> (AMP Tier III \u2014 uncertain clinical significance)',
+            ParagraphStyle('sub_h2', fontSize=8, fontName='Helvetica-Bold',
+                           textColor=C_TEXT, spaceBefore=2, spaceAfter=4)))
+
+        oth_headers = ['Gene', 'HGVS_c', 'HGVS_p', 'Effect', 'VAF', 'Call', 'Tier']
+        oth_widths  = [50, 120, 105, 95, 38, 30, 30]
+
+        oth_rows = [_somatic_row(v, include_civic=False) for v in other]
+
+        tbl_oth = build_variant_table(
+            oth_headers, oth_widths, oth_rows,
+            colour_col_idx=6, colour_fn=lambda v: amp_colour(v.strip()),
+        )
+        story.append(tbl_oth)
+        story.append(Spacer(1, 0.15 * cm))
+
+    # Summary
+    story.append(Paragraph(
+        f'<font size="6.5" color="#64748b">'
+        f'{len(somatic_variants)} somatic variant(s) total: '
+        f'{len(actionable)} actionable (Tier I/II), {len(other)} Tier III.</font>',
         styles['Normal'],
     ))
 
@@ -2999,9 +3051,10 @@ def build_methodology_section(story):
         ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
         ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=4 Phred quality; CN!=2 reported for 103-gene germline panel only'],
         ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold >=5%'],
-        ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Features: SBS + ID + CN48 signatures; HRD+ threshold: probability >=0.45'],
-        ['Mut. Signatures',    'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',   'COSMIC v3.4 SBS96, DBS and ID signatures; de novo + assignment on WES data'],
-        ['TMB',                'Custom calculation from Mutect2 PASS variants',    'GRCh38', 'Non-synonymous PASS variants / effective capture Mb; TMB-H threshold >=10 mut/Mb'],
+        ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
+        ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Consensus VCF input; SBS + ID + CN48 features; HRD+ threshold: probability >=0.45'],
+        ['Mut. Signatures',    'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',   'Consensus VCF input; COSMIC v3.4 SBS96, DBS and ID signatures'],
+        ['TMB',                'Consensus VCF / effective capture Mb',             'GRCh38', 'Non-synonymous PASS variants from consensus; TMB-H threshold >=10 mut/Mb'],
         ['Pharmacogenomics',   'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1 rsIDs; CPIC annotation'],
         ['Germline–Somatic',   'Custom integration script (germline_somatic_correlate.py)', 'N/A', 'P/LP germline variants cross-referenced with somatic 2nd hits and HRD/MMR biomarkers'],
     ]

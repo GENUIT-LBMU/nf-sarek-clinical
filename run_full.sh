@@ -85,7 +85,7 @@ EOF
         ${NF_RESUME} \
         --input    "${SAMPLESHEET}" \
         --outdir   "${RUN_DIR}/results" \
-        --tools    "haplotypecaller,mutect2,cnvkit,ascat,msisensorpro,snpeff"
+        --tools    "haplotypecaller,mutect2,strelka,manta,cnvkit,ascat,msisensorpro,snpeff"
 
     echo ""
     echo "  Phase 1 complete → ${RUN_DIR}/results"

@@ -15,6 +15,7 @@
 
 **Key features:**
 
+- **Somatic consensus calling:** Mutect2 + Strelka2 intersection — only variants confirmed by both callers feed into TMB, mutational signatures, and HRD. Falls back to Mutect2-only when Strelka2 is not available
 - ACMG 2015 germline classification with 9-tool in silico panel + REVEL (ClinGen SVI concordance rule)
 - CIViC Level A/B actionable somatic variant annotation
 - Germline–somatic correlation: two-hit analysis for MMR/HRR pathways
@@ -138,12 +139,12 @@ clinical_results/
 | 3 | **Germline SNVs** | 103-gene hereditary cancer panel; ACMG P/LP/VUS classification with 9-tool in silico panel, REVEL (ClinGen SVI concordance), ClinVar, gnomAD AF rescue |
 | 4 | **Pharmacogenomics** | DPYD, UGT1A1 — drug-metabolism variants from germline VCF |
 | 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM; only 103-gene panel reported (QA >= 4); MANE exon annotation |
-| 6 | **Somatic SNVs** | Mutect2 VCF filtered by somatic panel; AMP/ASCO/CAP tiering sorted by tier; CIViC actionable evidence |
+| 6 | **Somatic SNVs** | Split into *Clinically Actionable* (CIViC Tier I/II) and *Other* (Tier III) tables; Callers column shows M+S (consensus) or M (Mutect2-only); low-VAF warning for AF < 5% |
 | 7 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
 | 8 | **Somatic CNVs (GATK)** | Allele-specific paired CNV (tumour + normal BAMs); MANE annotation; diagnostic plots |
-| 9 | **TMB** | Tumour Mutational Burden in mut/Mb from PASS Mutect2 variants over WES capture size |
-| 10 | **Mutational Signatures** | SigProfilerAssignment COSMIC v3.4 SBS96/DBS/ID83 decomposition with COSMIC aetiology mapping |
-| 11 | **HRD** | HRProfiler logistic model (SBS + indel + CNV48 features) → probability score + classification |
+| 9 | **TMB** | Tumour Mutational Burden in mut/Mb from consensus VCF (Mutect2 ∩ Strelka2) over WES capture size |
+| 10 | **Mutational Signatures** | SigProfilerAssignment COSMIC v3.4 SBS96/DBS/ID83 from consensus VCF |
+| 11 | **HRD** | HRProfiler logistic model from consensus VCF (SBS + indel + CNV48 features) → probability + classification |
 | 12 | **Gene Coverage** | Per-gene mean/min/max depth from mosdepth (normal + tumour) |
 
 ---
@@ -165,8 +166,10 @@ clinical_results/
 nf-core/sarek ≥ 3.3.0 is pulled automatically by Nextflow in Mode A. It must have been run with at minimum:
 
 ```
---tools haplotypecaller,mutect2,cnvkit,ascat,msisensorpro,snpeff
+--tools haplotypecaller,mutect2,strelka,manta,cnvkit,ascat,msisensorpro,snpeff
 ```
+
+> Strelka2 + Manta are required for the consensus somatic calling. Manta provides candidate indels to Strelka2 for improved indel sensitivity. If Strelka2 output is absent, the pipeline falls back to Mutect2-only.
 
 ### Hardware
 
@@ -417,6 +420,7 @@ Use these when a data type is missing or a module is not needed:
 | `--skip_coverage true` | `false` | No mosdepth output from sarek |
 | `--skip_pharmaco true` | `false` | Pharmacogenomics not needed |
 | `--skip_pdf_report true` | `false` | Generate HTML only (faster) |
+| `--skip_strelka_consensus true` | `false` | Use Mutect2-only (no Strelka2 intersection) |
 
 Example — skip both GATK CNV modules and HRD:
 
@@ -613,15 +617,16 @@ clinical_results/
 │   └── cnv_gatk/annotated/
 │       └── *_segments_annotated.tsv              ← GATK gCNV segments (MANE-annotated)
 ├── somatic/
-│   ├── snv/extract/         *.somatic_snvs.tsv
+│   ├── consensus/           *.consensus.vcf.gz + *.caller_stats.tsv  ← Mutect2 ∩ Strelka2
+│   ├── snv/extract/         *.somatic_snvs.tsv (with Callers column)
 │   ├── snv/civic_extract/   *.civic.exploded.tsv  ← CIViC Level A/B/C/D evidence
 │   ├── cnv/                 *_somatic_cnv_report.tsv
 │   ├── cnv_gatk/annotated/  *_annotated.tsv
-│   ├── tmb/                 *.tmb.tsv
+│   ├── tmb/                 *.tmb.tsv (from consensus VCF)
 │   ├── signatures/
 │   │   ├── matrix_profiles/output/   SBS96/, DBS/, ID/ matrices
-│   │   └── assignment/               COSMIC v3.4 activities + 4 PNG plots
-│   └── hrd/                 *_hrd_predictions.tsv
+│   │   └── assignment/               COSMIC v3.4 activities (from consensus VCF)
+│   └── hrd/                 *_hrd_predictions.tsv (from consensus VCF)
 ├── qc/gene_coverage/        *_gene_coverage.tsv
 └── reporting/
     ├── *_molecular_report.html    ← interactive HTML with data tables
@@ -646,6 +651,47 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 | `biomarkers` | `tmb_high=10.0`, `msi_high=3.5`, `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds |
 | `qc` | `low_cov_threshold=50` | Tumor coverage warning |
 | `signatures` | `min_activity=0.05`, MMR/HRD signature lists | Mutational signature reporting |
+| `consensus` | `min_callers=2` | Somatic consensus: intersection of Mutect2 + Strelka2 |
+
+---
+
+## Somatic consensus calling (Mutect2 + Strelka2)
+
+The pipeline runs two independent somatic variant callers through nf-core/sarek and intersects their PASS calls to produce a high-confidence consensus VCF:
+
+```
+Mutect2 VCF (snpEff-annotated) ──┐
+                                  ├─→ bcftools norm → bcftools isec -n=2 -w1 → consensus.vcf.gz
+Strelka2 SNVs + Indels (PASS) ──┘
+```
+
+**How it works:**
+
+1. Both VCFs are filtered for PASS variants
+2. Indels are left-aligned and multi-allelic sites split (`bcftools norm`)
+3. Only variants called by **both** callers are kept (`bcftools isec -n=2`)
+4. The consensus VCF preserves Mutect2 FORMAT fields (DP, AD, AF) and snpEff annotations (`-w1`)
+
+**What uses the consensus VCF:**
+
+| Analysis | Input | Why consensus matters |
+|----------|-------|----------------------|
+| **TMB** | Consensus VCF | Removes false-positive calls that inflate TMB |
+| **Mutational Signatures** | Consensus VCF | Cleaner mutation profiles = more accurate signature decomposition |
+| **HRD Profiler** | Consensus VCF | SBS3/SBS8 features depend on accurate somatic calls |
+
+**What still uses Mutect2-only:**
+
+| Analysis | Reason |
+|----------|--------|
+| **Somatic SNV report table** | Needs full snpEff + dbNSFP + CIViC annotations (only in Mutect2 path) |
+| **CIViC annotation** | Requires snpEff gene/protein annotations from Mutect2 |
+
+The somatic SNV report table includes a **Callers** column indicating whether each variant was confirmed by both callers (`M+S`) or only by Mutect2 (`M`). Variants with VAF < 5% are flagged with a warning badge.
+
+**Fallback:** If Strelka2 output is not available (e.g., older sarek runs without `--tools strelka,manta`), the pipeline automatically falls back to Mutect2-only for all analyses.
+
+**Output:** `somatic/consensus/*.caller_stats.tsv` shows variant counts per caller and intersection size.
 
 ---
 

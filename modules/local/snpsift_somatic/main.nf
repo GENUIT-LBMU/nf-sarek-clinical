@@ -165,18 +165,18 @@ process SNPSIFT_EXTRACT_SOMATIC {
     label 'process_single'
     label 'snpsift'
 
-    publishDir "${params.outdir}/somatic/snv/extract", mode: params.publish_dir_mode
+    // No publishDir — ANNOTATE_CONSENSUS publishes the final TSV with Callers column
 
     input:
     tuple val(pair), path(vcf)
     path snpsift_jar
 
     output:
-    tuple val(pair), path("${pair}.somatic_snvs.tsv"), emit: tsv
+    tuple val(pair), path("${pair}.somatic_snvs_raw.tsv"), emit: tsv
 
     stub:
     """
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\n" > ${pair}.somatic_snvs.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\n" > ${pair}.somatic_snvs_raw.tsv
     """
 
     script:
@@ -200,7 +200,61 @@ process SNPSIFT_EXTRACT_SOMATIC {
         "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
         "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
     | awk -F'\\t' 'BEGIN{OFS="\\t"} NR==1{print; next} {for(i=1;i<=NF;i++){n=split(\$i,a,";"); \$i=a[1]}; print}' \\
-    > "${pair}.somatic_snvs.tsv"
+    > "${pair}.somatic_snvs_raw.tsv"
+    """
+}
+
+
+process ANNOTATE_CONSENSUS {
+    tag "$pair"
+    label 'process_single'
+    label 'bcftools'
+
+    publishDir "${params.outdir}/somatic/snv/extract", mode: params.publish_dir_mode
+
+    input:
+    tuple val(pair), path(tsv), path(consensus_vcf)
+
+    output:
+    tuple val(pair), path("${pair}.somatic_snvs.tsv"), emit: tsv
+
+    stub:
+    """
+    cp ${tsv} ${pair}.somatic_snvs.tsv
+    """
+
+    script:
+    """
+    # Extract consensus positions from VCF (CHROM:POS:REF:ALT)
+    if [ -s "${consensus_vcf}" ] && [ "${consensus_vcf}" != "NO_FILE" ]; then
+        bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\n' ${consensus_vcf} \\
+            | sort -u > consensus_positions.txt
+    else
+        touch consensus_positions.txt
+    fi
+
+    # Annotate TSV with Callers column using awk
+    # Header: append "Callers"; data rows: lookup CHROM+POS+REF+ALT in consensus set
+    awk -F'\\t' -v OFS='\\t' '
+    BEGIN {
+        while ((getline line < "consensus_positions.txt") > 0) {
+            n = split(line, a, "\\t")
+            if (n >= 4) cons[a[1] "\\t" a[2] "\\t" a[3] "\\t" a[4]] = 1
+        }
+        close("consensus_positions.txt")
+        has_cons = length(cons)
+    }
+    NR == 1 { print \$0, "Callers"; next }
+    {
+        key = \$1 "\\t" \$2 "\\t" \$4 "\\t" \$5
+        if (!has_cons)
+            print \$0, "Mutect2"
+        else if (key in cons)
+            print \$0, "Mutect2+Strelka2"
+        else
+            print \$0, "Mutect2"
+    }
+    ' "${tsv}" > "${pair}.somatic_snvs.tsv"
     """
 }
 

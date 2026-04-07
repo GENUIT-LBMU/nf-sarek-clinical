@@ -254,9 +254,10 @@ def build_methodology_html():
         ['Somatic CNVs',      'ASCAT v3 + CNVkit v0.9 (consensus)',               'GRCh38', 'HOMDEL (CN=0), AMP (CN&ge;5), 2nd-hit LOH; 38-gene somatic CNV panel'],
         ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;4 Phred; CN&ne;2 events; 103-gene germline panel only'],
         ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold &ge;5%'],
-        ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'HRD+ threshold: probability &ge;0.45; supporting biomarkers SBS3/SBS8'],
-        ['Mut. Signatures',   'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',  'COSMIC v3.4 SBS96, DBS, ID signatures; activity threshold &gt;0.05 mut/Mb'],
-        ['TMB',               'Custom (Mutect2 PASS variants / captured Mb)',     'GRCh38', 'Non-synonymous variants; gnomAD AF&gt;1% excluded; TMB-H &ge;10 mut/Mb'],
+        ['Somatic Consensus', 'bcftools isec (Mutect2 &cap; Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT preserved'],
+        ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'Consensus VCF input; HRD+ threshold: probability &ge;0.45; SBS3/SBS8'],
+        ['Mut. Signatures',   'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',  'Consensus VCF input; COSMIC v3.4 SBS96, DBS, ID signatures; &gt;0.05 mut/Mb'],
+        ['TMB',               'Consensus VCF / captured Mb',                      'GRCh38', 'Non-synonymous PASS from consensus; TMB-H &ge;10 mut/Mb'],
         ['Pharmacogenomics',  'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1, NUDT15, TPMT, CYP2D6, CYP2C19; CPIC guideline annotation'],
         ['Germline&ndash;Somatic', 'germline_somatic_correlate.py',               'N/A',    'P/LP/VUS x somatic 2nd hits; HRD/MMR pathway biomarkers'],
     ]

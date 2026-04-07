@@ -62,6 +62,19 @@ workflow SAREK_CLINICAL {
         [pair, vcf]
     }
 
+    // Somatic Strelka2 VCFs (SNVs + indels, from variant_calling — not snpEff annotated)
+    ch_strelka2_snvs = Channel.fromPath(
+        "${sarek_out}/variant_calling/strelka/**/*.somatic_snvs.vcf.gz",
+        checkIfExists: false
+    ).map { vcf -> [vcf.parent.name, vcf] }
+    .ifEmpty { Channel.empty() }
+
+    ch_strelka2_indels = Channel.fromPath(
+        "${sarek_out}/variant_calling/strelka/**/*.somatic_indels.vcf.gz",
+        checkIfExists: false
+    ).map { vcf -> [vcf.parent.name, vcf] }
+    .ifEmpty { Channel.empty() }
+
     // CNVkit .somatic.call.cns (fallback to .call.cns)
     ch_cns = Channel.fromPath(
         "${sarek_out}/variant_calling/cnvkit/**/*.{somatic.call.cns,call.cns}"
@@ -149,11 +162,17 @@ workflow SAREK_CLINICAL {
         )
     }
 
-    // ── SOMATIC POSTPROCESSING (SNV + ASCAT/CNVkit + TMB + Signatures + HRD) ─
+    // ── SOMATIC POSTPROCESSING (SNV + Consensus + ASCAT/CNVkit + TMB + Signatures + HRD) ─
+    // Reference FASTA for bcftools norm in consensus module
+    def consensus_fasta     = params.gcnv_fasta ? file(params.gcnv_fasta) : file('NO_FILE')
+    def consensus_fasta_fai = params.gcnv_fasta ? file("${params.gcnv_fasta}.fai") : file('NO_FILE')
+
     ch_hrd_tsv = Channel.empty()
     if (!params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures || !params.skip_hrd) {
         SOMATIC_POSTPROCESS(
             ch_mutect2_vcfs,
+            ch_strelka2_snvs,
+            ch_strelka2_indels,
             ch_cns,
             ch_ascat,
             ch_dbnsfp,
@@ -164,7 +183,9 @@ workflow SAREK_CLINICAL {
             ch_germline_panel,
             ch_gene_coords,
             ch_panel_bed,
-            ch_tumor_samples
+            ch_tumor_samples,
+            consensus_fasta,
+            consensus_fasta_fai
         )
         if (!params.skip_hrd) {
             ch_hrd_tsv = SOMATIC_POSTPROCESS.out.hrd_tsv
