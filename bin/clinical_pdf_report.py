@@ -1106,9 +1106,9 @@ def build_germline_section(germline_variants, story):
 
     data_rows = []
     for v in germline_variants:
-        gene   = trunc(v.get('ANN[*].GENE', '-'), 20)
-        hgvsc  = trunc(v.get('ANN[*].HGVS_C', '-'), 30)
-        hgvsp  = trunc(v.get('ANN[*].HGVS_P', '-'), 26)
+        gene   = v.get('ANN[*].GENE', '-').strip() or '-'
+        hgvsc  = v.get('ANN[*].HGVS_C', '-').strip() or '-'
+        hgvsp  = v.get('ANN[*].HGVS_P', '-').strip() or '-'
         impact = trunc(v.get('ANN[*].IMPACT', '-'), 12)
         # DP and VAF
         dp_raw = v.get('GEN[0].DP', '')
@@ -1122,7 +1122,8 @@ def build_germline_section(germline_variants, story):
             vaf_str = '-'
         revel  = trunc(v.get('dbNSFP_REVEL_score', '-'), 8)
         gnomad = trunc(v.get('dbNSFP_gnomAD_exomes_AF', '-'), 12)
-        clnsig = trunc(v.get('dbNSFP_clinvar_clnsig', '-'), 42)
+        clnsig_raw = v.get('dbNSFP_clinvar_clnsig', '-').strip() or '-'
+        clnsig = clnsig_raw.replace('_', ' ')
         cls    = v.get('_ACMG', 'VUS')
         criteria_codes = v.get('_ACMG_CRITERIA', [])
         # Colour-code each criterion: pathogenic (red) vs benign (blue)
@@ -1537,32 +1538,83 @@ def build_signature_plots_pdf(act_path, sig_type, story):
 # Mutational Signatures section
 # ---------------------------------------------------------------------------
 _SIG_AETIOLOGY = {
-    'SBS1':  'Deamination of 5-methylcytosine (ageing)',
-    'SBS2':  'APOBEC cytidine deaminase',
-    'SBS3':  'Defective homologous recombination (HRD)',
-    'SBS4':  'Tobacco mutagen exposure',
-    'SBS5':  'Clock-like replication errors',
-    'SBS6':  'Mismatch repair deficiency (MMR)',
-    'SBS7a': 'UV light exposure',
-    'SBS7b': 'UV light exposure',
-    'SBS8':  'Defective homologous recombination',
-    'SBS13': 'APOBEC cytidine deaminase',
-    'SBS15': 'MMR deficiency (MLH1 hypermethylation)',
-    'SBS18': 'Reactive oxygen species damage',
-    'SBS20': 'MMR deficiency + POLD1 mutation',
-    'SBS21': 'MMR deficiency (MSI-H)',
-    'SBS26': 'MMR deficiency',
-    'SBS30': 'Defective base excision repair (NTHL1)',
-    'SBS44': 'MMR deficiency',
-    'ID1':   'Replication slippage at homopolymers',
-    'ID2':   'Replication slippage — MMR-related',
+    # SBS signatures (COSMIC v3.4)
+    'SBS1':  'Deamination of 5-methylcytosine (ageing / clock-like)',
+    'SBS2':  'APOBEC cytidine deaminase activity',
+    'SBS3':  'Defective homologous recombination DNA repair (HRD)',
+    'SBS4':  'Tobacco smoking mutagen exposure',
+    'SBS5':  'Clock-like (unknown mechanism, correlates with age)',
+    'SBS6':  'Mismatch repair deficiency (MMR-d)',
+    'SBS7a': 'UV light exposure (C>T at dipyrimidines)',
+    'SBS7b': 'UV light exposure (T>A at CC dinucleotides)',
+    'SBS7c': 'UV light exposure',
+    'SBS7d': 'UV light exposure',
+    'SBS8':  'Defective homologous recombination / unknown',
+    'SBS9':  'AID / somatic hypermutation (lymphoid)',
+    'SBS10a': 'POLE exonuclease domain mutation',
+    'SBS10b': 'POLE exonuclease domain mutation',
+    'SBS10c': 'POLE exonuclease domain mutation',
+    'SBS10d': 'POLE exonuclease domain mutation',
+    'SBS11': 'Temozolomide alkylating chemotherapy',
+    'SBS12': 'Unknown aetiology (found in liver cancer)',
+    'SBS13': 'APOBEC cytidine deaminase activity',
+    'SBS14': 'MMR deficiency + POLE exonuclease domain mutation',
+    'SBS15': 'MMR deficiency (associated with MLH1 silencing)',
+    'SBS16': 'Unknown aetiology (found in liver cancer)',
+    'SBS17a': 'Unknown (found in oesophagus/stomach cancer)',
+    'SBS17b': 'Unknown (found in oesophagus/stomach cancer)',
+    'SBS18': 'Reactive oxygen species (ROS) DNA damage',
+    'SBS19': 'Unknown aetiology',
+    'SBS20': 'MMR deficiency + POLD1 exonuclease domain mutation',
+    'SBS21': 'MMR deficiency (MSI-H tumours)',
+    'SBS22': 'Aristolochic acid exposure',
+    'SBS23': 'Unknown aetiology',
+    'SBS24': 'Aflatoxin exposure',
+    'SBS25': 'Chemotherapy (unknown agent)',
+    'SBS26': 'Mismatch repair deficiency',
+    'SBS28': 'Unknown aetiology',
+    'SBS29': 'Tobacco chewing (gutkha / betel quid)',
+    'SBS30': 'Defective base excision repair (NTHL1 biallelic)',
+    'SBS31': 'Platinum chemotherapy (cisplatin)',
+    'SBS32': 'Azathioprine immunosuppression',
+    'SBS33': 'Unknown aetiology',
+    'SBS34': 'Unknown aetiology',
+    'SBS35': 'Platinum chemotherapy (cisplatin)',
+    'SBS36': 'Defective base excision repair (MUTYH biallelic)',
+    'SBS37': 'Unknown aetiology',
+    'SBS38': 'UV light exposure (indirect)',
+    'SBS39': 'Unknown aetiology',
+    'SBS40': 'Unknown (clock-like, correlates with age)',
+    'SBS41': 'Unknown aetiology',
+    'SBS42': 'Haloalkane exposure (occupational)',
+    'SBS44': 'Mismatch repair deficiency',
+    'SBS84': 'AID activity (lymphoid)',
+    'SBS85': 'AID activity (lymphoid)',
+    'SBS86': 'Unknown chemotherapy',
+    'SBS87': 'Thiopurine chemotherapy',
+    'SBS88': 'Colibactin (pks+ E. coli)',
+    'SBS89': 'Unknown aetiology',
+    'SBS90': 'Duocarmycin exposure',
+    'SBS92': 'Tobacco smoking',
+    'SBS93': 'Unknown aetiology',
+    'SBS94': 'Unknown aetiology',
+    # ID signatures
+    'ID1':   'Replication slippage at T homopolymers (clock-like)',
+    'ID2':   'Replication slippage at T homopolymers — MMR-related',
     'ID3':   'Tobacco smoking',
     'ID4':   'Unknown aetiology',
     'ID5':   'Unknown aetiology',
-    'ID6':   'Homologous recombination deficiency',
-    'ID7':   'Replication slippage at microsatellites',
-    'ID8':   'Non-homologous end joining',
+    'ID6':   'Homologous recombination deficiency (HRD)',
+    'ID7':   'Replication slippage at microsatellites — MMR-related',
+    'ID8':   'Non-homologous end joining (NHEJ) repair',
+    'ID9':   'Unknown aetiology',
+    'ID10':  'Unknown aetiology',
+    'ID11':  'Unknown aetiology',
+    'ID12':  'Unknown aetiology',
     'ID13':  'UV light exposure',
+    'ID14':  'Unknown aetiology',
+    'ID17':  'Unknown aetiology',
+    'ID18':  'Colibactin (pks+ E. coli)',
 }
 
 
@@ -1604,10 +1656,10 @@ def build_mutational_signatures_section(args, story):
         rows_data   = []
         for sig, act in sbs_activities:
             rows_data.append([sig, 'SBS', str(act),
-                               _SIG_AETIOLOGY.get(sig, 'See COSMIC mutational signatures database')])
+                               _SIG_AETIOLOGY.get(sig, 'Unknown aetiology (see COSMIC v3.4)')])
         for sig, act in id_activities:
             rows_data.append([sig, 'ID', str(act),
-                               _SIG_AETIOLOGY.get(sig, 'See COSMIC mutational signatures database')])
+                               _SIG_AETIOLOGY.get(sig, 'Unknown aetiology (see COSMIC v3.4)')])
         tbl = build_variant_table(col_headers, col_widths, rows_data)
         story.append(tbl)
         story.append(Spacer(1, 0.3 * cm))
@@ -2258,21 +2310,17 @@ def build_correlation_section(corr_data, story):
                            styles['Normal']))
     story.append(Spacer(1, 0.25 * cm))
 
-    # Column headers
+    # Column headers — use full USABLE_W for better readability
     col_headers = ['Gene', 'Germline variant', 'ACMG', 'Pathway',
                    'Somatic 2nd hit', 'Biomarkers', 'Interpretation']
-    col_widths   = [1.3*cm, 3.4*cm, 1.0*cm, 1.5*cm, 3.8*cm, 3.8*cm, 3.2*cm]
+    col_widths   = [1.3*cm, 4.0*cm, 0.9*cm, 1.4*cm, 4.2*cm, 4.2*cm, 3.0*cm]
 
     header_style = ParagraphStyle('ch', fontSize=6.5, fontName='Helvetica-Bold',
                                   textColor=colors.white, leading=8)
-    cell_style   = ParagraphStyle('cc', fontSize=6.5, fontName='Helvetica',
+    cell_style   = ParagraphStyle('cc', fontSize=6, fontName='Helvetica',
                                   textColor=colors.HexColor('#1e293b'), leading=8)
     small_style  = ParagraphStyle('cs', fontSize=5.5, fontName='Helvetica',
                                   textColor=colors.HexColor('#64748b'), leading=7)
-
-    def trunc(s, n=38):
-        s = str(s or '')
-        return s if len(s) <= n else s[:n-1] + '\u2026'
 
     table_data = [[Paragraph(h, header_style) for h in col_headers]]
 
@@ -2280,18 +2328,18 @@ def build_correlation_section(corr_data, story):
         # Gene
         gene_p = Paragraph('<b>' + r['gene'] + '</b>', cell_style)
 
-        # Variant — different display for CNV vs SNV
+        # Variant — different display for CNV vs SNV (no truncation, let Paragraph wrap)
         vtype = r.get('variant_type', 'SNV')
         if vtype == 'CNV':
             var_p = Paragraph(
-                trunc(r.get('hgvs_c', '?'), 35)
+                str(r.get('hgvs_c', '?'))
                 + '<br/><font size="5" color="#7c3aed"><b>[CNV germline hit]</b></font>',
                 cell_style)
         else:
             hp = r.get('hgvs_p') or r.get('hgvs_c') or '?'
             hc = r.get('hgvs_c', '') if r.get('hgvs_p') else ''
-            var_p = Paragraph(trunc(hp, 28)
-                              + ('<br/><font size="5" color="#94a3b8">' + trunc(hc, 28) + '</font>'
+            var_p = Paragraph(str(hp)
+                              + ('<br/><font size="5" color="#94a3b8">' + str(hc) + '</font>'
                                  if hc else ''), cell_style)
 
         # ACMG badge
@@ -2308,33 +2356,33 @@ def build_correlation_section(corr_data, story):
         }.get(pw, '#8b5cf6')
         pw_p = Paragraph('<font color="' + pw_col_hex + '"><b>' + pw + '</b></font>', cell_style)
 
-        # Second hits
+        # Second hits (no truncation — let cell wrap)
         hits = r.get('second_hits', [])
         if hits:
             hit_lines = '<br/>'.join(
-                '\u25a0 ' + trunc(h.get('label', ''), 36) for h in hits)
+                '\u25a0 ' + str(h.get('label', '')) for h in hits)
         else:
             hit_lines = '<font color="#94a3b8"><i>Not detected</i></font>'
         hits_p = Paragraph(hit_lines, cell_style)
 
-        # Biomarkers
+        # Biomarkers (no truncation)
         bm_items = r.get('biomarkers', [])
         status_sym = {'HIGH': '\u2713', 'borderline': '\u25cf', 'low': '\u2717',
                       'absent': '\u2717', 'detected': '\u2713', 'n/a': '\u2014'}
         bm_lines = '<br/>'.join(
             status_sym.get(b.get('status', ''), '\u25cf') + ' '
-            + trunc(b.get('key', '') + ': ' + b.get('val', ''), 34)
+            + str(b.get('key', '')) + ': ' + str(b.get('val', ''))
             for b in bm_items
         )
         bm_p = Paragraph(bm_lines, cell_style)
 
-        # Interpretation
+        # Interpretation (no truncation)
         ik  = r.get('interp_key', 'GERMLINE_ONLY')
         il  = r.get('interp_label', 'Germline only')
         ic  = INTERP_COLORS.get(ik, colors.HexColor('#6b7280'))
         ic_hex = '#{:02x}{:02x}{:02x}'.format(
             int(ic.red * 255), int(ic.green * 255), int(ic.blue * 255))
-        interp_p = Paragraph('<font color="' + ic_hex + '"><b>' + trunc(il, 22) + '</b></font>',
+        interp_p = Paragraph('<font color="' + ic_hex + '"><b>' + str(il) + '</b></font>',
                              cell_style)
 
         table_data.append([gene_p, var_p, acmg_p, pw_p, hits_p, bm_p, interp_p])
