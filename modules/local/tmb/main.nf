@@ -34,7 +34,7 @@ process TMB_FILTER {
 
     script:
     """
-    FILTER_EXPR="( FILTER = 'PASS' ) \\
+    FILTER_EXPR="( FILTER = 'PASS' | FILTER = 'haplotype' ) \\
         & (ANN[*].IMPACT = 'HIGH' | ANN[*].IMPACT = 'MODERATE') \\
         & ( GEN[1].DP >= ${min_dp} ) \\
         & ( GEN[1].AF >= ${min_af} ) \\

@@ -48,8 +48,8 @@ process SOMATIC_CONSENSUS {
         | bcftools sort -Oz -o strelka_merged.vcf.gz
     tabix -p vcf strelka_merged.vcf.gz
 
-    # ── 2. Mutect2: filter PASS ────────────────────────────────────────────
-    bcftools view -f PASS ${mutect2_vcf} -Oz -o mutect2_pass.vcf.gz
+    # ── 2. Mutect2: filter PASS + haplotype (soft-filter for phased variants) ─
+    bcftools view -f PASS,haplotype ${mutect2_vcf} -Oz -o mutect2_pass.vcf.gz
     tabix -p vcf mutect2_pass.vcf.gz
 
     # ── 3. Normalize both (left-align indels, split multi-allelic) ─────────
