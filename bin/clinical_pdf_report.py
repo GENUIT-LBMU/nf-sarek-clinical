@@ -21,6 +21,22 @@ import sys
 from datetime import date
 
 # ---------------------------------------------------------------------------
+# Filter thresholds from env vars (set by Nextflow from conf/filters.config)
+# ---------------------------------------------------------------------------
+_E = os.environ.get
+FILT_GERMLINE_CNV_MIN_QA = int(_E('FILT_GERMLINE_CNV_MIN_QA', '4'))
+BIO_TMB_HIGH       = float(_E('BIO_TMB_HIGH', '10.0'))
+BIO_TMB_BORDERLINE = float(_E('BIO_TMB_BORDERLINE', '6.0'))
+BIO_MSI_HIGH       = float(_E('BIO_MSI_HIGH', '3.5'))
+BIO_MSI_BORDERLINE = float(_E('BIO_MSI_BORDERLINE', '1.5'))
+BIO_HRD_HIGH       = float(_E('BIO_HRD_HIGH', '0.45'))
+BIO_HRD_BORDERLINE = float(_E('BIO_HRD_BORDERLINE', '0.30'))
+QC_LOW_COV         = int(_E('QC_LOW_COV_THRESHOLD', '50'))
+SIG_MMR_SBS_SET    = set(_E('SIG_MMR_SBS', 'SBS6,SBS15,SBS20,SBS21,SBS26,SBS44').split(','))
+SIG_MMR_ID_SET     = set(_E('SIG_MMR_ID', 'ID1,ID2').split(','))
+SIG_HRD_SBS_SET    = set(_E('SIG_HRD_SBS', 'SBS3,SBS8').split(','))
+
+# ---------------------------------------------------------------------------
 # ReportLab imports
 # ---------------------------------------------------------------------------
 from reportlab.lib import colors
@@ -465,55 +481,49 @@ def classify_acmg_with_criteria(row):
             return 'B', ['ClinVar:B']
 
     # 2. BA1 – common variant
-    if gnomad_af is not None and gnomad_af > 0.05:
+    if gnomad_af is not None and gnomad_af > float(_E('ACMG_BA1_AF', '0.05')):
         return 'B', ['BA1']
 
     # 3. Evidence scoring
     score = 0
     criteria = []
 
-    # Pathogenic evidence
     if impact == 'HIGH':
-        score += 8
+        score += int(_E('ACMG_PVS1_SCORE', '8'))
         criteria.append('PVS1')
-    if gnomad_af is None or gnomad_af < 0.001:
-        score += 2
+    if gnomad_af is None or gnomad_af < float(_E('ACMG_PM2_AF', '0.001')):
+        score += int(_E('ACMG_PM2_SCORE', '2'))
         criteria.append('PM2')
-    # -- Computational evidence (PP3 / BP4) --
-    # ClinGen SVI: REVEL and the 9-tool panel are evaluated together.
-    # If they disagree, neither PP3 nor BP4 is applied.
-    revel_dir = 0
-    revel_str = 0
-    revel_lbl = ''
+
+    revel_dir = 0; revel_str = 0; revel_lbl = ''
     if revel is not None:
-        if revel >= 0.932:
+        if revel >= float(_E('ACMG_REVEL_PP3_STRONG', '0.932')):
             revel_dir = 1; revel_str = 4; revel_lbl = 'PP3_St'
-        elif revel >= 0.644:
+        elif revel >= float(_E('ACMG_REVEL_PP3', '0.644')):
             revel_dir = 1; revel_str = 2; revel_lbl = 'PP3'
-        elif revel >= 0.5:
+        elif revel >= float(_E('ACMG_REVEL_PP3_SUP', '0.5')):
             revel_dir = 1; revel_str = 1; revel_lbl = 'PP3_Sup'
-        elif revel < 0.15:
+        elif revel < float(_E('ACMG_REVEL_BP4_STRONG', '0.15')):
             revel_dir = -1; revel_str = 4; revel_lbl = 'BP4_St'
-        elif revel < 0.29:
+        elif revel < float(_E('ACMG_REVEL_BP4', '0.29')):
             revel_dir = -1; revel_str = 2; revel_lbl = 'BP4'
 
     dam, ben = _count_insil_pdf(row)
     total = dam + ben
-    panel_dir = 0
-    panel_str = 0
-    panel_lbl = ''
+    panel_dir = 0; panel_str = 0; panel_lbl = ''
+    _insil_maj = float(_E('ACMG_INSIL_MAJORITY', '0.75'))
     if total > 0:
         if ben > dam:
             panel_dir = -1
             ratio = ben / total
-            if ratio >= 0.75:
+            if ratio >= _insil_maj:
                 panel_str = 2; panel_lbl = 'BP4({}/{})'.format(ben, total)
             else:
                 panel_str = 1; panel_lbl = 'BP4_Sup({}/{})'.format(ben, total)
         elif dam > ben:
             panel_dir = 1
             ratio = dam / total
-            if ratio >= 0.75:
+            if ratio >= _insil_maj:
                 panel_str = 2; panel_lbl = 'PP3({}/{})'.format(dam, total)
             else:
                 panel_str = 1; panel_lbl = 'PP3_Sup({}/{})'.format(dam, total)
@@ -529,19 +539,17 @@ def classify_acmg_with_criteria(row):
     elif panel_dir != 0:
         score += panel_dir * panel_str; criteria.append(panel_lbl)
 
-    # Benign evidence
-    if gnomad_af is not None and gnomad_af > 0.01:
-        score -= 4
+    if gnomad_af is not None and gnomad_af > float(_E('ACMG_BS1_AF', '0.01')):
+        score += int(_E('ACMG_BS1_SCORE', '-4'))
         criteria.append('BS1')
 
-    if score >= 10:
-        cls = 'P'
-    elif score >= 6:
-        cls = 'LP'
-    elif score <= -2:
-        cls = 'LB'
-    else:
-        cls = 'VUS'
+    _sp = int(_E('ACMG_SCORE_P', '10'))
+    _slp = int(_E('ACMG_SCORE_LP', '6'))
+    _slb = int(_E('ACMG_SCORE_LB', '-2'))
+    if score >= _sp:    cls = 'P'
+    elif score >= _slp: cls = 'LP'
+    elif score <= _slb: cls = 'LB'
+    else:               cls = 'VUS'
     return cls, criteria
 
 
@@ -880,7 +888,7 @@ def build_cover_page(args, metrics, story):
     story.append(Spacer(1, 0.5 * cm))
 
     # ── Determine low-coverage flag ────────────────────────────────────────────
-    _LOW_COV_THRESHOLD = 50   # mean X — below this, flag quality concern
+    _LOW_COV_THRESHOLD = QC_LOW_COV
     try:
         _cov_t_f = float(metrics.get('cov_t', 'NA'))
     except (ValueError, TypeError):
@@ -1965,7 +1973,7 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
     story.append(PageBreak())
     story.append(Paragraph(T('sect_germ_cnv'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
-    MIN_QA = 4
+    MIN_QA = FILT_GERMLINE_CNV_MIN_QA
 
     # Load panel genes
     panel_genes = set()
@@ -2293,8 +2301,8 @@ def build_correlation_section(corr_data, story):
     tmb_s  = str(round(float(metrics.get('tmb', 0) or 0), 1))
     msi_s  = str(round(float(metrics.get('msi', 0) or 0), 1))
     hrd_s  = str(round(float(metrics.get('hrd_prob', 0) or 0), 4))
-    mmr_found = [s for s in detected_sigs if s in ('SBS6','SBS15','SBS20','SBS21','SBS26','SBS44')]
-    hrd_found = [s for s in detected_sigs if s in ('SBS3','SBS8')]
+    mmr_found = [s for s in detected_sigs if s in SIG_MMR_SBS_SET]
+    hrd_found = [s for s in detected_sigs if s in SIG_HRD_SBS_SET]
     try:
         _msi_corr_status = 'detected' if float(msi_s or 0) >= 5.0 else 'MSS'
     except (ValueError, TypeError):
@@ -2495,11 +2503,11 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
     # Detected signatures from correlation JSON
     detected_sigs    = set(corr_data.get('detected_sigs', [])) if corr_data else set()
     detected_id_sigs = set(corr_data.get('detected_id_sigs', [])) if corr_data else set()
-    mmr_sbs_sigs = [s for s in ('SBS6', 'SBS15', 'SBS20', 'SBS21', 'SBS26', 'SBS44')
+    mmr_sbs_sigs = [s for s in sorted(SIG_MMR_SBS_SET)
                     if s in detected_sigs]
-    mmr_id_sigs  = [s for s in ('ID1', 'ID2') if s in detected_id_sigs]
+    mmr_id_sigs  = [s for s in sorted(SIG_MMR_ID_SET) if s in detected_id_sigs]
     mmr_sigs     = mmr_sbs_sigs  # keep for legacy compatibility
-    hrd_sigs     = [s for s in ('SBS3', 'SBS8') if s in detected_sigs]
+    hrd_sigs     = [s for s in sorted(SIG_HRD_SBS_SET) if s in detected_sigs]
     biallelic_somatic = (corr_data or {}).get('biallelic_somatic', [])
 
     # Germline P/LP lookup by gene
@@ -2538,7 +2546,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
     # ── Finding 1: HRD / HRR ────────────────────────────────────────────────
     hrr_germ = [g for g in germ_plp if g in _HRR_GENES]
     hrr_som  = [g for g in som_by_gene if g in _HRR_GENES]
-    hrd_pos  = hrd_prob is not None and hrd_prob >= 0.45
+    hrd_pos  = hrd_prob is not None and hrd_prob >= BIO_HRD_HIGH
     if hrd_pos or hrr_germ:
         lines = []
         prob_str  = f'{hrd_prob:.3f}' if hrd_prob is not None else 'NA'
@@ -2575,7 +2583,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
     # ── Finding 2: MMR Deficiency ────────────────────────────────────────────
     mmr_germ = [g for g in germ_plp if g in _MMR_GENES]
     mmr_som  = [g for g in som_by_gene if g in _MMR_GENES]
-    msi_pos  = msi_val is not None and msi_val >= 3.5
+    msi_pos  = msi_val is not None and msi_val >= BIO_MSI_HIGH
     # MMR biallelic somatic events (e.g. MSH2 somatic SNV + cnLOH)
     mmr_biallelic_som = [b for b in biallelic_somatic
                          if b.get('pathway') == 'MMR']
@@ -3301,7 +3309,7 @@ def main():
                 hrd_status_val = raw_pred if raw_pred else 'NA'
             # Override with custom probability threshold (>= 0.45 = HRD+)
             try:
-                hrd_status_val = 'HRD+' if float(hrd_prob_val) >= 0.45 else 'HRD-'
+                hrd_status_val = 'HRD+' if float(hrd_prob_val) >= BIO_HRD_HIGH else 'HRD-'
             except (ValueError, TypeError):
                 pass
 

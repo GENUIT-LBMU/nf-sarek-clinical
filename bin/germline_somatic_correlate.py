@@ -38,16 +38,18 @@ HRR_GENES = {
     'CDK12', 'ABRAXAS1', 'ABRAXAS2',
 }
 
-MMR_SIGNATURES    = {'SBS6', 'SBS15', 'SBS20', 'SBS21', 'SBS26', 'SBS44'}
-HRD_SIGNATURES    = {'SBS3', 'SBS8'}
-MMR_ID_SIGNATURES = {'ID1', 'ID2'}   # canonical MMR indel signatures
+# Thresholds read from env vars (set by Nextflow from conf/filters.config)
+_E = os.environ.get
+MMR_SIGNATURES    = set(_E('SIG_MMR_SBS', 'SBS6,SBS15,SBS20,SBS21,SBS26,SBS44').split(','))
+HRD_SIGNATURES    = set(_E('SIG_HRD_SBS', 'SBS3,SBS8').split(','))
+MMR_ID_SIGNATURES = set(_E('SIG_MMR_ID', 'ID1,ID2').split(','))
 
-TMB_HIGH       = 10.0   # mut/Mb — high TMB threshold
-TMB_BORDER     = 6.0    # mut/Mb — borderline
-MSI_HIGH_PCT   = 3.5    # MSIsensor — high MSI
-MSI_BORDER     = 1.5
-HRD_HIGH       = 0.45   # HRProfiler probability (custom cutoff: >= 0.45 = HRD+)
-HRD_BORDER     = 0.3
+TMB_HIGH       = float(_E('BIO_TMB_HIGH', '10.0'))
+TMB_BORDER     = float(_E('BIO_TMB_BORDERLINE', '6.0'))
+MSI_HIGH_PCT   = float(_E('BIO_MSI_HIGH', '3.5'))
+MSI_BORDER     = float(_E('BIO_MSI_BORDERLINE', '1.5'))
+HRD_HIGH       = float(_E('BIO_HRD_HIGH', '0.45'))
+HRD_BORDER     = float(_E('BIO_HRD_BORDERLINE', '0.3'))
 
 
 # ---------------------------------------------------------------------------
@@ -127,15 +129,15 @@ def acmg_class(row_dict):
         gnomad = float(g('dbNSFP_gnomAD_exomes_AF'))
     except (ValueError, TypeError):
         gnomad = 0.0
-    if gnomad > 0.05:
+    if gnomad > float(_E('ACMG_BA1_AF', '0.05')):
         return 'B'
 
     score = 0
     impact = g('ANN[*].IMPACT').upper()
     if impact == 'HIGH':
-        score += 8
-    if gnomad < 0.001:
-        score += 2
+        score += int(_E('ACMG_PVS1_SCORE', '8'))
+    if gnomad < float(_E('ACMG_PM2_AF', '0.001')):
+        score += int(_E('ACMG_PM2_SCORE', '2'))
 
     revel_raw = g('dbNSFP_REVEL_score')
     revel = None
@@ -145,35 +147,36 @@ def acmg_class(row_dict):
         pass
 
     if revel is not None:
-        if revel >= 0.932:
+        if revel >= float(_E('ACMG_REVEL_PP3_STRONG', '0.932')):
             score += 4
-        elif revel >= 0.644:
+        elif revel >= float(_E('ACMG_REVEL_PP3', '0.644')):
             score += 2
-        elif revel >= 0.5:
+        elif revel >= float(_E('ACMG_REVEL_PP3_SUP', '0.5')):
             score += 1
-        if revel < 0.15:
+        if revel < float(_E('ACMG_REVEL_BP4_STRONG', '0.15')):
             score -= 4
-        elif revel < 0.29:
+        elif revel < float(_E('ACMG_REVEL_BP4', '0.29')):
             score -= 2
 
-    if gnomad > 0.01:
-        score -= 4
+    if gnomad > float(_E('ACMG_BS1_AF', '0.01')):
+        score += int(_E('ACMG_BS1_SCORE', '-4'))
 
     # ── In silico majority vote (9-tool panel) ────────────────────────────────
     dam, ben = _count_insil_dict(row_dict)
     total = dam + ben
+    _insil_maj = float(_E('ACMG_INSIL_MAJORITY', '0.75'))
     if total > 0:
         if ben > dam:
-            score -= 2 if (ben / total) >= 0.75 else 1
+            score -= 2 if (ben / total) >= _insil_maj else 1
         elif dam > ben:
-            score += 2 if (dam / total) >= 0.75 else 1
+            score += 2 if (dam / total) >= _insil_maj else 1
 
-    if score >= 10:
-        return 'P'
-    if score >= 6:
-        return 'LP'
-    if score <= -6:
-        return 'LB'
+    _sp = int(_E('ACMG_SCORE_P', '10'))
+    _slp = int(_E('ACMG_SCORE_LP', '6'))
+    _slb = int(_E('ACMG_SCORE_LB', '-2'))
+    if score >= _sp:  return 'P'
+    if score >= _slp: return 'LP'
+    if score <= _slb: return 'LB'
     return 'VUS'
 
 
@@ -215,7 +218,7 @@ def load_germline_cnv_variants(path, panel_genes=None):
     Only genes in the germline cancer-predisposition panel are reported.
     QA >= 4 : ALT allele Phred quality >= 4 (~60% confidence in the DEL/DUP call)
     """
-    MIN_QA = 4
+    MIN_QA = int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA', '4'))
     variants = []
     if not path or not os.path.isfile(path):
         return variants

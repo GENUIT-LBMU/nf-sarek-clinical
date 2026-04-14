@@ -138,6 +138,8 @@ process SNPSIFT_EXTRACT_GERMLINE {
 
     script:
     """
+    # Filter thresholds are available as env vars from nextflow.config env {} block
+
     java -jar ${snpsift_jar} extractFields -v -s ";" -e "." "${vcf}" \\
         CHROM POS ID REF ALT QUAL FILTER DP \\
         "ANN[*].ALLELE" "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" \\
@@ -188,7 +190,7 @@ except ImportError:
 
 ENSEMBL   = 'https://rest.ensembl.org'
 GNOMAD_GQL = 'https://gnomad.broadinstitute.org/api'
-MAX_Q     = 50     # safety cap: max variants to rescue per sample
+MAX_Q     = int(os.environ.get("FILT_GNOMAD_RESCUE_MAX", "50"))
 SLEEP     = 0.35   # seconds between API calls
 
 # ── Source 1: Ensembl VEP ──────────────────────────────────────────────────
@@ -362,7 +364,7 @@ PYEOF_GNOMAD
         # BA1: common polymorphism — gnomAD exomes AF > 5%
         if (reason == "" && gnomad_col && gnomad_col <= NF) {
             af = \$(gnomad_col) + 0
-            if (\$(gnomad_col) != "." && af > 0.05) {
+            if (\$(gnomad_col) != "." && af > ENVIRON["ACMG_BA1_AF"]+0) {
                 reason = sprintf("gnomad_BA1 (AF=%.4f)", af)
             }
         }
@@ -378,10 +380,10 @@ PYEOF_GNOMAD
                 ref = arr[1] + 0; alt = arr[2] + 0; tot = ref + alt
                 if (tot > 0) {
                     vaf = alt / tot
-                    min_vaf = (impact_col && \$(impact_col) ~ /HIGH/) ? 0.25 : 0.35
+                    min_vaf = (impact_col && \$(impact_col) ~ /HIGH/) ? ENVIRON["FILT_VAF_MIN_HIGH"]+0 : ENVIRON["FILT_VAF_MIN_MOD"]+0
                     if (vaf < min_vaf) {
                         reason = sprintf("vaf_too_low (VAF=%.3f, impact=%s)", vaf, \$(impact_col))
-                    } else if (vaf > 0.75) {
+                    } else if (vaf > ENVIRON["FILT_VAF_MAX"]+0) {
                         reason = sprintf("vaf_too_high (VAF=%.3f)", vaf)
                     }
                 }
@@ -401,7 +403,7 @@ PYEOF_GNOMAD
     #   Exempt: HIGH-impact variants (PVS1) and ClinVar pathogenic/likely_pathogenic.
     #   Rejected variants are appended (with reason) to germline_all_filtered.tsv.
     python3 - <<'PYEOF'
-import sys
+import sys, os
 from collections import defaultdict
 
 TSV_IN    = "${sample}.germline_snvs.pre_python.tsv"
@@ -463,7 +465,7 @@ for gene, idxs in gene_grp.items():
             r1, r2 = data[i1], data[i2]
             rank_same = g(r1, "ANN[*].RANK") == g(r2, "ANN[*].RANK")
             try:
-                nearby = abs(int(g(r1, "POS")) - int(g(r2, "POS"))) <= 30
+                nearby = abs(int(g(r1, "POS")) - int(g(r2, "POS"))) <= int(os.environ.get("FILT_MULTI_HIT_DIST", "30"))
             except ValueError:
                 nearby = False
             if rank_same or nearby:
@@ -478,7 +480,7 @@ for gene, idxs in gene_grp.items():
                             "multi_hit_same_exon_inframe_deletion "
                             "(effect={}, gene={}, exon={})".format(effect, gene, exon)
                         )
-                    elif v is not None and v < 0.40:
+                    elif v is not None and v < float(os.environ.get("FILT_MULTI_HIT_VAF", "0.40")):
                         to_filter[idx] = (
                             "multi_hit_same_exon_low_vaf "
                             "(VAF={:.3f}, gene={}, exon={})".format(v, gene, exon)
@@ -504,7 +506,7 @@ PYEOF
     #     insil_total   : total tools with a clear verdict
     #   Output: ${sample}.germline_snvs_acmg_annotated.tsv
     python3 - <<'PYEOF'
-import sys
+import sys, os
 
 # --- Inline ACMG helpers (mirrors bin/final_report_acmg.py) ---
 _INSIL_DAMAGING = {
@@ -570,83 +572,78 @@ def acmg_criteria_list(row, hdr):
         gnomad = float(col('dbNSFP_gnomAD_exomes_AF'))
     except (ValueError, TypeError):
         gnomad = 0.0
-    if gnomad > 0.05:
+    E = os.environ.get
+    if gnomad > float(E('ACMG_BA1_AF', '0.05')):
         return 'B', ['BA1']
 
     score = 0
     criteria = []
     impact = col('ANN[*].IMPACT').upper()
     if impact == 'HIGH':
-        score += 8
+        score += int(E('ACMG_PVS1_SCORE', '8'))
         criteria.append('PVS1')
-    if gnomad < 0.001:
-        score += 2
+    if gnomad < float(E('ACMG_PM2_AF', '0.001')):
+        score += int(E('ACMG_PM2_SCORE', '2'))
         criteria.append('PM2')
 
     # -- Computational evidence (PP3 / BP4) --
-    # ClinGen SVI: REVEL and the 9-tool in silico panel are evaluated together.
-    # If they disagree (one pathogenic, the other benign), neither PP3 nor BP4
-    # is applied.  Only concordant evidence or a single source counts.
-    revel_dir = 0   # +1 = pathogenic, -1 = benign, 0 = neutral/missing
-    revel_str = 0   # strength value for score
-    revel_lbl = ''
+    revel_dir = 0; revel_str = 0; revel_lbl = ''
     try:
         revel = float(col('dbNSFP_REVEL_score'))
-        if revel >= 0.932:
+        if revel >= float(E('ACMG_REVEL_PP3_STRONG', '0.932')):
             revel_dir = 1; revel_str = 4; revel_lbl = 'PP3_St'
-        elif revel >= 0.644:
+        elif revel >= float(E('ACMG_REVEL_PP3', '0.644')):
             revel_dir = 1; revel_str = 2; revel_lbl = 'PP3'
-        elif revel >= 0.5:
+        elif revel >= float(E('ACMG_REVEL_PP3_SUP', '0.5')):
             revel_dir = 1; revel_str = 1; revel_lbl = 'PP3_Sup'
-        elif revel < 0.15:
+        elif revel < float(E('ACMG_REVEL_BP4_STRONG', '0.15')):
             revel_dir = -1; revel_str = 4; revel_lbl = 'BP4_St'
-        elif revel < 0.29:
+        elif revel < float(E('ACMG_REVEL_BP4', '0.29')):
             revel_dir = -1; revel_str = 2; revel_lbl = 'BP4'
     except (ValueError, TypeError):
         pass
 
     dam, ben = _count_insil(col)
     total = dam + ben
-    panel_dir = 0   # +1 = pathogenic, -1 = benign
-    panel_str = 0
-    panel_lbl = ''
+    panel_dir = 0; panel_str = 0; panel_lbl = ''
+    _insil_maj = float(E('ACMG_INSIL_MAJORITY', '0.75'))
     if total > 0:
         if ben > dam:
             panel_dir = -1
             ratio = ben / total
-            if ratio >= 0.75:
+            if ratio >= _insil_maj:
                 panel_str = 2; panel_lbl = 'BP4({}/{})'.format(ben, total)
             else:
                 panel_str = 1; panel_lbl = 'BP4_Sup({}/{})'.format(ben, total)
         elif dam > ben:
             panel_dir = 1
             ratio = dam / total
-            if ratio >= 0.75:
+            if ratio >= _insil_maj:
                 panel_str = 2; panel_lbl = 'PP3({}/{})'.format(dam, total)
             else:
                 panel_str = 1; panel_lbl = 'PP3_Sup({}/{})'.format(dam, total)
 
-    # Apply only if REVEL and panel agree (or only one has data)
     if revel_dir != 0 and panel_dir != 0:
         if revel_dir == panel_dir:
-            # Concordant: use the stronger of the two
             if revel_str >= panel_str:
                 score += revel_dir * revel_str; criteria.append(revel_lbl)
             else:
                 score += panel_dir * panel_str; criteria.append(panel_lbl)
-        # else: discordant → neither PP3 nor BP4 applied
     elif revel_dir != 0:
         score += revel_dir * revel_str; criteria.append(revel_lbl)
     elif panel_dir != 0:
         score += panel_dir * panel_str; criteria.append(panel_lbl)
 
-    if gnomad > 0.01:
-        score -= 4
+    if gnomad > float(E('ACMG_BS1_AF', '0.01')):
+        score += int(E('ACMG_BS1_SCORE', '-4'))
         criteria.append('BS1')
 
-    if score >= 10:   return 'P', criteria
-    if score >= 6:    return 'LP', criteria
-    if score <= -2:   return 'LB', criteria
+    _sp = int(E('ACMG_SCORE_P', '10'))
+    _slp = int(E('ACMG_SCORE_LP', '6'))
+    _slb = int(E('ACMG_SCORE_LB', '-2'))
+    if score >= _sp:    return 'P', criteria
+    if score >= _slp:   return 'LP', criteria
+    if score <= _slb:   return 'LB', criteria
     return 'VUS', criteria
 
 # --- Annotate all candidate variants ---

@@ -1,7 +1,11 @@
 """
 ACMG germline classification helpers for the nf-sarek-clinical final report.
 Imported by modules/local/final_report/main.nf at run time via sys.path.
+All thresholds are read from environment variables (set by Nextflow from
+conf/filters.config) with hardcoded defaults as fallback.
 """
+import os as _os
+_E = _os.environ.get
 
 _BENIGN_CRIT = {'BA1', 'BS1', 'BP4', 'BP4_St', 'BP4_Sup'}
 
@@ -90,58 +94,51 @@ def acmg_criteria_list(row, hdr):
         gnomad = float(col('dbNSFP_gnomAD_exomes_AF'))
     except (ValueError, TypeError):
         gnomad = 0.0
-    if gnomad > 0.05:
+    if gnomad > float(_E('ACMG_BA1_AF', '0.05')):
         return 'B', ['BA1']
 
-    # ── Score-based classification ────────────────────────────────────────────
     score = 0
     criteria = []
     impact = col('ANN[*].IMPACT').upper()
     if impact == 'HIGH':
-        score += 8
+        score += int(_E('ACMG_PVS1_SCORE', '8'))
         criteria.append('PVS1')
-    if gnomad < 0.001:
-        score += 2
+    if gnomad < float(_E('ACMG_PM2_AF', '0.001')):
+        score += int(_E('ACMG_PM2_SCORE', '2'))
         criteria.append('PM2')
 
-    # -- Computational evidence (PP3 / BP4) --
-    # ClinGen SVI: REVEL and the 9-tool panel are evaluated together.
-    # If they disagree, neither PP3 nor BP4 is applied.
-    revel_dir = 0
-    revel_str = 0
-    revel_lbl = ''
+    revel_dir = 0; revel_str = 0; revel_lbl = ''
     try:
         revel = float(col('dbNSFP_REVEL_score'))
-        if revel >= 0.932:
+        if revel >= float(_E('ACMG_REVEL_PP3_STRONG', '0.932')):
             revel_dir = 1; revel_str = 4; revel_lbl = 'PP3_St'
-        elif revel >= 0.644:
+        elif revel >= float(_E('ACMG_REVEL_PP3', '0.644')):
             revel_dir = 1; revel_str = 2; revel_lbl = 'PP3'
-        elif revel >= 0.5:
+        elif revel >= float(_E('ACMG_REVEL_PP3_SUP', '0.5')):
             revel_dir = 1; revel_str = 1; revel_lbl = 'PP3_Sup'
-        elif revel < 0.15:
+        elif revel < float(_E('ACMG_REVEL_BP4_STRONG', '0.15')):
             revel_dir = -1; revel_str = 4; revel_lbl = 'BP4_St'
-        elif revel < 0.29:
+        elif revel < float(_E('ACMG_REVEL_BP4', '0.29')):
             revel_dir = -1; revel_str = 2; revel_lbl = 'BP4'
     except (ValueError, TypeError):
         pass
 
     dam, ben = _count_insil(col)
     total = dam + ben
-    panel_dir = 0
-    panel_str = 0
-    panel_lbl = ''
+    panel_dir = 0; panel_str = 0; panel_lbl = ''
+    _insil_maj = float(_E('ACMG_INSIL_MAJORITY', '0.75'))
     if total > 0:
         if ben > dam:
             panel_dir = -1
             ratio = ben / total
-            if ratio >= 0.75:
+            if ratio >= _insil_maj:
                 panel_str = 2; panel_lbl = 'BP4({}/{})'.format(ben, total)
             else:
                 panel_str = 1; panel_lbl = 'BP4_Sup({}/{})'.format(ben, total)
         elif dam > ben:
             panel_dir = 1
             ratio = dam / total
-            if ratio >= 0.75:
+            if ratio >= _insil_maj:
                 panel_str = 2; panel_lbl = 'PP3({}/{})'.format(dam, total)
             else:
                 panel_str = 1; panel_lbl = 'PP3_Sup({}/{})'.format(dam, total)
@@ -157,16 +154,16 @@ def acmg_criteria_list(row, hdr):
     elif panel_dir != 0:
         score += panel_dir * panel_str; criteria.append(panel_lbl)
 
-    if gnomad > 0.01:
-        score -= 4
+    if gnomad > float(_E('ACMG_BS1_AF', '0.01')):
+        score += int(_E('ACMG_BS1_SCORE', '-4'))
         criteria.append('BS1')
 
-    if score >= 10:
-        return 'P', criteria
-    if score >= 6:
-        return 'LP', criteria
-    if score <= -2:
-        return 'LB', criteria
+    _sp = int(_E('ACMG_SCORE_P', '10'))
+    _slp = int(_E('ACMG_SCORE_LP', '6'))
+    _slb = int(_E('ACMG_SCORE_LB', '-2'))
+    if score >= _sp:  return 'P', criteria
+    if score >= _slp: return 'LP', criteria
+    if score <= _slb: return 'LB', criteria
     return 'VUS', criteria
 
 

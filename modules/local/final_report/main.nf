@@ -802,7 +802,7 @@ def tsv_to_html_somatic(path, civic_idx):
 # ----
 def tsv_to_html_germline_cnv(path):
     # One row per exon -> group by (CHROM, POS, END). Only panel genes, QA >= 4.
-    MIN_QA = 4
+    MIN_QA = int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA','4'))
     _panel_genes = _load_panel(_GERMLINE_PANEL)
     if not path or not os.path.isfile(path):
         return "<p class='warn'>Germline CNV (GATK) file not found: " + html.escape(path or "N/A") + "</p>"
@@ -842,7 +842,7 @@ def tsv_to_html_germline_cnv(path):
         gene = row.get('gen','').strip()
         if gene and gene not in segments[key]['genes']:
             segments[key]['genes'].append(gene)
-    # Filter: only panel genes with QA >= MIN_QA
+    # Panel genes only, QA >= MIN_QA
     filtered = []
     for key in seg_order:
         seg = segments[key]
@@ -861,7 +861,7 @@ def tsv_to_html_germline_cnv(path):
             "<div class='callout-info'>"
             "<strong>No Reportable Germline CNV Events</strong><br>"
             "The GATK germline copy-number variant analysis did not identify any CN &ne; 2 events "
-            "meeting quality threshold (QA &ge; 4) in the 103-gene germline cancer predisposition panel. "
+            "meeting quality threshold in the 103-gene germline panel. "
             "Raw annotated segments are available for review in "
             "<code>germline/cnv_gatk/annotated/</code>."
             "</div>"

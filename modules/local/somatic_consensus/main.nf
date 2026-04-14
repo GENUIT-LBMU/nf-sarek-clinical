@@ -29,6 +29,7 @@ process SOMATIC_CONSENSUS {
     tuple val(pair), path(mutect2_vcf), path(strelka_snvs), path(strelka_indels)
     path fasta
     path fasta_fai
+    val min_callers
 
     output:
     tuple val(pair), path("${pair}.consensus.vcf.gz"),     emit: vcf
@@ -62,7 +63,7 @@ process SOMATIC_CONSENSUS {
     # ── 4. Intersection: variants in BOTH callers ──────────────────────────
     # -n=2  : require exactly 2 files to agree
     # -w1   : write output from file 1 (Mutect2) → preserves FORMAT/INFO fields
-    bcftools isec -n=2 -w1 mutect2_norm.vcf.gz strelka_norm.vcf.gz \\
+    bcftools isec -n=${min_callers} -w1 mutect2_norm.vcf.gz strelka_norm.vcf.gz \\
         -Oz -o ${pair}.consensus.vcf.gz
     tabix -p vcf ${pair}.consensus.vcf.gz
 

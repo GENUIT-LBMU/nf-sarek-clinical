@@ -69,7 +69,8 @@ workflow SOMATIC_POSTPROCESS {
     SOMATIC_CONSENSUS(
         ch_has_strelka,
         ch_fasta,
-        ch_fasta_fai
+        ch_fasta_fai,
+        params.filters.consensus.min_callers
     )
 
     // Merge: consensus VCFs + fallback Mutect2-only VCFs
