@@ -25,25 +25,22 @@ import html as html_lib
 
 
 # ---------------------------------------------------------------------------
-# Gene pathway definitions
+# Gene pathway definitions, signatures, and ACMG — single source of truth in
+# bin/acmg_shared.py. Imported here for pathway classification + germline P/LP
+# filtering of correlation input.
 # ---------------------------------------------------------------------------
-MMR_GENES = {
-    'MLH1', 'MSH2', 'MSH6', 'PMS2', 'EPCAM', 'MSH3', 'MLH3', 'PMS1',
-}
+from acmg_shared import (
+    MMR_GENES,
+    HRR_GENES,
+    MMR_SBS_SIGNATURES as MMR_SIGNATURES,
+    HRD_SBS_SIGNATURES as HRD_SIGNATURES,
+    MMR_ID_SIGNATURES,
+    acmg_class as _acmg_class_shared,
+    getter_for_dict,
+)
 
-HRR_GENES = {
-    'BRCA1', 'BRCA2', 'PALB2', 'RAD51C', 'RAD51D', 'ATM', 'CHEK2',
-    'BARD1', 'BRIP1', 'NBN', 'RAD50', 'MRE11', 'FANCA', 'FANCC',
-    'FANCD2', 'FANCE', 'FANCF', 'FANCG', 'FANCL', 'FANCM',
-    'CDK12', 'ABRAXAS1', 'ABRAXAS2',
-}
-
-# Thresholds read from env vars (set by Nextflow from conf/filters.config)
+# Biomarker thresholds (specific to germline-somatic correlation, not ACMG)
 _E = os.environ.get
-MMR_SIGNATURES    = set(_E('SIG_MMR_SBS', 'SBS6,SBS15,SBS20,SBS21,SBS26,SBS44').split(','))
-HRD_SIGNATURES    = set(_E('SIG_HRD_SBS', 'SBS3,SBS8').split(','))
-MMR_ID_SIGNATURES = set(_E('SIG_MMR_ID', 'ID1,ID2').split(','))
-
 TMB_HIGH       = float(_E('BIO_TMB_HIGH', '10.0'))
 TMB_BORDER     = float(_E('BIO_TMB_BORDERLINE', '6.0'))
 MSI_HIGH_PCT   = float(_E('BIO_MSI_HIGH', '3.5'))
@@ -52,132 +49,9 @@ HRD_HIGH       = float(_E('BIO_HRD_HIGH', '0.45'))
 HRD_BORDER     = float(_E('BIO_HRD_BORDERLINE', '0.3'))
 
 
-# ---------------------------------------------------------------------------
-# In silico predictor tables (9-tool panel, mirrors final_report_acmg.py)
-# ---------------------------------------------------------------------------
-_INSIL_DAMAGING = {
-    'dbNSFP_SIFT_pred':             ('D',),
-    'dbNSFP_SIFT4G_pred':           ('D',),
-    'dbNSFP_Polyphen2_HDIV_pred':   ('D', 'P'),
-    'dbNSFP_Polyphen2_HVAR_pred':   ('D', 'P'),
-    'dbNSFP_LRT_pred':              ('D',),
-    'dbNSFP_MutationTaster_pred':   ('A', 'D'),
-    'dbNSFP_MutationAssessor_pred': ('H', 'M'),
-    'dbNSFP_FATHMM_pred':           ('D',),
-    'dbNSFP_PROVEAN_pred':          ('D',),
-}
-
-_INSIL_BENIGN = {
-    'dbNSFP_SIFT_pred':             ('T',),
-    'dbNSFP_SIFT4G_pred':           ('T',),
-    'dbNSFP_Polyphen2_HDIV_pred':   ('B',),
-    'dbNSFP_Polyphen2_HVAR_pred':   ('B',),
-    'dbNSFP_LRT_pred':              ('N',),
-    'dbNSFP_MutationTaster_pred':   ('N', 'P'),
-    'dbNSFP_MutationAssessor_pred': ('L', 'N'),
-    'dbNSFP_FATHMM_pred':           ('T',),
-    'dbNSFP_PROVEAN_pred':          ('N',),
-}
-
-
-def _count_insil_dict(row_dict):
-    """Count damaging vs benign in silico votes from a row dict."""
-    def g(k):
-        # dbNSFP stores multi-transcript predictions as comma-separated; take first.
-        raw = str(row_dict.get(k, '') or '').split(',')[0].strip().upper()
-        return raw
-    dam = ben = 0
-    for field in _INSIL_DAMAGING:
-        v = g(field)
-        if v in ('', '.', 'NA'):
-            continue
-        if v in _INSIL_DAMAGING[field]:
-            dam += 1
-        elif v in _INSIL_BENIGN.get(field, ()):
-            ben += 1
-    return dam, ben
-
-
-# ---------------------------------------------------------------------------
-# ACMG classification (standalone — mirrors final_report_acmg.py logic)
-# ---------------------------------------------------------------------------
 def acmg_class(row_dict):
-    def g(key):
-        return str(row_dict.get(key, '') or '').strip()
-
-    # ── ClinVar annotation (primary) ─────────────────────────────────────────
-    clnsig = g('dbNSFP_clinvar_clnsig').lower()
-    if clnsig and clnsig not in ('.', 'na', ''):
-        # Bug fix: "Conflicting_interpretations_of_pathogenicity" must NOT be
-        # classified as P — fall through to score-based classification.
-        if 'conflicting' not in clnsig:
-            if 'pathogenic' in clnsig:
-                if 'likely_pathogenic' in clnsig or 'likely pathogenic' in clnsig:
-                    return 'LP'
-                if 'likely' not in clnsig:
-                    return 'P'
-            if 'likely_pathogenic' in clnsig or 'likely pathogenic' in clnsig:
-                return 'LP'
-            if 'uncertain' in clnsig:
-                return 'VUS'
-            if 'likely_benign' in clnsig or 'likely benign' in clnsig:
-                return 'LB'
-            if 'benign' in clnsig and 'pathogenic' not in clnsig:
-                return 'B'
-
-    try:
-        gnomad = float(g('dbNSFP_gnomAD_exomes_AF'))
-    except (ValueError, TypeError):
-        gnomad = 0.0
-    if gnomad > float(_E('ACMG_BA1_AF', '0.05')):
-        return 'B'
-
-    score = 0
-    impact = g('ANN[*].IMPACT').upper()
-    if impact == 'HIGH':
-        score += int(_E('ACMG_PVS1_SCORE', '8'))
-    if gnomad < float(_E('ACMG_PM2_AF', '0.001')):
-        score += int(_E('ACMG_PM2_SCORE', '2'))
-
-    revel_raw = g('dbNSFP_REVEL_score')
-    revel = None
-    try:
-        revel = float(revel_raw)
-    except (ValueError, TypeError):
-        pass
-
-    if revel is not None:
-        if revel >= float(_E('ACMG_REVEL_PP3_STRONG', '0.932')):
-            score += 4
-        elif revel >= float(_E('ACMG_REVEL_PP3', '0.644')):
-            score += 2
-        elif revel >= float(_E('ACMG_REVEL_PP3_SUP', '0.5')):
-            score += 1
-        if revel < float(_E('ACMG_REVEL_BP4_STRONG', '0.15')):
-            score -= 4
-        elif revel < float(_E('ACMG_REVEL_BP4', '0.29')):
-            score -= 2
-
-    if gnomad > float(_E('ACMG_BS1_AF', '0.01')):
-        score += int(_E('ACMG_BS1_SCORE', '-4'))
-
-    # ── In silico majority vote (9-tool panel) ────────────────────────────────
-    dam, ben = _count_insil_dict(row_dict)
-    total = dam + ben
-    _insil_maj = float(_E('ACMG_INSIL_MAJORITY', '0.75'))
-    if total > 0:
-        if ben > dam:
-            score -= 2 if (ben / total) >= _insil_maj else 1
-        elif dam > ben:
-            score += 2 if (dam / total) >= _insil_maj else 1
-
-    _sp = int(_E('ACMG_SCORE_P', '10'))
-    _slp = int(_E('ACMG_SCORE_LP', '6'))
-    _slb = int(_E('ACMG_SCORE_LB', '-2'))
-    if score >= _sp:  return 'P'
-    if score >= _slp: return 'LP'
-    if score <= _slb: return 'LB'
-    return 'VUS'
+    """Returns ACMG class (P/LP/VUS/LB/B) for a row dict."""
+    return _acmg_class_shared(getter_for_dict(row_dict))
 
 
 # ---------------------------------------------------------------------------

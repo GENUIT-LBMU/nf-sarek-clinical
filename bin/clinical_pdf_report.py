@@ -404,153 +404,17 @@ def read_tsv(path):
 
 
 # ---------------------------------------------------------------------------
-# ACMG classification — 9-tool in silico panel (mirrors final_report_acmg.py)
+# ACMG classification — delegates to bin/acmg_shared.py (single source of truth)
 # ---------------------------------------------------------------------------
-_INSIL_DAMAGING_PDF = {
-    'dbNSFP_SIFT_pred':             ('D',),
-    'dbNSFP_SIFT4G_pred':           ('D',),
-    'dbNSFP_Polyphen2_HDIV_pred':   ('D', 'P'),
-    'dbNSFP_Polyphen2_HVAR_pred':   ('D', 'P'),
-    'dbNSFP_LRT_pred':              ('D',),
-    'dbNSFP_MutationTaster_pred':   ('A', 'D'),
-    'dbNSFP_MutationAssessor_pred': ('H', 'M'),
-    'dbNSFP_FATHMM_pred':           ('D',),
-    'dbNSFP_PROVEAN_pred':          ('D',),
-}
-_INSIL_BENIGN_PDF = {
-    'dbNSFP_SIFT_pred':             ('T',),
-    'dbNSFP_SIFT4G_pred':           ('T',),
-    'dbNSFP_Polyphen2_HDIV_pred':   ('B',),
-    'dbNSFP_Polyphen2_HVAR_pred':   ('B',),
-    'dbNSFP_LRT_pred':              ('N',),
-    'dbNSFP_MutationTaster_pred':   ('N', 'P'),
-    'dbNSFP_MutationAssessor_pred': ('L', 'N'),
-    'dbNSFP_FATHMM_pred':           ('T',),
-    'dbNSFP_PROVEAN_pred':          ('N',),
-}
-
-
-def _count_insil_pdf(row):
-    """Count damaging vs benign votes from 9-tool panel for a row dict.
-    dbNSFP stores multi-transcript predictions comma-separated; we take the first.
-    """
-    dam = ben = 0
-    for field in _INSIL_DAMAGING_PDF:
-        v = str(row.get(field, '') or '').split(',')[0].strip().upper()
-        if v in ('', '.', 'NA'):
-            continue
-        if v in _INSIL_DAMAGING_PDF[field]:
-            dam += 1
-        elif v in _INSIL_BENIGN_PDF.get(field, ()):
-            ben += 1
-    return dam, ben
+from acmg_shared import (
+    acmg_criteria_list as _acmg_criteria_list_shared,
+    getter_for_dict,
+)
 
 
 def classify_acmg_with_criteria(row):
-    """
-    Classify a germline variant row into: P, LP, VUS, LB, B
-    Returns (cls, criteria_list) where criteria_list contains the activated
-    ACMG evidence code strings (e.g. ['PVS1', 'PM2', 'PP3']).
-    Logic priority:
-      1. ClinVar annotation
-      2. gnomAD BA1 rule
-      3. Evidence scoring (9-tool in silico panel)
-    """
-    clnsig = str(row.get('dbNSFP_clinvar_clnsig', '') or '').lower()
-    gnomad_af_raw = row.get('dbNSFP_gnomAD_exomes_AF', None)
-    gnomad_af = safe_float(gnomad_af_raw)
-    impact = str(row.get('ANN[*].IMPACT', '') or '').upper()
-    revel = safe_float(row.get('dbNSFP_REVEL_score', None))
-
-    # 1. ClinVar rule (conflicting = fall through to score-based)
-    if clnsig and clnsig not in ('.', '', 'na', 'nan'):
-        if 'conflicting' in clnsig:
-            pass  # fall through to evidence scoring
-        elif ('pathogenic' in clnsig
-              and 'likely_pathogenic' not in clnsig
-              and 'likely pathogenic' not in clnsig):
-            if 'likely' not in clnsig:
-                return 'P', ['ClinVar:P']
-        elif 'likely_pathogenic' in clnsig or 'likely pathogenic' in clnsig:
-            return 'LP', ['ClinVar:LP']
-        elif 'uncertain' in clnsig:
-            return 'VUS', ['ClinVar:VUS']
-        elif 'likely_benign' in clnsig or 'likely benign' in clnsig:
-            return 'LB', ['ClinVar:LB']
-        elif 'benign' in clnsig and 'pathogenic' not in clnsig:
-            return 'B', ['ClinVar:B']
-
-    # 2. BA1 – common variant
-    if gnomad_af is not None and gnomad_af > float(_E('ACMG_BA1_AF', '0.05')):
-        return 'B', ['BA1']
-
-    # 3. Evidence scoring
-    score = 0
-    criteria = []
-
-    if impact == 'HIGH':
-        score += int(_E('ACMG_PVS1_SCORE', '8'))
-        criteria.append('PVS1')
-    if gnomad_af is None or gnomad_af < float(_E('ACMG_PM2_AF', '0.001')):
-        score += int(_E('ACMG_PM2_SCORE', '2'))
-        criteria.append('PM2')
-
-    revel_dir = 0; revel_str = 0; revel_lbl = ''
-    if revel is not None:
-        if revel >= float(_E('ACMG_REVEL_PP3_STRONG', '0.932')):
-            revel_dir = 1; revel_str = 4; revel_lbl = 'PP3_St'
-        elif revel >= float(_E('ACMG_REVEL_PP3', '0.644')):
-            revel_dir = 1; revel_str = 2; revel_lbl = 'PP3'
-        elif revel >= float(_E('ACMG_REVEL_PP3_SUP', '0.5')):
-            revel_dir = 1; revel_str = 1; revel_lbl = 'PP3_Sup'
-        elif revel < float(_E('ACMG_REVEL_BP4_STRONG', '0.15')):
-            revel_dir = -1; revel_str = 4; revel_lbl = 'BP4_St'
-        elif revel < float(_E('ACMG_REVEL_BP4', '0.29')):
-            revel_dir = -1; revel_str = 2; revel_lbl = 'BP4'
-
-    dam, ben = _count_insil_pdf(row)
-    total = dam + ben
-    panel_dir = 0; panel_str = 0; panel_lbl = ''
-    _insil_maj = float(_E('ACMG_INSIL_MAJORITY', '0.75'))
-    if total > 0:
-        if ben > dam:
-            panel_dir = -1
-            ratio = ben / total
-            if ratio >= _insil_maj:
-                panel_str = 2; panel_lbl = 'BP4({}/{})'.format(ben, total)
-            else:
-                panel_str = 1; panel_lbl = 'BP4_Sup({}/{})'.format(ben, total)
-        elif dam > ben:
-            panel_dir = 1
-            ratio = dam / total
-            if ratio >= _insil_maj:
-                panel_str = 2; panel_lbl = 'PP3({}/{})'.format(dam, total)
-            else:
-                panel_str = 1; panel_lbl = 'PP3_Sup({}/{})'.format(dam, total)
-
-    if revel_dir != 0 and panel_dir != 0:
-        if revel_dir == panel_dir:
-            if revel_str >= panel_str:
-                score += revel_dir * revel_str; criteria.append(revel_lbl)
-            else:
-                score += panel_dir * panel_str; criteria.append(panel_lbl)
-    elif revel_dir != 0:
-        score += revel_dir * revel_str; criteria.append(revel_lbl)
-    elif panel_dir != 0:
-        score += panel_dir * panel_str; criteria.append(panel_lbl)
-
-    if gnomad_af is not None and gnomad_af > float(_E('ACMG_BS1_AF', '0.01')):
-        score += int(_E('ACMG_BS1_SCORE', '-4'))
-        criteria.append('BS1')
-
-    _sp = int(_E('ACMG_SCORE_P', '10'))
-    _slp = int(_E('ACMG_SCORE_LP', '6'))
-    _slb = int(_E('ACMG_SCORE_LB', '-2'))
-    if score >= _sp:    cls = 'P'
-    elif score >= _slp: cls = 'LP'
-    elif score <= _slb: cls = 'LB'
-    else:               cls = 'VUS'
-    return cls, criteria
+    """Classify a germline variant row dict into (cls, criteria_list)."""
+    return _acmg_criteria_list_shared(getter_for_dict(row))
 
 
 def classify_acmg(row):
@@ -2477,14 +2341,7 @@ def build_correlation_section(corr_data, story):
 # ---------------------------------------------------------------------------
 # Major Findings section
 # ---------------------------------------------------------------------------
-_HRR_GENES = {
-    'BRCA1', 'BRCA2', 'RAD51C', 'RAD51D', 'PALB2', 'BRIP1',
-    'ATM', 'CHEK2', 'NBN', 'RAD50', 'MRE11', 'BARD1', 'CDK12',
-    'FANCD2', 'FANCA', 'FANCM', 'SLX4', 'RBBP8', 'RTEL1',
-}
-_MMR_GENES = {
-    'MLH1', 'MSH2', 'MSH6', 'PMS2', 'EPCAM', 'MSH3', 'PMS1', 'MLH3',
-}
+from acmg_shared import HRR_GENES as _HRR_GENES, MMR_GENES as _MMR_GENES
 
 
 def build_major_findings_section(args, metrics, germline_variants, somatic_variants,

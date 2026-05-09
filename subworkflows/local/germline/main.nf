@@ -40,7 +40,8 @@ workflow GERMLINE_POSTPROCESS {
 
     SNPSIFT_EXTRACT_GERMLINE(
         SNPSIFT_FILTER_GERMLINE.out.vcf,
-        ch_snpsift_jar
+        ch_snpsift_jar,
+        file("${projectDir}/bin/acmg_shared.py")
     )
 
     // ── Pharmacogenomics ──────────────────────────────────────────────────────
