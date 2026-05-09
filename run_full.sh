@@ -10,17 +10,20 @@
 #
 # Arguments:
 #   --run          Run identifier (e.g. 20260109_1229). Folder must exist at
-#                  /home/user/runs/<RUN_NAME> or will be created.
+#                  ${RUNS_BASE}/<RUN_NAME> or will be created.
 #   --samplesheet  Path to nf-core/sarek CSV samplesheet (Phase 1 only).
 #   --resume       Pass -resume to Nextflow for both phases (use cached tasks).
 #   --skip-sarek   Skip Phase 1; go straight to nf-sarek-clinical using the
 #                  sarek results already present in <RUN_DIR>/results.
+#
+# Environment variables:
+#   RUNS_BASE      Base directory for run outputs (default: $HOME/runs).
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-# ── Configuration (edit when lab infrastructure changes) ──────────────────────
+# ── Configuration ─────────────────────────────────────────────────────────────
 PIPELINE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUNS_BASE="/home/user/runs"
+RUNS_BASE="${RUNS_BASE:-$HOME/runs}"
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 RUN_NAME=""
@@ -56,6 +59,13 @@ NF_RESUME=""
 
 mkdir -p "${RUN_DIR}"
 
+# Use lab_params.yml (real paths) when present; fall back to full_pipeline.params.yml (template)
+if [[ -f "${PIPELINE_DIR}/lab_params.yml" ]]; then
+    PARAMS_FILE="${PIPELINE_DIR}/lab_params.yml"
+else
+    PARAMS_FILE="${PIPELINE_DIR}/full_pipeline.params.yml"
+fi
+
 # ── Phase 1: nf-core/sarek ────────────────────────────────────────────────────
 if [[ "$SKIP_SAREK" == false ]]; then
 
@@ -63,6 +73,7 @@ if [[ "$SKIP_SAREK" == false ]]; then
     echo "════════════════════════════════════════════════════════════════════════"
     echo "  Phase 1 — nf-core/sarek  (run: ${RUN_NAME})"
     echo "════════════════════════════════════════════════════════════════════════"
+    echo "  Params file: ${PARAMS_FILE}"
 
     # Per-run config: tells sarek where to put its work directory
     cat > "${RUN_DIR}/run.config" <<EOF
@@ -82,6 +93,7 @@ EOF
         -profile docker \
         -c "${RUN_DIR}/run.config" \
         -c "${PIPELINE_DIR}/conf/sarek.config" \
+        -params-file "${PARAMS_FILE}" \
         ${NF_RESUME} \
         --input    "${SAMPLESHEET}" \
         --outdir   "${RUN_DIR}/results" \
@@ -106,13 +118,6 @@ echo "  Phase 2 — nf-sarek-clinical  (run: ${RUN_NAME})"
 echo "════════════════════════════════════════════════════════════════════════"
 
 cd "${PIPELINE_DIR}"
-
-# Use lab_params.yml (real paths) when present; fall back to full_pipeline.params.yml (template)
-if [[ -f "${PIPELINE_DIR}/lab_params.yml" ]]; then
-    PARAMS_FILE="${PIPELINE_DIR}/lab_params.yml"
-else
-    PARAMS_FILE="${PIPELINE_DIR}/full_pipeline.params.yml"
-fi
 echo "  Using params file: ${PARAMS_FILE}"
 
 nextflow run main.nf \

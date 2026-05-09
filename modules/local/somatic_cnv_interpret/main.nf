@@ -11,7 +11,7 @@
 process SOMATIC_CNV_INTERPRET {
     tag "$pair"
     label 'process_low'
-    label 'python'
+    label 'civicpy'
 
     publishDir "${params.outdir}/somatic/cnv/ascat_cnvkit", mode: params.publish_dir_mode
 

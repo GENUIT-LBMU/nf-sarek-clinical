@@ -1,14 +1,24 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # nf-sarek-clinical fixed reference parameters — TEMPLATE
 # ──────────────────────────────────────────────────────────────────────────────
-# Copy this file to your working directory and fill in the paths for your site.
-# Used by run_full.sh as: nextflow run main.nf --params-file full_pipeline.params.yml
+# Copy this file to your working directory (or to lab_params.yml) and fill in
+# the paths for your site. Used by run_full.sh / run_github.sh:
+#   nextflow run main.nf -params-file full_pipeline.params.yml
 #
 # Dynamic parameters (set per run by run_full.sh):
 #   --sarek_outdir, --run_name, --outdir
 #
 # See README.md → "Reference files" for download instructions.
 # ──────────────────────────────────────────────────────────────────────────────
+
+# ── nf-core/sarek site-specific paths (Phase 1) ───────────────────────────────
+# These are passed to nf-core/sarek when run_full.sh executes Phase 1.
+# Skip in lab_params.yml only if you always run with --skip-sarek.
+intervals:        /path/to/refs/<kit>/<kit>_Regions.bed         # WES capture BED
+ascat_alleles:    /path/to/refs/ascat/ascat_alleles.zip
+ascat_loci:       /path/to/refs/ascat/ascat_loci.zip
+ascat_loci_gc:    /path/to/refs/ascat/ascat_loci_gc.zip
+ascat_loci_rt:    /path/to/refs/ascat/ascat_loci_rt.zip
 
 # ── SNV annotation ────────────────────────────────────────────────────────────
 dbnsfp:         /path/to/refs/dbNSFP/dbNSFP4.1a.txt.gz

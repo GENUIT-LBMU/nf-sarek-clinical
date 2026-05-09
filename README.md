@@ -233,29 +233,40 @@ somatic_dict:            /data/refs/cnv/main_chroms/hg38.main_chroms.dict
 
 > The R annotation scripts (`exon_annotation.R`, `annotate_cnvs_complete_fixed.R`) are **bundled in `bin/`** — no path needed.
 
-### Step 3 — Configure sarek parameters (Mode A only)
+### Step 3 — Add sarek paths to your params file (Mode A only)
 
-Edit `conf/sarek.config` with your lab's nf-core/sarek reference paths. These are constant across all runs:
+The sarek-specific paths (WES intervals + ASCAT loci) live in your `lab_params.yml`/`full_pipeline.params.yml` alongside the clinical reference paths from Step 2. `conf/sarek.config` only carries non-path settings (`genome`, `wes`, `ascat_genome`) and does **not** need editing.
 
-```nextflow
-params {
-    genome       = 'GATK.GRCh38'
-    wes          = true
-    save_output_as_bam = true
-    intervals    = '/data/refs/hg38/agilent/S07604514_Regions_Annotated.bed'
-    ascat_genome = 'hg38'
-    ascat_alleles = '/data/refs/hg38/ascat/ascat_alleles.zip'
-    ascat_loci    = '/data/refs/hg38/ascat/ascat_loci.zip'
-    ascat_loci_gc = '/data/refs/hg38/ascat/ascat_loci_gc.zip'
-    ascat_loci_rt = '/data/refs/hg38/ascat/ascat_loci_rt.zip'
-}
+Add these keys to your params file:
+
+```yaml
+intervals:        /data/refs/hg38/agilent/S07604514_Regions_Annotated.bed
+ascat_alleles:    /data/refs/hg38/ascat/ascat_alleles.zip
+ascat_loci:       /data/refs/hg38/ascat/ascat_loci.zip
+ascat_loci_gc:    /data/refs/hg38/ascat/ascat_loci_gc.zip
+ascat_loci_rt:    /data/refs/hg38/ascat/ascat_loci_rt.zip
 ```
 
-Also edit line 23 of `run_full.sh` to set your runs base directory:
+`run_full.sh` and `run_github.sh` automatically pass the params file to nf-core/sarek (Phase 1) so these keys are visible to it.
+
+### Step 4 — Set the runs directory (optional)
+
+The wrappers default to `$HOME/runs`. Override with an env var:
 
 ```bash
-RUNS_BASE="/your/runs/directory"   # default: /home/user/runs
+export RUNS_BASE=/your/runs/directory
+./run_full.sh --run MY_RUN ...
 ```
+
+### Step 5 — Build custom Docker images (one-time, Mode A and B)
+
+The pipeline uses 3 custom images for civicpy / R annotation / SigProfiler. Build them once locally:
+
+```bash
+bash docker/build_local.sh
+```
+
+This tags them as `nf-sarek-clinical/<name>:<version>`, which matches the pipeline default. See [`docker/README.md`](docker/README.md) for using a published registry instead.
 
 ---
 

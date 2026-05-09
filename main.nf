@@ -15,7 +15,7 @@
         --panel_bed    /data/hg38/WES_panel.bed \\
         --outdir       /results/MY_RUN_2024_clinical
 
-    GitHub: https://github.com/your-org/nf-sarek-clinical
+    GitHub: https://github.com/GENUIT-LBMU/nf-sarek-clinical
     Documentation: https://nf-sarek-clinical.readthedocs.io
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
