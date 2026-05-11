@@ -62,18 +62,20 @@ workflow SAREK_CLINICAL {
         [pair, vcf]
     }
 
-    // Somatic Strelka2 VCFs (SNVs + indels, from variant_calling — not snpEff annotated)
+    // Somatic Strelka2 VCFs (SNVs + indels, from variant_calling — not snpEff annotated).
+    // When sarek was run without --tools strelka, these dirs don't exist; Channel.fromPath
+    // with checkIfExists:false naturally emits an empty channel — no .ifEmpty needed.
+    // (.ifEmpty { Channel.empty() } emits a Channel-object as a value, which breaks the
+    // downstream .filter in SOMATIC_POSTPROCESS.)
     ch_strelka2_snvs = Channel.fromPath(
         "${sarek_out}/variant_calling/strelka/**/*.somatic_snvs.vcf.gz",
         checkIfExists: false
     ).map { vcf -> [vcf.parent.name, vcf] }
-    .ifEmpty { Channel.empty() }
 
     ch_strelka2_indels = Channel.fromPath(
         "${sarek_out}/variant_calling/strelka/**/*.somatic_indels.vcf.gz",
         checkIfExists: false
     ).map { vcf -> [vcf.parent.name, vcf] }
-    .ifEmpty { Channel.empty() }
 
     // CNVkit .somatic.call.cns (fallback to .call.cns)
     ch_cns = Channel.fromPath(
