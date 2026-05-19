@@ -150,7 +150,7 @@ workflow SAREK_CLINICAL {
         def gcnv_fai   = file("${params.gcnv_fasta}.fai")
 
         // Only process normal samples for germline CNV
-        ch_normal_bams = ch_bams.filter { sample, bam, bai -> sample ==~ /.*_N\d+$/ }
+        ch_normal_bams = ch_bams.filter { sample, bam, bai -> sample ==~ /.*_N\d*$/ }
 
         CNV_GERMLINE_GATK(
             ch_normal_bams,

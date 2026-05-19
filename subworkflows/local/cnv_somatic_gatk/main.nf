@@ -44,8 +44,8 @@ workflow CNV_SOMATIC_GATK {
     main:
     // ── Tag each sample with patient_id and status (normal/tumor) ─────────────
     ch_bams_tagged = ch_bams.map { sample, bam, bai ->
-        def patient_id = sample.replaceAll(/_N\d+$/, '').replaceAll(/_T\d+$/, '')
-        def status     = sample ==~ /.*_N\d+$/ ? 'normal' : 'tumor'
+        def patient_id = sample.replaceAll(/_N\d*$/, '').replaceAll(/_T\d*$/, '')
+        def status     = sample ==~ /.*_N\d*$/ ? 'normal' : 'tumor'
         [sample, patient_id, status, bam, bai]
     }
 
