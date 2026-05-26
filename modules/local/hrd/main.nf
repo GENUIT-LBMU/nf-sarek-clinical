@@ -66,11 +66,14 @@ process HRD_PROFILER {
     lines=\$(wc -l < cnv_input/${pair}.segments.txt)
     echo "[HRD] ${pair}: \${lines} segment lines (including header)"
 
-    # Guard: skip HRProfiler if VCF has no somatic variants (e.g. T=N test data)
+    # Guard: skip HRProfiler if VCF has too few somatic variants. HRProfiler
+    # requires several SNVs to build the 96-context SBS matrix used by its
+    # classifier; with <5 the internal model crashes silently (exit 1) without
+    # a traceback. Emit NA stub and skip the call instead of aborting.
     n_vars=\$(grep -cv '^#' snv_input/${pair}.vcf || true)
     echo "[HRD] ${pair}: \${n_vars} somatic variants in VCF"
-    if [[ "\${n_vars}" -eq 0 ]]; then
-        echo "[HRD] WARNING: VCF is empty (0 somatic variants); emitting NA stub" >&2
+    if [[ "\${n_vars}" -lt 5 ]]; then
+        echo "[HRD] WARNING: \${n_vars} somatic variants (<5 required); emitting NA stub" >&2
         echo -e "sample\\thrd.prob\\tprediction" > ${pair}_hrd_predictions.tsv
         echo -e "${pair}\\tNA\\tNA"              >> ${pair}_hrd_predictions.tsv
         exit 0
@@ -79,6 +82,8 @@ process HRD_PROFILER {
     # Run HRProfiler (HRD.py is in bin/ and staged into PATH by Nextflow)
     # Note: trailing slash on --output-dir is required — HRProfiler does
     # RESULT_DIR + "output" string concatenation (not os.path.join)
+    # `|| true` so a silent crash falls through to the NA-stub fallback below
+    # instead of aborting the whole workflow.
     HRD.py \\
         --snv-dir    snv_input \\
         --cnv-dir    cnv_input \\
@@ -86,7 +91,7 @@ process HRD_PROFILER {
         --organ      ${organ} \\
         --genome     ${genome} \\
         --cnv-file-type ASCAT \\
-        --hrd-threshold ${params.hrd_threshold}
+        --hrd-threshold ${params.hrd_threshold} || true
 
     # Locate predictions output (filename varies by HRProfiler version)
     pred="\$(find hrd_results -maxdepth 4 -type f \\
