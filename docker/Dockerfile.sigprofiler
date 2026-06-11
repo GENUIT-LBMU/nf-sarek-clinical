@@ -1,4 +1,6 @@
-FROM python:3.10-slim
+# python:3.10-slim pinned by digest (3.10.20-slim-trixie, captured 2026-06-09).
+# Update: docker buildx imagetools inspect python:3.10-slim --format '{{.Manifest.Digest}}'
+FROM python@sha256:70f65c721aaddfb22b20ed6ec12606c59d9592493c5fcb6639f3d0e8ba3fbc10
 
 LABEL maintainer="IMAXi Bioinformatics"
 LABEL description="SigProfilerAssignment + SigProfilerMatrixGenerator container for nf-sarek-clinical mutational signatures"
@@ -13,11 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install SigProfiler packages
-# Pin major versions; update when COSMIC database versions change
-RUN pip install --no-cache-dir \
-    SigProfilerMatrixGenerator==1.3.6 \
-    SigProfilerAssignment==1.1.3
+# Install SigProfiler + full transitive closure from the pinned lock file.
+# Regenerate requirements.sigprofiler.txt when bumping tool versions.
+COPY requirements.sigprofiler.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
 
 # Pre-install the GRCh38 reference for SigProfilerMatrixGenerator
 # This downloads ~300 MB of chromosome reference data to make the image fully self-contained.

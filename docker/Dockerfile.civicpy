@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+# python:3.11-slim pinned by digest (3.11.15-slim-trixie, captured 2026-06-09).
+# Update: docker buildx imagetools inspect python:3.11-slim --format '{{.Manifest.Digest}}'
+FROM python@sha256:a3ab0b966bc4e91546a033e22093cb840908979487a9fc0e6e38295747e49ac0
 
 LABEL maintainer="IMAXi Bioinformatics"
 LABEL description="civicpy + bcftools container for nf-sarek-clinical CIViC annotation step"
@@ -12,9 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install civicpy (5.x for compatibility with current nightly cache format)
-RUN pip install --no-cache-dir \
-    civicpy==5.2.0
+# Install civicpy and its full transitive closure from the pinned lock file
+# (requirements.civicpy.txt). pandas/numpy come in here and are reused by
+# SOMATIC_CNV_INTERPRET (parse_somatic_cnv.py).
+COPY requirements.civicpy.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
 
 # Pre-populate the CIViC cache at build time by downloading the nightly pkl.
 # Using --soft: downloads remote pre-built cache (avoids GraphQL rebuild).
