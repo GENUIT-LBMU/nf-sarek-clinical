@@ -1,0 +1,63 @@
+name: Build & push custom images
+
+# Builds the 3 custom images (civicpy, r-annotation, sigprofiler) and pushes them
+# to GHCR under the repository org. Public images (snpeff, bcftools, gatk,
+# hrprofiler) are mirrored separately with docker/mirror_images.sh.
+#
+# Triggers: manual, or on a version tag (v*). After a release, run
+# docker/mirror_images.sh locally to also mirror the public images and pin all
+# 7 by digest into conf/containers.mirror.config.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - dockerfile: docker/Dockerfile.civicpy
+            image: civicpy
+            tag: "5.2.0"
+          - dockerfile: docker/Dockerfile.r_annotation
+            image: r-annotation
+            tag: "1.0.0"
+          - dockerfile: docker/Dockerfile.sigprofiler
+            image: sigprofiler
+            tag: "0.1.7"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase owner
+        id: owner
+        run: echo "name=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ steps.owner.outputs.name }}/${{ matrix.image }}:${{ matrix.tag }}
