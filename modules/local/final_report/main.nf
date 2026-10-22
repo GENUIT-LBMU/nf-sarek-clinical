@@ -569,6 +569,7 @@ def tsv_to_html_germline(path):
         ('Impact',      'ANN[*].IMPACT'),
         ('DP',          None),
         ('VAF',         None),
+        ('Cig.',        'ZYGOSITY'),
         ('REVEL',       'dbNSFP_REVEL_score'),
         ('gnomAD_AF',   'gnomAD_AF'),
         ('ClinVar',     'dbNSFP_clinvar_clnsig'),

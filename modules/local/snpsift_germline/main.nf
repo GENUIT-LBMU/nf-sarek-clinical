@@ -132,9 +132,9 @@ process SNPSIFT_EXTRACT_GERMLINE {
 
     stub:
     """
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\n" > ${sample}.germline_snvs.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\n" > ${sample}.germline_snvs.tsv
     touch ${sample}.germline_all_filtered.tsv
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tgnomAD_AF\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tgnomAD_AF\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
     """
 
     script:
@@ -417,7 +417,54 @@ sys.stderr.write('[gnomAD rescue] ${sample}: rescued ' + str(n) + ' variant(s)\\
 os.replace(TMP, TSV)
 PYEOF_GNOMAD
 
-    # ── Step 2: gnomAD BA1 + ClinVar + VAF filter ────────────────────────────────
+    # ── Step 1.6: zygosity (ZYGOSITY column) ─────────────────────────────────────
+    #   From GEN[0].GT (phased "|" treated as "/"):
+    #     HET            different alleles (0/1, 1/2)
+    #     HOM            same non-ref allele on an autosome (1/1)
+    #     HOM/HEMI       1/1 on chrX/chrY outside the PARs (sex not used)
+    #     HET(VAF alta)  heterozygous call with VAF > vaf_max (allelic imbalance / artefact?)
+    #   No GT → inferred from VAF: >= vaf_max → HOM (HOM/HEMI on non-PAR X/Y), else HET.
+    #   No GT and no AD → "."
+    #   High VAF is no longer a rejection reason: homozygous / hemizygous variants
+    #   in recessive genes (MUTYH, NTHL1, MSH3, MBD4, FANC*, CMMRD) must be reported.
+    awk -F'\\t' 'BEGIN { OFS="\\t"; vmax = ENVIRON["FILT_VAF_MAX"]+0 }
+    function nonpar(c, p) {
+        # GRCh38 pseudoautosomal regions PAR1 / PAR2
+        if (c == "chrX") return !((p >= 10001 && p <= 2781479) || (p >= 155701383 && p <= 156030895))
+        if (c == "chrY") return !((p >= 10001 && p <= 2781479) || (p >= 56887903 && p <= 57217415))
+        return 0
+    }
+    NR == 1 {
+        for (i = 1; i <= NF; i++) {
+            if (\$i == "CHROM")     chr_col = i
+            if (\$i == "POS")       pos_col = i
+            if (\$i == "GEN[0].GT") gt_col  = i
+            if (\$i == "GEN[0].AD") ad_col  = i
+        }
+        print \$0, "ZYGOSITY"; next
+    }
+    {
+        vaf = -1
+        if (ad_col) {
+            n = split(\$(ad_col), arr, ",")
+            if (n >= 2) { tot = arr[1] + arr[2]; if (tot > 0) vaf = arr[2] / tot }
+        }
+        gt = gt_col ? \$(gt_col) : "."
+        gsub(/\\|/, "/", gt)
+        na = split(gt, al, "/")
+        z = "."
+        if (na == 2 && al[1] != "." && al[2] != ".") {
+            if (al[1] != al[2])      z = (vaf > vmax) ? "HET(VAF alta)" : "HET"
+            else if (al[1] != "0")   z = "HOM"
+        } else if (vaf >= 0) {
+            z = (vaf >= vmax) ? "HOM" : "HET"
+        }
+        if (z == "HOM" && nonpar(\$(chr_col), \$(pos_col) + 0)) z = "HOM/HEMI"
+        print \$0, z
+    }' "${sample}.germline_all_extracted.tsv" > "${sample}.germline_all_extracted.zyg.tsv"
+    mv "${sample}.germline_all_extracted.zyg.tsv" "${sample}.germline_all_extracted.tsv"
+
+    # ── Step 2: gnomAD BA1 + ClinVar + low-VAF filter ────────────────────────────────
     #   Passing variants  → germline_snvs.pre_python.tsv  (stdout)
     #   Rejected variants → germline_all_filtered.tsv  (with FILTER_REASON column)
     #
@@ -426,7 +473,7 @@ PYEOF_GNOMAD
     #                       from the canonical gnomAD_AF column ("." = unknown)
     #     clinvar_benign  : ClinVar Benign/Likely_benign (unless also Pathogenic)
     #     vaf_too_low     : VAF below threshold (HIGH-impact: 0.25, MODERATE: 0.35)
-    #     vaf_too_high    : VAF > 0.75 (likely homozygous or artefact)
+    #   High VAF is NOT a rejection reason (homozygous/hemizygous): see ZYGOSITY (Step 1.6)
     awk -F'\\t' -v FILT="${sample}.germline_all_filtered.tsv" '
     BEGIN { OFS="\\t" }
     NR == 1 {
@@ -465,8 +512,6 @@ PYEOF_GNOMAD
                     min_vaf = (impact_col && \$(impact_col) ~ /HIGH/) ? ENVIRON["FILT_VAF_MIN_HIGH"]+0 : ENVIRON["FILT_VAF_MIN_MOD"]+0
                     if (vaf < min_vaf) {
                         reason = sprintf("vaf_too_low (VAF=%.3f, impact=%s)", vaf, \$(impact_col))
-                    } else if (vaf > ENVIRON["FILT_VAF_MAX"]+0) {
-                        reason = sprintf("vaf_too_high (VAF=%.3f)", vaf)
                     }
                 }
             }

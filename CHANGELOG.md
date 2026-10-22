@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   group, admixed-American AF, homozygote counts, gnomAD FILTER).
 - Canonical `gnomAD_AF` / `gnomAD_AF_source` columns in germline TSVs, used by
   BA1/BS1/PM2, the HTML/PDF reports and the germline–somatic correlation.
+- `ZYGOSITY` column in germline TSVs (HET, HOM, HOM/HEMI on non-PAR chrX/chrY,
+  HET(VAF alta)), shown as "Cig." in the HTML and PDF germline tables.
 
 ### Changed
 - With `--gnomad_tsv` set, no patient coordinates are sent to Ensembl or gnomAD
@@ -23,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for BA1/BS1 but never support PM2.
 
 ### Fixed
+- Germline variants with VAF > `vaf_max` (0.75) were discarded as
+  `vaf_too_high`, hiding homozygous/hemizygous variants in recessive genes
+  (MUTYH, NTHL1, MSH3, MBD4, FANC*, CMMRD) from reports and correlation.
+  High VAF is no longer a rejection reason.
 - Multi-value dbNSFP frequencies (`0.53,0.53`) were read as AF 0 by the ACMG
   engine (PM2 applied to common variants).
 

@@ -962,11 +962,11 @@ def build_germline_section(germline_variants, story):
     # 'gnomAD AF' (9 chars) overflowed 40 pt → shortened to 'gnomAD'.
     # 'ACMG' bumped from 28→32; 'Criteria' from 86→90 to give criteria badges room.
     col_headers = [
-        'Gene', 'HGVS_c', 'HGVS_p', 'Impact', 'DP', 'VAF',
+        'Gene', 'HGVS_c', 'HGVS_p', 'Impact', 'DP', 'VAF', 'Cig.',
         'REVEL', 'gnomAD', 'ClinVar', 'ACMG', 'Criteria'
     ]
-    col_widths = [44, 84, 72, 36, 22, 26, 28, 38, 79, 32, 92]
-    # sum = 44+84+72+36+22+26+28+38+79+32+92 = 553 ✓
+    col_widths = [40, 78, 66, 36, 22, 26, 30, 28, 36, 71, 32, 88]
+    # sum = 40+78+66+36+22+26+30+28+36+71+32+88 = 553 ✓
 
     _crit_style = ParagraphStyle(
         'CritCell',
@@ -975,6 +975,8 @@ def build_germline_section(germline_variants, story):
         textColor=colors.HexColor('#475569'),
         leading=8,
     )
+
+    _zyg_style = ParagraphStyle('ZygCell', parent=styles['Normal'], fontSize=7, leading=8.5)
 
     data_rows = []
     for v in germline_variants:
@@ -992,6 +994,10 @@ def build_germline_section(germline_variants, story):
         except Exception:
             dp_int  = dp_raw or '-'
             vaf_str = '-'
+        # Zygosity (Step 1.6 of SNPSIFT_EXTRACT_GERMLINE); wraps inside its cell
+        zyg_raw = (v.get('ZYGOSITY') or '').strip()
+        zyg = Paragraph(zyg_raw.replace('/', '/<br/>').replace('(', '<br/>(')
+                        if zyg_raw not in ('', '.') else '-', _zyg_style)
         revel  = trunc(v.get('dbNSFP_REVEL_score', '-'), 8)
         gnomad = trunc(v.get('gnomAD_AF') or v.get('dbNSFP_gnomAD_exomes_AF', '-'), 12)
         clnsig_raw = v.get('dbNSFP_clinvar_clnsig', '-').strip() or '-'
@@ -1010,7 +1016,7 @@ def build_germline_section(germline_variants, story):
                 colour = '#dc2626'
             parts.append(f'<font color="{colour}"><b>{code}</b></font>')
         crit_para = Paragraph(' · '.join(parts) if parts else '—', _crit_style)
-        data_rows.append([gene, hgvsc, hgvsp, impact, str(dp_int), vaf_str,
+        data_rows.append([gene, hgvsc, hgvsp, impact, str(dp_int), vaf_str, zyg,
                           revel, gnomad, clnsig, cls, crit_para])
 
     def _acmg_bg(val):
@@ -1018,7 +1024,7 @@ def build_germline_section(germline_variants, story):
 
     tbl = build_variant_table(
         col_headers, col_widths, data_rows,
-        colour_col_idx=9, colour_fn=_acmg_bg,
+        colour_col_idx=10, colour_fn=_acmg_bg,
     )
     story.append(tbl)
     story.append(Spacer(1, 0.3 * cm))

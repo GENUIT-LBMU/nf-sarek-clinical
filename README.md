@@ -685,7 +685,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 
 | Section | Key parameters | Description |
 |---------|---------------|-------------|
-| `germline_snv` | `min_dp=5`, `vaf_min_high=0.25`, `vaf_min_moderate=0.35`, `vaf_max=0.75`, `multi_hit_distance=30`, `multi_hit_vaf=0.40`, `gnomad_rescue_max=50` | Germline SNV depth, VAF, multi-hit same-exon, gnomAD API rescue |
+| `germline_snv` | `min_dp=5`, `vaf_min_high=0.25`, `vaf_min_moderate=0.35`, `vaf_max=0.75`, `multi_hit_distance=30`, `multi_hit_vaf=0.40`, `gnomad_rescue_max=50` | Germline SNV depth, low-VAF floor, zygosity (`vaf_max`, not a filter), multi-hit same-exon, gnomAD API rescue |
 | `germline_cnv` | `min_qa=4` | Germline CNV quality (only panel genes are reported) |
 | `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
