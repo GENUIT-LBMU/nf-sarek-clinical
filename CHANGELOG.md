@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   BA1/BS1/PM2, the HTML/PDF reports and the germline–somatic correlation.
 - `ZYGOSITY` column in germline TSVs (HET, HOM, HOM/HEMI on non-PAR chrX/chrY,
   HET(VAF alta)), shown as "Cig." in the HTML and PDF germline tables.
+- `QC_FLAG` column in germline TSVs (`DP<20`, `VAF_baja`), shown inside the VAF
+  cell of the HTML and PDF germline tables.
 
 ### Changed
 - With `--gnomad_tsv` set, no patient coordinates are sent to Ensembl or gnomAD
@@ -29,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `vaf_too_high`, hiding homozygous/hemizygous variants in recessive genes
   (MUTYH, NTHL1, MSH3, MBD4, FANC*, CMMRD) from reports and correlation.
   High VAF is no longer a rejection reason.
+- Germline low-VAF floor (0.25 HIGH / 0.35 MODERATE) discarded real
+  heterozygotes (e.g. VAF 0.34 at DP 59). Now a single 0.20 floor, applied only
+  at DP >= 20 (`vaf_floor_min_dp`), never to ClinVar P/LP (non-conflicting).
 - Multi-value dbNSFP frequencies (`0.53,0.53`) were read as AF 0 by the ACMG
   engine (PM2 applied to common variants).
 

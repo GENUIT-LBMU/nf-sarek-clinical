@@ -642,7 +642,10 @@ def tsv_to_html_germline(path):
             elif disp_name == 'DP':
                 tds += "<td>" + html.escape(str(dp_val)) + "</td>"
             elif disp_name == 'VAF':
-                tds += "<td>" + html.escape(str(vaf_val)) + "</td>"
+                # QC_FLAG (Step 2 of SNPSIFT_EXTRACT_GERMLINE) shown inside the VAF cell
+                qc = get_col(row, 'QC_FLAG')
+                vaf_txt = str(vaf_val) + (" (" + qc + ")" if qc not in ('', '.') else "")
+                tds += "<td>" + html.escape(vaf_txt) + "</td>"
             else:
                 val = get_col(row, raw_col) if raw_col else ''
                 tds += "<td>" + html.escape(val) + "</td>"

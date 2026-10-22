@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 from datetime import date
+from xml.sax.saxutils import escape as xml_escape
 
 # ---------------------------------------------------------------------------
 # Filter thresholds from env vars (set by Nextflow from conf/filters.config)
@@ -965,8 +966,8 @@ def build_germline_section(germline_variants, story):
         'Gene', 'HGVS_c', 'HGVS_p', 'Impact', 'DP', 'VAF', 'Cig.',
         'REVEL', 'gnomAD', 'ClinVar', 'ACMG', 'Criteria'
     ]
-    col_widths = [40, 78, 66, 36, 22, 26, 30, 28, 36, 71, 32, 88]
-    # sum = 40+78+66+36+22+26+30+28+36+71+32+88 = 553 ✓
+    col_widths = [40, 74, 66, 36, 22, 34, 30, 28, 36, 67, 32, 88]
+    # sum = 40+74+66+36+22+34+30+28+36+67+32+88 = 553 ✓
 
     _crit_style = ParagraphStyle(
         'CritCell',
@@ -994,6 +995,11 @@ def build_germline_section(germline_variants, story):
         except Exception:
             dp_int  = dp_raw or '-'
             vaf_str = '-'
+        # QC_FLAG (Step 2 of SNPSIFT_EXTRACT_GERMLINE) shown inside the VAF cell
+        qc_raw = (v.get('QC_FLAG') or '').strip()
+        if qc_raw not in ('', '.'):
+            vaf_str = Paragraph(
+                f'{vaf_str}<br/><font size="5.5">{xml_escape(qc_raw.replace("_", " "))}</font>', _zyg_style)
         # Zygosity (Step 1.6 of SNPSIFT_EXTRACT_GERMLINE); wraps inside its cell
         zyg_raw = (v.get('ZYGOSITY') or '').strip()
         zyg = Paragraph(zyg_raw.replace('/', '/<br/>').replace('(', '<br/>(')

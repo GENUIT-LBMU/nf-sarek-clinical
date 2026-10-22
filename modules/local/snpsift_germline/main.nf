@@ -132,9 +132,9 @@ process SNPSIFT_EXTRACT_GERMLINE {
 
     stub:
     """
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\n" > ${sample}.germline_snvs.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
     touch ${sample}.germline_all_filtered.tsv
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tgnomAD_AF\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
     """
 
     script:
@@ -472,24 +472,35 @@ PYEOF_GNOMAD
     #     gnomad_BA1      : gnomAD AF > 5% (common polymorphism — ACMG BA1), read
     #                       from the canonical gnomAD_AF column ("." = unknown)
     #     clinvar_benign  : ClinVar Benign/Likely_benign (unless also Pathogenic)
-    #     vaf_too_low     : VAF below threshold (HIGH-impact: 0.25, MODERATE: 0.35)
+    #     vaf_too_low     : VAF below vaf_min_high / vaf_min_moderate (default 0.20),
+    #                       only when DP >= vaf_floor_min_dp (default 20) and the
+    #                       variant is not ClinVar P/LP (non-conflicting)
     #   High VAF is NOT a rejection reason (homozygous/hemizygous): see ZYGOSITY (Step 1.6)
+    #
+    #   Adds QC_FLAG ("." or comma-separated):
+    #     DP<N      depth below vaf_floor_min_dp: VAF floor not applied
+    #     VAF_baja  ClinVar P/LP kept despite VAF below the floor
     awk -F'\\t' -v FILT="${sample}.germline_all_filtered.tsv" '
     BEGIN { OFS="\\t" }
     NR == 1 {
-        print \$0 "\\tFILTER_REASON" > FILT
+        print \$0 "\\tQC_FLAG\\tFILTER_REASON" > FILT
+        min_dp_floor = ENVIRON["FILT_VAF_FLOOR_MIN_DP"]+0
         for (i = 1; i <= NF; i++) {
             if (\$i == "ANN[*].IMPACT")              impact_col  = i
             if (\$i == "GEN[0].AD")                  ad_col      = i
+            if (\$i == "GEN[0].DP")                  dp_col      = i
             if (\$i == "dbNSFP_clinvar_clnsig")       cs_col      = i
             if (\$i == "dbNSFP_gnomAD_exomes_AF")     gnomad_v2   = i
             if (\$i == "gnomAD_AF")                   gnomad_can  = i
         }
         gnomad_col = gnomad_can ? gnomad_can : gnomad_v2
-        print; next
+        print \$0 "\\tQC_FLAG"; next
     }
     {
         reason = ""
+        flag   = ""
+        clnsig = (cs_col && cs_col <= NF) ? tolower(\$(cs_col)) : "."
+        clinvar_plp = (clnsig ~ /pathogenic/ && clnsig !~ /conflicting/ && clnsig !~ /benign/)
         # BA1: common polymorphism — gnomAD exomes AF > 5%
         if (reason == "" && gnomad_col && gnomad_col <= NF) {
             af = \$(gnomad_col) + 0
@@ -498,7 +509,6 @@ PYEOF_GNOMAD
             }
         }
         if (reason == "" && cs_col && cs_col <= NF) {
-            clnsig = tolower(\$(cs_col))
             if (clnsig != "." && clnsig ~ /benign/ && clnsig !~ /pathogenic/) {
                 reason = "clinvar_benign (clnsig=" \$(cs_col) ")"
             }
@@ -509,18 +519,23 @@ PYEOF_GNOMAD
                 ref = arr[1] + 0; alt = arr[2] + 0; tot = ref + alt
                 if (tot > 0) {
                     vaf = alt / tot
+                    dp  = (dp_col && \$(dp_col) ~ /^[0-9]+\$/) ? \$(dp_col) + 0 : tot
                     min_vaf = (impact_col && \$(impact_col) ~ /HIGH/) ? ENVIRON["FILT_VAF_MIN_HIGH"]+0 : ENVIRON["FILT_VAF_MIN_MOD"]+0
-                    if (vaf < min_vaf) {
-                        reason = sprintf("vaf_too_low (VAF=%.3f, impact=%s)", vaf, \$(impact_col))
+                    if (dp < min_dp_floor) {
+                        flag = "DP<" min_dp_floor
+                    } else if (vaf < min_vaf) {
+                        if (clinvar_plp) flag = "VAF_baja"
+                        else reason = sprintf("vaf_too_low (VAF=%.3f, DP=%d, impact=%s)", vaf, dp, \$(impact_col))
                     }
                 }
             }
         }
+        if (flag == "") flag = "."
         if (reason != "") {
-            print \$0 "\\t" reason > FILT
+            print \$0 "\\t" flag "\\t" reason > FILT
             next
         }
-        print
+        print \$0 "\\t" flag
     }' "${sample}.germline_all_extracted.tsv" > "${sample}.germline_snvs.pre_python.tsv"
     rm -f "${sample}.germline_all_extracted.tsv"
 
