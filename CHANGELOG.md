@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Germline low-VAF floor (0.25 HIGH / 0.35 MODERATE) discarded real
   heterozygotes (e.g. VAF 0.34 at DP 59). Now a single 0.20 floor, applied only
   at DP >= 20 (`vaf_floor_min_dp`), never to ClinVar P/LP (non-conflicting).
+- Germline multi-hit filter paired variants anywhere in the same exon and
+  always removed in-frame deletions, discarding real variants (AR GGN repeat at
+  VAF 0.62). Now only variants <= 30 bp apart pair, and each member is removed
+  only if it has VAF < 0.40, FILTER != PASS or GQ < 20 (`multi_hit_min_gq`);
+  the reason names the partner variant and distance.
 - Multi-value dbNSFP frequencies (`0.53,0.53`) were read as AF 0 by the ACMG
   engine (PM2 applied to common variants).
 

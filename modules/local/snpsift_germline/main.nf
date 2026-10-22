@@ -539,11 +539,14 @@ PYEOF_GNOMAD
     }' "${sample}.germline_all_extracted.tsv" > "${sample}.germline_snvs.pre_python.tsv"
     rm -f "${sample}.germline_all_extracted.tsv"
 
-    # ── Step 3: Multi-hit same-exon low-VAF filter ────────────────────────────────
-    #   Removes variants clustered in the same gene + same exon (ANN[*].RANK match
-    #   OR positions ≤ 30 bp apart) that also have unbalanced VAF < 0.40.
+    # ── Step 3: Multi-hit nearby filter (alignment artefacts) ───────────────────
+    #   A pair = two variants of the same gene <= multi_hit_distance bp apart (30).
+    #   Each pair member is judged on its own and removed when it has
+    #     VAF < multi_hit_vaf (0.40)            or
+    #     FILTER != PASS  or  GQ < multi_hit_min_gq (20)
+    #   A member with normal VAF and good quality is kept.
     #   Exempt: HIGH-impact variants (PVS1) and ClinVar pathogenic/likely_pathogenic.
-    #   Rejected variants are appended (with reason) to germline_all_filtered.tsv.
+    #   Rejected variants are appended (with reason and partner) to germline_all_filtered.tsv.
     python3 - <<'PYEOF'
 import sys, os
 from collections import defaultdict
@@ -552,10 +555,9 @@ TSV_IN    = "${sample}.germline_snvs.pre_python.tsv"
 TSV_CLEAN = "${sample}.germline_snvs.tsv"
 TSV_FILT  = "${sample}.germline_all_filtered.tsv"
 
-INFRAME_DEL_EFFECTS = frozenset([
-    "disruptive_inframe_deletion",
-    "conservative_inframe_deletion",
-])
+MAX_DIST = int(os.environ.get("FILT_MULTI_HIT_DIST", "30"))
+MAX_VAF  = float(os.environ.get("FILT_MULTI_HIT_VAF", "0.40"))
+MIN_GQ   = float(os.environ.get("FILT_MULTI_HIT_MIN_GQ", "20"))
 
 with open(TSV_IN) as f:
     lines = [l.rstrip("\\n") for l in f if l.strip()]
@@ -591,6 +593,23 @@ def is_exempt(row):
             return True
     return False
 
+def bad_reasons(row):
+    # Why this pair member looks like an artefact ([] = keep)
+    why = []
+    v = compute_vaf(row)
+    if v is not None and v < MAX_VAF:
+        why.append("VAF={:.3f}".format(v))
+    filt = g(row, "FILTER")
+    if filt not in (".", "", "PASS"):
+        why.append("FILTER=" + filt)
+    try:
+        gq = float(g(row, "GEN[0].GQ"))
+        if gq < MIN_GQ:
+            why.append("GQ={:g}".format(gq))
+    except ValueError:
+        pass
+    return why
+
 data = [l.split("\\t") for l in lines[1:]]
 
 gene_grp = defaultdict(list)
@@ -605,28 +624,22 @@ for gene, idxs in gene_grp.items():
         for b in range(a + 1, len(idxs)):
             i1, i2 = idxs[a], idxs[b]
             r1, r2 = data[i1], data[i2]
-            rank_same = g(r1, "ANN[*].RANK") == g(r2, "ANN[*].RANK")
             try:
-                nearby = abs(int(g(r1, "POS")) - int(g(r2, "POS"))) <= int(os.environ.get("FILT_MULTI_HIT_DIST", "30"))
+                dist = abs(int(g(r1, "POS")) - int(g(r2, "POS")))
             except ValueError:
-                nearby = False
-            if rank_same or nearby:
-                for idx, row in [(i1, r1), (i2, r2)]:
-                    if idx in to_filter or is_exempt(row):
-                        continue
-                    effect = g(row, "ANN[*].EFFECT")
-                    exon   = g(row, "ANN[*].RANK")
-                    v      = compute_vaf(row)
-                    if effect in INFRAME_DEL_EFFECTS:
-                        to_filter[idx] = (
-                            "multi_hit_same_exon_inframe_deletion "
-                            "(effect={}, gene={}, exon={})".format(effect, gene, exon)
-                        )
-                    elif v is not None and v < float(os.environ.get("FILT_MULTI_HIT_VAF", "0.40")):
-                        to_filter[idx] = (
-                            "multi_hit_same_exon_low_vaf "
-                            "(VAF={:.3f}, gene={}, exon={})".format(v, gene, exon)
-                        )
+                continue
+            if dist > MAX_DIST:
+                continue
+            for idx, row, mate in [(i1, r1, r2), (i2, r2, r1)]:
+                if idx in to_filter or is_exempt(row):
+                    continue
+                why = bad_reasons(row)
+                if why:
+                    to_filter[idx] = (
+                        "multi_hit_nearby ({}; gene={}, pair={}:{} {}>{}, dist={} bp)".format(
+                            "; ".join(why), gene, g(mate, "CHROM"), g(mate, "POS"),
+                            g(mate, "REF"), g(mate, "ALT"), dist)
+                    )
 
 with open(TSV_CLEAN, "w") as fc, open(TSV_FILT, "a") as ff:
     fc.write(lines[0] + "\\n")
