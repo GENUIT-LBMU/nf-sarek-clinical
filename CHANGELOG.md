@@ -17,8 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   BA1/BS1/PM2, the HTML/PDF reports and the germline–somatic correlation.
 - `ZYGOSITY` column in germline TSVs (HET, HOM, HOM/HEMI on non-PAR chrX/chrY,
   HET(VAF alta)), shown as "Cig." in the HTML and PDF germline tables.
-- `QC_FLAG` column in germline TSVs (`DP<20`, `VAF_baja`), shown inside the VAF
-  cell of the HTML and PDF germline tables.
+- `QC_FLAG` column in germline TSVs (`DP<20`, `VAF_baja`, and the VCF FILTER
+  when not PASS: `CNN_SNP`, `CNN_INDEL`, `LowQual`), shown inside the VAF cell
+  of the HTML and PDF germline tables. Non-PASS variants are flagged, not removed.
 
 ### Changed
 - With `--gnomad_tsv` set, no patient coordinates are sent to Ensembl or gnomAD

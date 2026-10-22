@@ -480,6 +480,7 @@ PYEOF_GNOMAD
     #   Adds QC_FLAG ("." or comma-separated):
     #     DP<N      depth below vaf_floor_min_dp: VAF floor not applied
     #     VAF_baja  ClinVar P/LP kept despite VAF below the floor
+    #     CNN_SNP / CNN_INDEL / LowQual / <other>   VCF FILTER != PASS (flag only)
     awk -F'\\t' -v FILT="${sample}.germline_all_filtered.tsv" '
     BEGIN { OFS="\\t" }
     NR == 1 {
@@ -489,6 +490,7 @@ PYEOF_GNOMAD
             if (\$i == "ANN[*].IMPACT")              impact_col  = i
             if (\$i == "GEN[0].AD")                  ad_col      = i
             if (\$i == "GEN[0].DP")                  dp_col      = i
+            if (\$i == "FILTER")                     filter_col  = i
             if (\$i == "dbNSFP_clinvar_clnsig")       cs_col      = i
             if (\$i == "dbNSFP_gnomAD_exomes_AF")     gnomad_v2   = i
             if (\$i == "gnomAD_AF")                   gnomad_can  = i
@@ -528,6 +530,14 @@ PYEOF_GNOMAD
                         else reason = sprintf("vaf_too_low (VAF=%.3f, DP=%d, impact=%s)", vaf, dp, \$(impact_col))
                     }
                 }
+            }
+        }
+        # VCF FILTER (GATK CNN tranches): flag only, never a rejection reason
+        if (filter_col) {
+            fv = \$(filter_col)
+            if (fv != "PASS" && fv != "." && fv != "") {
+                lab = (fv ~ /^CNN_1D_SNP/) ? "CNN_SNP" : ((fv ~ /^CNN_1D_INDEL/) ? "CNN_INDEL" : fv)
+                flag = (flag == "") ? lab : flag "," lab
             }
         }
         if (flag == "") flag = "."

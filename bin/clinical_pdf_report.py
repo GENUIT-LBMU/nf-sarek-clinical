@@ -999,7 +999,7 @@ def build_germline_section(germline_variants, story):
         qc_raw = (v.get('QC_FLAG') or '').strip()
         if qc_raw not in ('', '.'):
             vaf_str = Paragraph(
-                f'{vaf_str}<br/><font size="5.5">{xml_escape(qc_raw.replace("_", " "))}</font>', _zyg_style)
+                f'{vaf_str}<br/><font size="5.5">{"<br/>".join(xml_escape(q.replace("_", " ")) for q in qc_raw.split(","))}</font>', _zyg_style)
         # Zygosity (Step 1.6 of SNPSIFT_EXTRACT_GERMLINE); wraps inside its cell
         zyg_raw = (v.get('ZYGOSITY') or '').strip()
         zyg = Paragraph(zyg_raw.replace('/', '/<br/>').replace('(', '<br/>(')
