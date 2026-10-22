@@ -30,6 +30,11 @@ snpsift_jar:    /path/to/refs/snpEff/SnpSift.jar
 # AF comes from dbNSFP (gnomAD v2.1.1 exomes) plus a web-API rescue for indels.
 gnomad_tsv:     /path/to/refs/gnomad/gnomad_v4.1_panel.tsv.gz
 
+# ── MANE Select nomenclature (recommended) ────────────────────────────────────
+# snpEff data dir containing GRCh38.mane.1.2.refseq/ (see README). Without it,
+# germline HGVS uses sarek's snpEff -canon transcript (longest CDS).
+snpeff_mane_data: /path/to/refs/snpeff/data
+
 # ── ClinVar (recommended) ─────────────────────────────────────────────────────
 # Local ClinVar subset for the gene panels (scripts/build_clinvar_panel.sh).
 # Without it, germline ClinVar comes from dbNSFP 4.1a (~2020, SNVs only).

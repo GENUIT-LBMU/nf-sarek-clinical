@@ -3,11 +3,12 @@
     GERMLINE POSTPROCESSING SUBWORKFLOW
     =====================================
     Takes Sarek HaplotypeCaller annotated VCFs and runs:
-      - Germline SNV: [local gnomAD] → [local ClinVar] → dbNSFP → gene+impact filter → TSV extraction
+      - Germline SNV: [snpEff MANE] → [local gnomAD] → [local ClinVar] → dbNSFP → gene+impact filter → TSV extraction
       - Pharmacogenomics: rsID filter → TSV
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+include { SNPEFF_MANE              } from '../../../modules/local/snpeff_mane/main'
 include { GNOMAD_ANNOTATE          } from '../../../modules/local/gnomad_annotate/main'
 include { CLINVAR_ANNOTATE         } from '../../../modules/local/clinvar_annotate/main'
 include { SNPSIFT_DBNSFP_GERMLINE  } from '../../../modules/local/snpsift_germline/main'
@@ -25,13 +26,25 @@ workflow GERMLINE_POSTPROCESS {
     ch_pharmaco_variants     // path: pharmacogenomics rsID file
     ch_gnomad                // list: [tsv.gz, tsv.gz.tbi, regions.bed.gz, regions.bed.gz.tbi] or []
     ch_clinvar               // list: [tsv.gz, tsv.gz.tbi] or []
+    ch_snpeff_mane           // list: [snpEff data dir, database name] or []
 
     main:
     // ── Local gnomAD population frequencies (optional) ───────────────────────
     ch_vcfs_for_dbnsfp = ch_haplotypecaller_vcfs
+
+    // ── MANE Select re-annotation (optional) ─────────────────────────────────
+    if (ch_snpeff_mane) {
+        SNPEFF_MANE(
+            ch_vcfs_for_dbnsfp,
+            ch_snpeff_mane[0],
+            ch_snpeff_mane[1]
+        )
+        ch_vcfs_for_dbnsfp = SNPEFF_MANE.out.vcf
+    }
+
     if (ch_gnomad) {
         GNOMAD_ANNOTATE(
-            ch_haplotypecaller_vcfs,
+            ch_vcfs_for_dbnsfp,
             ch_gnomad[0],
             ch_gnomad[1],
             ch_gnomad[2],

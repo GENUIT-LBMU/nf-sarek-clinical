@@ -508,6 +508,25 @@ whenever a gene panel changes. Germline TSVs gain `gnomAD_AF`, `gnomAD_AF_source
 and the `GNOMAD_*` columns (FAF95 grpmax, ancestry group, admixed-American AF,
 homozygote counts, gnomAD FILTER).
 
+### snpEff MANE database — germline nomenclature (recommended)
+
+Sarek runs snpEff with `-canon`, which keeps the transcript with the longest CDS.
+For ~1 in 10 candidate panel variants that is not the MANE Select transcript, so the
+reported HGVS differs from ClinVar and the literature (e.g. BRCA1 p.Ser1634Gly
+instead of p.Ser1613Gly, MUTYH p.Gln335His instead of p.Gln338His). With
+`snpeff_mane_data` set, the germline VCF is re-annotated (`SNPEFF_MANE`, snpEff 5.2)
+with the MANE Select database, one RefSeq NM transcript per gene.
+
+```bash
+mkdir -p /data/refs/snpeff && cd /data/refs/snpeff
+curl -O https://snpeff-public.s3.amazonaws.com/databases/v5_2/snpEff_v5_2_GRCh38.mane.1.2.refseq.zip
+unzip snpEff_v5_2_GRCh38.mane.1.2.refseq.zip     # → data/GRCh38.mane.1.2.refseq/ (~370 MB)
+```
+
+Then set `snpeff_mane_data: /data/refs/snpeff/data` (`snpeff_mane_db` defaults to
+`GRCh38.mane.1.2.refseq`). MANE 1.2 transcripts are identical (same NM version) to
+MANE 1.5 for all 122 genes of the three panels.
+
 ### ClinVar — germline classifications (recommended)
 
 A local subset of the official NCBI ClinVar GRCh38 VCF over the same panel
@@ -646,6 +665,8 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | `--panel_bed` | — | WES capture BED for TMB calculation (mut/Mb) |
 | `--gnomad_tsv` | — | Local gnomAD panel resource (`scripts/build_gnomad_panel.sh`); path or https URL. Recommended |
 | `--gnomad_regions` | `<gnomad_tsv>_regions.bed.gz` | Regions BED of that resource (only needed if renamed) |
+| `--snpeff_mane_data` | — | snpEff data dir with the MANE database; re-annotates germline with MANE Select. Recommended |
+| `--snpeff_mane_db` | `GRCh38.mane.1.2.refseq` | snpEff MANE database name |
 | `--clinvar_tsv` | — | Local ClinVar panel resource (`scripts/build_clinvar_panel.sh`); path or https URL. Recommended |
 
 > All filtering thresholds (germline SNV depth/VAF, somatic TMB DP/AF, ACMG scores, biomarker cutoffs, etc.) are centralised in **`conf/filters.config`**. Edit that file to adjust any threshold — individual `--tmb_min_dp`-style CLI params are deprecated.

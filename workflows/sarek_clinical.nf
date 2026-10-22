@@ -49,6 +49,17 @@ workflow SAREK_CLINICAL {
         log.warn "--gnomad_tsv not set: germline population frequencies come from dbNSFP (gnomAD v2.1.1 exomes) plus web-API rescue for indels. Build the local resource with scripts/build_gnomad_panel.sh."
     }
 
+    // snpEff MANE database (optional). Empty list => keep sarek's snpEff -canon annotation.
+    ch_snpeff_mane   = params.snpeff_mane_data
+        ? [ file(params.snpeff_mane_data, checkIfExists: true), params.snpeff_mane_db ]
+        : []
+    if (params.snpeff_mane_data && !file("${params.snpeff_mane_data}/${params.snpeff_mane_db}/snpEffectPredictor.bin").exists()) {
+        error("--snpeff_mane_data: ${params.snpeff_mane_data}/${params.snpeff_mane_db}/snpEffectPredictor.bin not found")
+    }
+    if (!params.snpeff_mane_data && !params.skip_germline_snv) {
+        log.warn "--snpeff_mane_data not set: germline HGVS uses sarek's snpEff -canon transcript (longest CDS), which may differ from MANE Select."
+    }
+
     // Local ClinVar panel resource (optional). Empty list => legacy dbNSFP 4.1a ClinVar (SNVs only, ~2020).
     ch_clinvar       = params.clinvar_tsv
         ? [ file(params.clinvar_tsv,           checkIfExists: true),
@@ -155,7 +166,8 @@ workflow SAREK_CLINICAL {
             ch_germline_panel,
             ch_pharmaco_variants,
             ch_gnomad,
-            ch_clinvar
+            ch_clinvar,
+            ch_snpeff_mane
         )
     }
 

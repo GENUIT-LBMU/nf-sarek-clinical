@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   group, admixed-American AF, homozygote counts, gnomAD FILTER).
 - Canonical `gnomAD_AF` / `gnomAD_AF_source` columns in germline TSVs, used by
   BA1/BS1/PM2, the HTML/PDF reports and the germline–somatic correlation.
+- Germline re-annotation with MANE Select transcripts (`--snpeff_mane_data`,
+  new `SNPEFF_MANE` module, snpEff 5.2 + `GRCh38.mane.1.2.refseq`). Sarek's
+  snpEff `-canon` keeps the longest-CDS transcript, so germline HGVS did not
+  follow clinical nomenclature for ~10% of candidate variants (BRCA1 p.Ser1634Gly vs
+  p.Ser1613Gly, MUTYH p.Gln335His vs p.Gln338His, MEN1, MET, POLD1, CASR, EPCAM).
 - Local ClinVar germline classifications (`--clinvar_tsv`).
   `scripts/build_clinvar_panel.sh` builds a panel subset of the NCBI ClinVar
   GRCh38 VCF (contigs renamed, left-normalised); the new `CLINVAR_ANNOTATE`
