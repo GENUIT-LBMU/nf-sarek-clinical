@@ -20,6 +20,8 @@ each representation.
 Functions
 ---------
 count_insil(get_field)            -> (dam:int, ben:int)
+gnomad_af(get_field)              -> float | None  (None = frequency unknown)
+gnomad_supports_pm2(get_field)    -> bool  (False for sites failing gnomAD QC)
 acmg_criteria_list(get_field)     -> (cls:str, criteria:list[str])
 acmg_class(get_field)             -> str   (P / LP / VUS / LB / B)
 
@@ -101,6 +103,45 @@ def count_insil(get_field):
 
 
 # =============================================================================
+# Population frequency
+# =============================================================================
+def gnomad_af(get_field):
+    """Population allele frequency used by BA1 / BS1 / PM2.
+
+    Reads the canonical `gnomAD_AF` column written by SNPSIFT_EXTRACT_GERMLINE
+    (local gnomAD v4.1 resource, or the legacy dbNSFP/web-API value) and falls
+    back to `dbNSFP_gnomAD_exomes_AF` for tables produced before that column
+    existed.
+
+    Returns a float, or None when the frequency is UNKNOWN (local mode: site
+    outside the resource regions with no dbNSFP value). Unknown must not be
+    read as "absent": callers skip BA1, BS1 and PM2 in that case. In legacy
+    mode a missing value keeps the historical behaviour (0.0, i.e. absent).
+    See gnomad_supports_pm2() for sites failing gnomAD QC.
+    """
+    src = get_field('gnomAD_AF_source')
+    if src == 'unknown':
+        return None
+    for name in ('gnomAD_AF', 'dbNSFP_gnomAD_exomes_AF'):
+        vals = []
+        for x in get_field(name).split(','):   # "0.53,0.53" = one value per transcript
+            try:
+                vals.append(float(x))
+            except (TypeError, ValueError):
+                pass
+        if vals:
+            return max(vals)
+    return 0.0
+
+
+def gnomad_supports_pm2(get_field):
+    """False when the frequency comes from a site that fails gnomAD QC in both
+    exomes and genomes (source *_qc_fail): low AF there reflects poor calling
+    (paralogs, repeats), not rarity. Such AFs still count for BA1/BS1."""
+    return not get_field('gnomAD_AF_source').endswith('_qc_fail')
+
+
+# =============================================================================
 # ACMG classification
 # =============================================================================
 def acmg_criteria_list(get_field):
@@ -138,11 +179,8 @@ def acmg_criteria_list(get_field):
             return 'B', ['ClinVar:B']
 
     # ── 2. Population frequency — BA1 (common polymorphism) ────────────────
-    try:
-        gnomad = float(get_field('dbNSFP_gnomAD_exomes_AF'))
-    except (ValueError, TypeError):
-        gnomad = 0.0
-    if gnomad > float(_E('ACMG_BA1_AF', '0.05')):
+    gnomad = gnomad_af(get_field)          # None = unknown → no BA1/BS1/PM2
+    if gnomad is not None and gnomad > float(_E('ACMG_BA1_AF', '0.05')):
         return 'B', ['BA1']
 
     # ── 3. Evidence scoring ────────────────────────────────────────────────
@@ -154,7 +192,8 @@ def acmg_criteria_list(get_field):
         score += int(_E('ACMG_PVS1_SCORE', '8'))
         criteria.append('PVS1')
 
-    if gnomad < float(_E('ACMG_PM2_AF', '0.001')):
+    if (gnomad is not None and gnomad_supports_pm2(get_field)
+            and gnomad < float(_E('ACMG_PM2_AF', '0.001'))):
         score += int(_E('ACMG_PM2_SCORE', '2'))
         criteria.append('PM2')
 
@@ -218,7 +257,7 @@ def acmg_criteria_list(get_field):
         criteria.append(panel_lbl)
 
     # BS1 — frequency above benign threshold
-    if gnomad > float(_E('ACMG_BS1_AF', '0.01')):
+    if gnomad is not None and gnomad > float(_E('ACMG_BS1_AF', '0.01')):
         score += int(_E('ACMG_BS1_SCORE', '-4'))
         criteria.append('BS1')
 

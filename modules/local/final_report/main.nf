@@ -570,7 +570,7 @@ def tsv_to_html_germline(path):
         ('DP',          None),
         ('VAF',         None),
         ('REVEL',       'dbNSFP_REVEL_score'),
-        ('gnomAD_AF',   'dbNSFP_gnomAD_exomes_AF'),
+        ('gnomAD_AF',   'gnomAD_AF'),
         ('ClinVar',     'dbNSFP_clinvar_clnsig'),
         ('ACMG',        None),
         ('Criteria',    None),

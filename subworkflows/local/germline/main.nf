@@ -3,11 +3,12 @@
     GERMLINE POSTPROCESSING SUBWORKFLOW
     =====================================
     Takes Sarek HaplotypeCaller annotated VCFs and runs:
-      - Germline SNV: dbNSFP → gene+impact filter → TSV extraction
+      - Germline SNV: [local gnomAD] → dbNSFP → gene+impact filter → TSV extraction
       - Pharmacogenomics: rsID filter → TSV
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+include { GNOMAD_ANNOTATE          } from '../../../modules/local/gnomad_annotate/main'
 include { SNPSIFT_DBNSFP_GERMLINE  } from '../../../modules/local/snpsift_germline/main'
 include { SNPSIFT_FILTER_GERMLINE  } from '../../../modules/local/snpsift_germline/main'
 include { SNPSIFT_EXTRACT_GERMLINE } from '../../../modules/local/snpsift_germline/main'
@@ -21,11 +22,25 @@ workflow GERMLINE_POSTPROCESS {
     ch_snpsift_jar           // path: SnpSift.jar
     ch_germline_panel        // path: gene panel file
     ch_pharmaco_variants     // path: pharmacogenomics rsID file
+    ch_gnomad                // list: [tsv.gz, tsv.gz.tbi, regions.bed.gz, regions.bed.gz.tbi] or []
 
     main:
+    // ── Local gnomAD population frequencies (optional) ───────────────────────
+    ch_vcfs_for_dbnsfp = ch_haplotypecaller_vcfs
+    if (ch_gnomad) {
+        GNOMAD_ANNOTATE(
+            ch_haplotypecaller_vcfs,
+            ch_gnomad[0],
+            ch_gnomad[1],
+            ch_gnomad[2],
+            ch_gnomad[3]
+        )
+        ch_vcfs_for_dbnsfp = GNOMAD_ANNOTATE.out.vcf
+    }
+
     // ── Germline SNV pipeline ─────────────────────────────────────────────────
     SNPSIFT_DBNSFP_GERMLINE(
-        ch_haplotypecaller_vcfs,
+        ch_vcfs_for_dbnsfp,
         ch_dbnsfp,
         ch_dbnsfp_tbi,
         ch_snpsift_jar

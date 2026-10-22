@@ -78,7 +78,7 @@ def load_germline_variants(path):
                 'effect':  (row.get('ANN[*].EFFECT') or '').strip(),
                 'clnsig':  (row.get('dbNSFP_clinvar_clnsig') or '').strip(),
                 'revel':   (row.get('dbNSFP_REVEL_score') or '').strip(),
-                'gnomad':  (row.get('dbNSFP_gnomAD_exomes_AF') or '').strip(),
+                'gnomad':  (row.get('gnomAD_AF') or row.get('dbNSFP_gnomAD_exomes_AF') or '').strip(),
                 'acmg':    acmg,
             })
     return variants

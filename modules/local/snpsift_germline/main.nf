@@ -134,12 +134,25 @@ process SNPSIFT_EXTRACT_GERMLINE {
     """
     printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\n" > ${sample}.germline_snvs.tsv
     touch ${sample}.germline_all_filtered.tsv
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tgnomAD_AF\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
     """
 
     script:
     """
     # Filter thresholds are available as env vars from nextflow.config env {} block
+
+    # Local gnomAD fields exist only when GNOMAD_ANNOTATE ran (--gnomad_tsv);
+    # SnpSift aborts on INFO fields missing from the header, so add them conditionally.
+    GNOMAD_FIELDS=""
+    GNOMAD_VERSION=""
+    # (read the whole header: an early-closing pipe would trip pipefail with SIGPIPE)
+    zcat "${vcf}" | grep '^##' > vcf_header.txt || true
+    if grep -q '^##INFO=<ID=GNOMAD_AF,' vcf_header.txt; then
+        GNOMAD_FIELDS="GNOMAD_REGION GNOMAD_FILTER GNOMAD_AF GNOMAD_AC GNOMAD_AN GNOMAD_FAF95 GNOMAD_GRPMAX GNOMAD_AF_AMR GNOMAD_AN_AMR GNOMAD_NHOMALT GNOMAD_NHOMALT_XY"
+        GNOMAD_VERSION=\$(sed -n 's/^##gnomAD_resource=<Version=\\([^,]*\\),.*/\\1/p' vcf_header.txt)
+    fi
+    rm -f vcf_header.txt
+    export GNOMAD_VERSION
 
     java -jar ${snpsift_jar} extractFields -v -s ";" -e "." "${vcf}" \\
         CHROM POS ID REF ALT QUAL FILTER DP \\
@@ -163,6 +176,7 @@ process SNPSIFT_EXTRACT_GERMLINE {
         "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
         "dbNSFP_clinvar_MedGen_id" "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
         "dbNSFP_Interpro_domain" \\
+        \${GNOMAD_FIELDS} \\
         > "${sample}.germline_snvs_raw.tsv"
 
     # ── Step 1: Normalize multi-annotation fields (keep first value before ;) ──────
@@ -171,7 +185,17 @@ process SNPSIFT_EXTRACT_GERMLINE {
         "${sample}.germline_snvs_raw.tsv" > "${sample}.germline_all_extracted.tsv"
     rm -f "${sample}.germline_snvs_raw.tsv"
 
-    # ── Step 1.5: gnomAD AF rescue (Ensembl VEP + gnomAD GraphQL fallback) ───────
+    # ── Step 1.5: population frequency → canonical gnomAD_AF / gnomAD_AF_source ──
+    #   LOCAL mode (GNOMAD_* columns present, --gnomad_tsv): no network access.
+    #     gnomAD_v<ver>          AF from the local gnomAD joint resource (max over alleles)
+    #     gnomAD_v<ver>_absent   inside resource regions, not in gnomAD -> AF 0 (PM2 valid)
+    #     gnomAD_v<ver>_qc_fail  fails QC in both gnomAD exomes and genomes: AF kept for
+    #                            BA1/BS1, never used for PM2
+    #     dbNSFP_v2              outside resource regions -> dbNSFP gnomAD v2.1.1 AF
+    #     unknown                outside regions and no dbNSFP AF -> no BA1/BS1/PM2
+    #   LEGACY mode (no --gnomad_tsv): behaviour below, unchanged.
+    #
+    # ── Legacy: gnomAD AF rescue (Ensembl VEP + gnomAD GraphQL fallback) ─────────
     #   dbNSFP only covers SNVs — for indels the gnomAD AF column is empty.
     #   This step queries:
     #     1) Ensembl VEP REST API (/vep/human/region) — fast, but often lacks
@@ -284,13 +308,67 @@ alt_i    = hdr.get('ALT',   -1)
 if af_i < 0 or chr_i < 0:
     sys.exit(0)
 
+def _num(v):
+    # dbNSFP/gnomAD fields may hold one value per transcript/allele: "0.53,0.53"
+    vals = []
+    for x in str(v).split(','):
+        try:
+            vals.append(float(x))
+        except (TypeError, ValueError):
+            pass
+    return max(vals) if vals else None
+
+# ── LOCAL mode: frequencies from the local gnomAD resource, no network ──────
+if 'GNOMAD_REGION' in hdr:
+    tag = 'gnomAD_v' + (os.environ.get('GNOMAD_VERSION', '') or 'local')
+    gi  = {k: hdr.get(k, -1) for k in ('GNOMAD_REGION', 'GNOMAD_AF', 'GNOMAD_FILTER',
+                                       'dbNSFP_gnomAD_exomes_AF', 'dbNSFP_gnomAD_genomes_AF')}
+    def col(row, k):
+        i = gi[k]
+        return row[i].strip() if 0 <= i < len(row) else '.'
+    n_base = len(hdr_list)
+    hdr_list += ['gnomAD_AF', 'gnomAD_AF_source']
+    counts = {}
+    with open(TMP, 'w') as out:
+        out.write('\\t'.join(hdr_list) + '\\n')
+        for line in lines[1:]:
+            row = line.split('\\t')
+            while len(row) < n_base:
+                row.append('.')
+            afs   = col(row, 'GNOMAD_AF').split(',')
+            filts = col(row, 'GNOMAD_FILTER').split(',')
+            vals  = [(_num(a), filts[k] if k < len(filts) else '.') for k, a in enumerate(afs)]
+            vals  = [(a, f) for a, f in vals if a is not None]
+            region = col(row, 'GNOMAD_REGION')
+            if vals:
+                good = [a for a, f in vals if f != 'BOTH_FILTERED']
+                if good:
+                    af, src = repr(max(good)), tag
+                else:
+                    # Fails QC in exomes AND genomes (paralogs, repeats): the AF is
+                    # kept for BA1/BS1 (benign direction) but never supports PM2.
+                    af, src = repr(max(a for a, _f in vals)), tag + '_qc_fail'
+            elif region not in ('', '.'):
+                af, src = '0', tag + '_absent'
+            else:
+                v2 = [x for x in (_num(col(row, 'dbNSFP_gnomAD_exomes_AF')),
+                                  _num(col(row, 'dbNSFP_gnomAD_genomes_AF'))) if x is not None]
+                af, src = (repr(max(v2)), 'dbNSFP_v2') if v2 else ('.', 'unknown')
+            counts[src] = counts.get(src, 0) + 1
+            out.write('\\t'.join(row[:n_base] + [af, src]) + '\\n')
+    sys.stderr.write('[gnomAD local] ${sample}: ' + ', '.join(
+        k + '=' + str(v) for k, v in sorted(counts.items())) + '\\n')
+    os.replace(TMP, TSV)
+    sys.exit(0)
+
+# ── LEGACY mode ─────────────────────────────────────────────────────────────
 # Add gnomAD_AF_source column
 hdr_list.append('gnomAD_AF_source')
 src_i = len(hdr_list) - 1
 
 n = 0
 with open(TMP, 'w') as out:
-    out.write('\\t'.join(hdr_list) + '\\n')
+    out.write('\\t'.join(hdr_list + ['gnomAD_AF']) + '\\n')
     for line in lines[1:]:
         row = line.split('\\t')
         while len(row) < src_i:
@@ -333,7 +411,7 @@ with open(TMP, 'w') as out:
                         ' (' + source + ')\\n'
                     )
                 time.sleep(SLEEP)
-        out.write('\\t'.join(row) + '\\n')
+        out.write('\\t'.join(row + [row[af_i]]) + '\\n')
 
 sys.stderr.write('[gnomAD rescue] ${sample}: rescued ' + str(n) + ' variant(s)\\n')
 os.replace(TMP, TSV)
@@ -344,7 +422,8 @@ PYEOF_GNOMAD
     #   Rejected variants → germline_all_filtered.tsv  (with FILTER_REASON column)
     #
     #   Rejection reasons:
-    #     gnomad_BA1      : gnomAD exomes AF > 5% (common polymorphism — ACMG BA1)
+    #     gnomad_BA1      : gnomAD AF > 5% (common polymorphism — ACMG BA1), read
+    #                       from the canonical gnomAD_AF column ("." = unknown)
     #     clinvar_benign  : ClinVar Benign/Likely_benign (unless also Pathogenic)
     #     vaf_too_low     : VAF below threshold (HIGH-impact: 0.25, MODERATE: 0.35)
     #     vaf_too_high    : VAF > 0.75 (likely homozygous or artefact)
@@ -356,8 +435,10 @@ PYEOF_GNOMAD
             if (\$i == "ANN[*].IMPACT")              impact_col  = i
             if (\$i == "GEN[0].AD")                  ad_col      = i
             if (\$i == "dbNSFP_clinvar_clnsig")       cs_col      = i
-            if (\$i == "dbNSFP_gnomAD_exomes_AF")     gnomad_col  = i
+            if (\$i == "dbNSFP_gnomAD_exomes_AF")     gnomad_v2   = i
+            if (\$i == "gnomAD_AF")                   gnomad_can  = i
         }
+        gnomad_col = gnomad_can ? gnomad_can : gnomad_v2
         print; next
     }
     {

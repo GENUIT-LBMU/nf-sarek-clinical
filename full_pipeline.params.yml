@@ -24,6 +24,12 @@ ascat_loci_rt:    /path/to/refs/ascat/ascat_loci_rt.zip
 dbnsfp:         /path/to/refs/dbNSFP/dbNSFP4.1a.txt.gz
 snpsift_jar:    /path/to/refs/snpEff/SnpSift.jar
 
+# ── Population frequencies (recommended) ──────────────────────────────────────
+# Local gnomAD v4.1 joint subset for the gene panels (scripts/build_gnomad_panel.sh).
+# The *_regions.bed.gz next to it is found automatically. Without it, germline
+# AF comes from dbNSFP (gnomAD v2.1.1 exomes) plus a web-API rescue for indels.
+gnomad_tsv:     /path/to/refs/gnomad/gnomad_v4.1_panel.tsv.gz
+
 # ── TMB calculation (WES capture BED) ─────────────────────────────────────────
 panel_bed:      /path/to/refs/hg38/<kit>/<kit>_Regions.bed
 

@@ -993,7 +993,7 @@ def build_germline_section(germline_variants, story):
             dp_int  = dp_raw or '-'
             vaf_str = '-'
         revel  = trunc(v.get('dbNSFP_REVEL_score', '-'), 8)
-        gnomad = trunc(v.get('dbNSFP_gnomAD_exomes_AF', '-'), 12)
+        gnomad = trunc(v.get('gnomAD_AF') or v.get('dbNSFP_gnomAD_exomes_AF', '-'), 12)
         clnsig_raw = v.get('dbNSFP_clinvar_clnsig', '-').strip() or '-'
         clnsig = clnsig_raw.replace('_', ' ')
         cls    = v.get('_ACMG', 'VUS')

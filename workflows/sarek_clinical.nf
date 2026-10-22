@@ -37,6 +37,18 @@ workflow SAREK_CLINICAL {
     ch_panel_bed     = params.panel_bed   ? file(params.panel_bed)   : []
     ch_gene_coords   = params.gene_coords_bed ? file(params.gene_coords_bed) : []
 
+    // Local gnomAD panel resource (optional). Empty list => legacy dbNSFP v2 AF + web-API rescue.
+    def gnomad_regions = params.gnomad_regions ?: (params.gnomad_tsv ? params.gnomad_tsv.toString().replaceAll(/\.tsv\.gz$/, '_regions.bed.gz') : null)
+    ch_gnomad        = params.gnomad_tsv
+        ? [ file(params.gnomad_tsv,            checkIfExists: true),
+            file("${params.gnomad_tsv}.tbi",   checkIfExists: true),
+            file(gnomad_regions,               checkIfExists: true),
+            file("${gnomad_regions}.tbi",      checkIfExists: true) ]
+        : []
+    if (!params.gnomad_tsv && !params.skip_germline_snv) {
+        log.warn "--gnomad_tsv not set: germline population frequencies come from dbNSFP (gnomAD v2.1.1 exomes) plus web-API rescue for indels. Build the local resource with scripts/build_gnomad_panel.sh."
+    }
+
     ch_germline_panel    = file(params.germline_panel)
     ch_somatic_cnv_panel = file(params.somatic_cnv_panel)
     ch_somatic_snv_panel = file(params.somatic_snv_panel)
@@ -132,7 +144,8 @@ workflow SAREK_CLINICAL {
             ch_dbnsfp_tbi,
             ch_snpsift_jar,
             ch_germline_panel,
-            ch_pharmaco_variants
+            ch_pharmaco_variants,
+            ch_gnomad
         )
     }
 

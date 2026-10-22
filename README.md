@@ -479,6 +479,35 @@ unzip snpEff_latest_core.zip -d /data/refs/snpEff
 # Jar → /data/refs/snpEff/snpEff/SnpSift.jar
 ```
 
+### gnomAD v4.1 — population frequencies (recommended)
+
+A small local subset of gnomAD v4.1 *joint* (exomes + genomes, ~807k individuals)
+restricted to the MANE exons (±100 bp) of the panel genes. It replaces the
+dbNSFP gnomAD v2.1.1 frequency and the Ensembl / gnomAD web-API rescue for
+indels: no patient coordinates leave the host, every variant gets the same
+gnomAD version, and a variant inside the resource regions that is not in
+gnomAD is reported as truly absent (`gnomAD_AF_source = gnomAD_v4.1_absent`).
+Sites failing gnomAD QC in both exomes and genomes (`*_qc_fail`, e.g. paralogous
+regions such as FANCD2/FANCD2P2) keep their AF for BA1/BS1 but never support PM2.
+
+```bash
+# needs bcftools built with libcurl — the pipeline's bcftools container has it
+docker run --rm -u $(id -u):$(id -g) -v $PWD:$PWD -v /data/refs:/data/refs -w $PWD \
+    quay.io/biocontainers/bcftools:1.20--h8b25389_0 \
+    bash scripts/build_gnomad_panel.sh \
+        --genes assets/gene_panels/germline_103_cancer_predisposition.txt \
+        --genes assets/gene_panels/somatic_snv_panel.txt \
+        --genes assets/gene_panels/somatic_38_oncogenes.txt \
+        --mane  /data/refs/cnv/exons_mane.txt \
+        --outdir /data/refs/gnomad
+# → gnomad_v4.1_panel.tsv.gz(.tbi), gnomad_v4.1_panel_regions.bed.gz(.tbi), manifest
+```
+
+Then set `gnomad_tsv: /data/refs/gnomad/gnomad_v4.1_panel.tsv.gz`. Rebuild it
+whenever a gene panel changes. Germline TSVs gain `gnomAD_AF`, `gnomAD_AF_source`
+and the `GNOMAD_*` columns (FAF95 grpmax, ancestry group, admixed-American AF,
+homozygote counts, gnomAD FILTER).
+
 ### hg38 reference genome
 
 From the **GATK GCP bucket**:
@@ -589,6 +618,8 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | `--germline_panel` | `assets/gene_panels/germline_103_cancer_predisposition.txt` | Gene list for germline SNV/CNV filter (one symbol per line) |
 | `--somatic_snv_panel` | `assets/gene_panels/somatic_snv_panel.txt` | Gene list for somatic SNV filter |
 | `--panel_bed` | — | WES capture BED for TMB calculation (mut/Mb) |
+| `--gnomad_tsv` | — | Local gnomAD panel resource (`scripts/build_gnomad_panel.sh`); path or https URL. Recommended |
+| `--gnomad_regions` | `<gnomad_tsv>_regions.bed.gz` | Regions BED of that resource (only needed if renamed) |
 
 > All filtering thresholds (germline SNV depth/VAF, somatic TMB DP/AF, ACMG scores, biomarker cutoffs, etc.) are centralised in **`conf/filters.config`**. Edit that file to adjust any threshold — individual `--tmb_min_dp`-style CLI params are deprecated.
 

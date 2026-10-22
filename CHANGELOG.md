@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Local gnomAD v4.1 population frequencies for germline SNVs (`--gnomad_tsv`).
+  `scripts/build_gnomad_panel.sh` builds a ~13 MB subset of gnomAD v4.1 joint
+  (exomes+genomes) over the MANE exons (±100 bp) of the panel genes; the new
+  `GNOMAD_ANNOTATE` module adds `GNOMAD_*` INFO fields (AF, FAF95 grpmax, ancestry
+  group, admixed-American AF, homozygote counts, gnomAD FILTER).
+- Canonical `gnomAD_AF` / `gnomAD_AF_source` columns in germline TSVs, used by
+  BA1/BS1/PM2, the HTML/PDF reports and the germline–somatic correlation.
+
+### Changed
+- With `--gnomad_tsv` set, no patient coordinates are sent to Ensembl or gnomAD
+  web APIs. Unknown frequency (outside the resource regions, no dbNSFP value) no
+  longer triggers PM2; sites failing gnomAD QC in exomes and genomes keep their AF
+  for BA1/BS1 but never support PM2.
+
+### Fixed
+- Multi-value dbNSFP frequencies (`0.53,0.53`) were read as AF 0 by the ACMG
+  engine (PM2 applied to common variants).
+
 ## [1.0.0] – 2024-XX-XX
 
 ### Initial release
