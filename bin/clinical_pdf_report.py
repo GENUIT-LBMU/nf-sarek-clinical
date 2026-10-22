@@ -409,6 +409,7 @@ def read_tsv(path):
 # ---------------------------------------------------------------------------
 from acmg_shared import (
     acmg_criteria_list as _acmg_criteria_list_shared,
+    clinvar_display,
     getter_for_dict,
 )
 
@@ -1006,8 +1007,7 @@ def build_germline_section(germline_variants, story):
                         if zyg_raw not in ('', '.') else '-', _zyg_style)
         revel  = trunc(v.get('dbNSFP_REVEL_score', '-'), 8)
         gnomad = trunc(v.get('gnomAD_AF') or v.get('dbNSFP_gnomAD_exomes_AF', '-'), 12)
-        clnsig_raw = v.get('dbNSFP_clinvar_clnsig', '-').strip() or '-'
-        clnsig = clnsig_raw.replace('_', ' ')
+        clnsig = clinvar_display(lambda k: (v.get(k) or '').strip())
         cls    = v.get('_ACMG', 'VUS')
         criteria_codes = v.get('_ACMG_CRITERIA', [])
         # Colour-code each criterion: pathogenic (red) vs benign (blue)

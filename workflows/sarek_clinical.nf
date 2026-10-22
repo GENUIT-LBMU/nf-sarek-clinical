@@ -49,6 +49,15 @@ workflow SAREK_CLINICAL {
         log.warn "--gnomad_tsv not set: germline population frequencies come from dbNSFP (gnomAD v2.1.1 exomes) plus web-API rescue for indels. Build the local resource with scripts/build_gnomad_panel.sh."
     }
 
+    // Local ClinVar panel resource (optional). Empty list => legacy dbNSFP 4.1a ClinVar (SNVs only, ~2020).
+    ch_clinvar       = params.clinvar_tsv
+        ? [ file(params.clinvar_tsv,           checkIfExists: true),
+            file("${params.clinvar_tsv}.tbi",  checkIfExists: true) ]
+        : []
+    if (!params.clinvar_tsv && !params.skip_germline_snv) {
+        log.warn "--clinvar_tsv not set: germline ClinVar comes from dbNSFP 4.1a (~2020, SNVs only). Build the local resource with scripts/build_clinvar_panel.sh."
+    }
+
     ch_germline_panel    = file(params.germline_panel)
     ch_somatic_cnv_panel = file(params.somatic_cnv_panel)
     ch_somatic_snv_panel = file(params.somatic_snv_panel)
@@ -145,7 +154,8 @@ workflow SAREK_CLINICAL {
             ch_snpsift_jar,
             ch_germline_panel,
             ch_pharmaco_variants,
-            ch_gnomad
+            ch_gnomad,
+            ch_clinvar
         )
     }
 

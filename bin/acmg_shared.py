@@ -103,6 +103,29 @@ def count_insil(get_field):
 
 
 # =============================================================================
+# ClinVar
+# =============================================================================
+def clinvar_sig(get_field):
+    """ClinVar germline classification used by the ACMG engine and filters.
+
+    Reads the canonical `ClinVar_sig` column written by SNPSIFT_EXTRACT_GERMLINE
+    (local ClinVar release with --clinvar_tsv, else dbNSFP 4.1a). Falls back to
+    `dbNSFP_clinvar_clnsig` only when the column is missing (older TSVs).
+    """
+    return (get_field('ClinVar_sig') or get_field('dbNSFP_clinvar_clnsig') or '').strip()
+
+
+def clinvar_display(get_field):
+    """'Benign/Likely benign (2*)' for reports; '-' when not in ClinVar."""
+    sig = clinvar_sig(get_field)
+    if sig in ('', '.'):
+        return '-'
+    st = (get_field('ClinVar_stars') or '').strip()
+    txt = sig.replace('_', ' ')
+    return f'{txt} ({st}*)' if st not in ('', '.') else txt
+
+
+# =============================================================================
 # Population frequency
 # =============================================================================
 def gnomad_af(get_field):
@@ -158,7 +181,7 @@ def acmg_criteria_list(get_field):
     ACMG evidence code strings (e.g. ['PVS1', 'PM2', 'PP3(7/9)']).
     """
     # ── 1. ClinVar annotation (highest priority) ────────────────────────────
-    clnsig = get_field('dbNSFP_clinvar_clnsig').lower()
+    clnsig = clinvar_sig(get_field).lower()
     if clnsig and clnsig not in ('.', '', 'na', 'nan'):
         # Bug fix: "Conflicting_interpretations_of_pathogenicity" must NOT be
         # classified as P — fall through to score-based classification.

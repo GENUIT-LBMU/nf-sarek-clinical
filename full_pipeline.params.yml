@@ -30,6 +30,11 @@ snpsift_jar:    /path/to/refs/snpEff/SnpSift.jar
 # AF comes from dbNSFP (gnomAD v2.1.1 exomes) plus a web-API rescue for indels.
 gnomad_tsv:     /path/to/refs/gnomad/gnomad_v4.1_panel.tsv.gz
 
+# ── ClinVar (recommended) ─────────────────────────────────────────────────────
+# Local ClinVar subset for the gene panels (scripts/build_clinvar_panel.sh).
+# Without it, germline ClinVar comes from dbNSFP 4.1a (~2020, SNVs only).
+clinvar_tsv:    /path/to/refs/clinvar/clinvar_20260822_panel.tsv.gz
+
 # ── TMB calculation (WES capture BED) ─────────────────────────────────────────
 panel_bed:      /path/to/refs/hg38/<kit>/<kit>_Regions.bed
 

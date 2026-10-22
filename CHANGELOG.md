@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   group, admixed-American AF, homozygote counts, gnomAD FILTER).
 - Canonical `gnomAD_AF` / `gnomAD_AF_source` columns in germline TSVs, used by
   BA1/BS1/PM2, the HTML/PDF reports and the germline–somatic correlation.
+- Local ClinVar germline classifications (`--clinvar_tsv`).
+  `scripts/build_clinvar_panel.sh` builds a panel subset of the NCBI ClinVar
+  GRCh38 VCF (contigs renamed, left-normalised); the new `CLINVAR_ANNOTATE`
+  module annotates by allele, so indels are covered. Canonical `ClinVar_sig`,
+  `ClinVar_stars`, `ClinVar_revstat`, `ClinVar_id`, `ClinVar_conf`, `ClinVar_dn`,
+  `ClinVar_source` columns are read by the ACMG engine, the germline filters, the
+  HTML/PDF reports (classification with stars) and the correlation. When set,
+  the local release is the only ClinVar source (no dbNSFP 4.1a fallback).
 - `ZYGOSITY` column in germline TSVs (HET, HOM, HOM/HEMI on non-PAR chrX/chrY,
   HET(VAF alta)), shown as "Cig." in the HTML and PDF germline tables.
 - `QC_FLAG` column in germline TSVs (`DP<20`, `VAF_baja`, and the VCF FILTER

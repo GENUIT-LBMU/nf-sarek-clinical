@@ -3,12 +3,13 @@
     GERMLINE POSTPROCESSING SUBWORKFLOW
     =====================================
     Takes Sarek HaplotypeCaller annotated VCFs and runs:
-      - Germline SNV: [local gnomAD] → dbNSFP → gene+impact filter → TSV extraction
+      - Germline SNV: [local gnomAD] → [local ClinVar] → dbNSFP → gene+impact filter → TSV extraction
       - Pharmacogenomics: rsID filter → TSV
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
 include { GNOMAD_ANNOTATE          } from '../../../modules/local/gnomad_annotate/main'
+include { CLINVAR_ANNOTATE         } from '../../../modules/local/clinvar_annotate/main'
 include { SNPSIFT_DBNSFP_GERMLINE  } from '../../../modules/local/snpsift_germline/main'
 include { SNPSIFT_FILTER_GERMLINE  } from '../../../modules/local/snpsift_germline/main'
 include { SNPSIFT_EXTRACT_GERMLINE } from '../../../modules/local/snpsift_germline/main'
@@ -23,6 +24,7 @@ workflow GERMLINE_POSTPROCESS {
     ch_germline_panel        // path: gene panel file
     ch_pharmaco_variants     // path: pharmacogenomics rsID file
     ch_gnomad                // list: [tsv.gz, tsv.gz.tbi, regions.bed.gz, regions.bed.gz.tbi] or []
+    ch_clinvar               // list: [tsv.gz, tsv.gz.tbi] or []
 
     main:
     // ── Local gnomAD population frequencies (optional) ───────────────────────
@@ -36,6 +38,16 @@ workflow GERMLINE_POSTPROCESS {
             ch_gnomad[3]
         )
         ch_vcfs_for_dbnsfp = GNOMAD_ANNOTATE.out.vcf
+    }
+
+    // ── Local ClinVar classifications (optional) ─────────────────────────────
+    if (ch_clinvar) {
+        CLINVAR_ANNOTATE(
+            ch_vcfs_for_dbnsfp,
+            ch_clinvar[0],
+            ch_clinvar[1]
+        )
+        ch_vcfs_for_dbnsfp = CLINVAR_ANNOTATE.out.vcf
     }
 
     // ── Germline SNV pipeline ─────────────────────────────────────────────────

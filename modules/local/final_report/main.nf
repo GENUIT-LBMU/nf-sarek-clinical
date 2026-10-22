@@ -463,6 +463,7 @@ files = {
 import sys as _sys
 _sys.path.insert(0, '${projectDir}/bin')
 from final_report_acmg import acmg_criteria_list, acmg_class, _BENIGN_CRIT
+from acmg_shared import clinvar_display
 
 # ----
 # CIViC / AMP tier
@@ -572,7 +573,7 @@ def tsv_to_html_germline(path):
         ('Cig.',        'ZYGOSITY'),
         ('REVEL',       'dbNSFP_REVEL_score'),
         ('gnomAD_AF',   'gnomAD_AF'),
-        ('ClinVar',     'dbNSFP_clinvar_clnsig'),
+        ('ClinVar',     None),
         ('ACMG',        None),
         ('Criteria',    None),
     ]
@@ -641,6 +642,8 @@ def tsv_to_html_germline(path):
                 tds += "<td>" + "".join(crit_badge(c) for c in criteria) + "</td>"
             elif disp_name == 'DP':
                 tds += "<td>" + html.escape(str(dp_val)) + "</td>"
+            elif disp_name == 'ClinVar':
+                tds += "<td>" + html.escape(clinvar_display(lambda k: get_col(row, k))) + "</td>"
             elif disp_name == 'VAF':
                 # QC_FLAG (Step 2 of SNPSIFT_EXTRACT_GERMLINE) shown inside the VAF cell
                 qc = get_col(row, 'QC_FLAG')

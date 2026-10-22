@@ -132,9 +132,9 @@ process SNPSIFT_EXTRACT_GERMLINE {
 
     stub:
     """
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
     touch ${sample}.germline_all_filtered.tsv
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
     """
 
     script:
@@ -151,8 +151,15 @@ process SNPSIFT_EXTRACT_GERMLINE {
         GNOMAD_FIELDS="GNOMAD_REGION GNOMAD_FILTER GNOMAD_AF GNOMAD_AC GNOMAD_AN GNOMAD_FAF95 GNOMAD_GRPMAX GNOMAD_AF_AMR GNOMAD_AN_AMR GNOMAD_NHOMALT GNOMAD_NHOMALT_XY"
         GNOMAD_VERSION=\$(sed -n 's/^##gnomAD_resource=<Version=\\([^,]*\\),.*/\\1/p' vcf_header.txt)
     fi
+    # Same for the local ClinVar resource (CLINVAR_ANNOTATE, --clinvar_tsv)
+    CLINVAR_FIELDS=""
+    CLINVAR_VERSION=""
+    if grep -q '^##INFO=<ID=CLINVAR_SIG,' vcf_header.txt; then
+        CLINVAR_FIELDS="CLINVAR_ID CLINVAR_SIG CLINVAR_REVSTAT CLINVAR_CONF CLINVAR_DN"
+        CLINVAR_VERSION=\$(sed -n 's/^##ClinVar_resource=<Version=\\([^,]*\\),.*/\\1/p' vcf_header.txt)
+    fi
     rm -f vcf_header.txt
-    export GNOMAD_VERSION
+    export GNOMAD_VERSION CLINVAR_VERSION
 
     java -jar ${snpsift_jar} extractFields -v -s ";" -e "." "${vcf}" \\
         CHROM POS ID REF ALT QUAL FILTER DP \\
@@ -176,7 +183,7 @@ process SNPSIFT_EXTRACT_GERMLINE {
         "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
         "dbNSFP_clinvar_MedGen_id" "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
         "dbNSFP_Interpro_domain" \\
-        \${GNOMAD_FIELDS} \\
+        \${GNOMAD_FIELDS} \${CLINVAR_FIELDS} \\
         > "${sample}.germline_snvs_raw.tsv"
 
     # ── Step 1: Normalize multi-annotation fields (keep first value before ;) ──────
@@ -464,6 +471,62 @@ PYEOF_GNOMAD
     }' "${sample}.germline_all_extracted.tsv" > "${sample}.germline_all_extracted.zyg.tsv"
     mv "${sample}.germline_all_extracted.zyg.tsv" "${sample}.germline_all_extracted.tsv"
 
+    # ── Step 1.7: canonical ClinVar columns ─────────────────────────────────────
+    #   ClinVar_sig, ClinVar_stars, ClinVar_revstat, ClinVar_id, ClinVar_conf,
+    #   ClinVar_dn, ClinVar_source. Every downstream consumer reads ClinVar_sig.
+    #   LOCAL mode (CLINVAR_* columns, --clinvar_tsv): the local release is the only
+    #     source; a variant absent from it is "." (no dbNSFP fallback).
+    #     ClinVar_source = ClinVar_<release date>
+    #   LEGACY mode: dbNSFP 4.1a ClinVar fields (~2020, SNVs only).
+    #     ClinVar_source = dbNSFP_4.1a
+    #   Stars from the review status: practice guideline 4, expert panel 3,
+    #   multiple submitters no conflicts 2, single submitter / conflicting 1, else 0.
+    python3 - <<'PYEOF_CLINVAR'
+import os
+
+TSV = '${sample}.germline_all_extracted.tsv'
+TMP = '${sample}.germline_all_extracted.clinvar_tmp.tsv'
+VER = os.environ.get('CLINVAR_VERSION', '')
+
+def stars(revstat, sig):
+    if sig in ('', '.'):
+        return '.'
+    r = revstat.lower()
+    if 'practice_guideline' in r:
+        return '4'
+    if 'expert_panel' in r:
+        return '3'
+    if 'multiple_submitters' in r and 'no_conflicts' in r:
+        return '2'
+    if 'single_submitter' in r or 'conflicting' in r:
+        return '1'
+    return '0'
+
+with open(TSV) as fin, open(TMP, 'w') as out:
+    hdr = fin.readline().rstrip('\\n').split('\\t')
+    idx = {c: i for i, c in enumerate(hdr)}
+    local = 'CLINVAR_SIG' in idx
+    if local:
+        src_cols = ('CLINVAR_SIG', 'CLINVAR_REVSTAT', 'CLINVAR_ID', 'CLINVAR_CONF', 'CLINVAR_DN')
+        source = 'ClinVar_' + (VER or 'local')
+    else:
+        src_cols = ('dbNSFP_clinvar_clnsig', 'dbNSFP_clinvar_review', 'dbNSFP_clinvar_id', None, 'dbNSFP_clinvar_trait')
+        source = 'dbNSFP_4.1a'
+    out.write('\\t'.join(hdr + ['ClinVar_sig', 'ClinVar_stars', 'ClinVar_revstat', 'ClinVar_id',
+                                'ClinVar_conf', 'ClinVar_dn', 'ClinVar_source']) + '\\n')
+    for line in fin:
+        row = line.rstrip('\\n').split('\\t')
+        def g(c):
+            i = idx.get(c, -1) if c else -1
+            v = row[i].strip() if 0 <= i < len(row) else ''
+            return v if v else '.'
+        sig, rev, cid, conf, dn = (g(c) for c in src_cols)
+        if sig == '.':
+            rev = conf = dn = '.'
+        out.write('\\t'.join(row + [sig, stars(rev, sig), rev, cid, conf, dn, source]) + '\\n')
+os.replace(TMP, TSV)
+PYEOF_CLINVAR
+
     # ── Step 2: gnomAD BA1 + ClinVar + low-VAF filter ────────────────────────────────
     #   Passing variants  → germline_snvs.pre_python.tsv  (stdout)
     #   Rejected variants → germline_all_filtered.tsv  (with FILTER_REASON column)
@@ -491,7 +554,7 @@ PYEOF_GNOMAD
             if (\$i == "GEN[0].AD")                  ad_col      = i
             if (\$i == "GEN[0].DP")                  dp_col      = i
             if (\$i == "FILTER")                     filter_col  = i
-            if (\$i == "dbNSFP_clinvar_clnsig")       cs_col      = i
+            if (\$i == "ClinVar_sig")                 cs_col      = i
             if (\$i == "dbNSFP_gnomAD_exomes_AF")     gnomad_v2   = i
             if (\$i == "gnomAD_AF")                   gnomad_can  = i
         }
@@ -597,7 +660,7 @@ def is_exempt(row):
     if g(row, "ANN[*].IMPACT").upper() == "HIGH":
         return True
     # Always keep ClinVar pathogenic / likely_pathogenic
-    clnsig = g(row, "dbNSFP_clinvar_clnsig").lower()
+    clnsig = g(row, "ClinVar_sig").lower()
     if clnsig and clnsig != ".":
         if "pathogenic" in clnsig and "benign" not in clnsig.replace("pathogenic", ""):
             return True

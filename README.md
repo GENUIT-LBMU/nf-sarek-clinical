@@ -136,7 +136,7 @@ clinical_results/
 | 0 | **Cover Page / KPI Dashboard** | Global biomarkers (TMB, MSI, HRD, ploidy, purity, coverage) with low-coverage QC warnings when tumour mean depth < 50X |
 | 1 | **Major Clinical Findings** | Auto-populated summary: HRD pathway, MMR deficiency (SBS + ID signatures), CIViC Level A/B actionable variants, high-confidence CNVs, pathogenic germline hits |
 | 2 | **Germline–Somatic Correlation** | Two-hit events (P/LP germline + somatic second hit), biallelic somatic, MMR/HRR pathway integration |
-| 3 | **Germline SNVs** | 103-gene hereditary cancer panel; ACMG P/LP/VUS classification with 9-tool in silico panel, REVEL (ClinGen SVI concordance), ClinVar, gnomAD AF rescue |
+| 3 | **Germline SNVs** | 103-gene hereditary cancer panel; ACMG P/LP/VUS classification with 9-tool in silico panel, REVEL (ClinGen SVI concordance), ClinVar (local release, with stars), gnomAD v4.1 |
 | 4 | **Pharmacogenomics** | DPYD, UGT1A1 — drug-metabolism variants from germline VCF |
 | 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM; only 103-gene panel reported (QA >= 4); MANE exon annotation |
 | 6 | **Somatic SNVs** | Split into *Clinically Actionable* (CIViC Tier I/II) and *Other* (Tier III) tables; Callers column shows M+S (consensus) or M (Mutect2-only); low-VAF warning for AF < 5% |
@@ -508,6 +508,32 @@ whenever a gene panel changes. Germline TSVs gain `gnomAD_AF`, `gnomAD_AF_source
 and the `GNOMAD_*` columns (FAF95 grpmax, ancestry group, admixed-American AF,
 homozygote counts, gnomAD FILTER).
 
+### ClinVar — germline classifications (recommended)
+
+A local subset of the official NCBI ClinVar GRCh38 VCF over the same panel
+regions. It replaces the ClinVar fields of dbNSFP 4.1a (~2020, SNVs only):
+matching is by allele, so indels are covered, and the release date is recorded
+in every output. When `clinvar_tsv` is set it is the **only** ClinVar source: a
+variant absent from that release is reported as not in ClinVar.
+
+```bash
+# needs the gnomAD regions BED above and an hg38 FASTA (+ .fai)
+docker run --rm -u $(id -u):$(id -g) -v /data:/data -w $PWD \
+    quay.io/biocontainers/bcftools:1.20--h8b25389_0 \
+    bash scripts/build_clinvar_panel.sh \
+        --clinvar /data/refs/clinvar/clinvar_20260822.vcf.gz \
+        --regions /data/refs/gnomad/gnomad_v4.1_panel_regions.bed.gz \
+        --fasta   /data/refs/hg38/hg38.fa \
+        --outdir  /data/refs/clinvar
+# → clinvar_20260822_panel.tsv.gz(.tbi), manifest
+```
+
+Then set `clinvar_tsv: /data/refs/clinvar/clinvar_20260822_panel.tsv.gz`.
+ClinVar is released monthly; rebuild to update. Germline TSVs gain
+`ClinVar_sig`, `ClinVar_stars` (0–4 from the review status), `ClinVar_revstat`,
+`ClinVar_id`, `ClinVar_conf`, `ClinVar_dn` and `ClinVar_source`; the reports show
+the classification with its stars, e.g. "Benign/Likely benign (2*)".
+
 ### hg38 reference genome
 
 From the **GATK GCP bucket**:
@@ -620,6 +646,7 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | `--panel_bed` | — | WES capture BED for TMB calculation (mut/Mb) |
 | `--gnomad_tsv` | — | Local gnomAD panel resource (`scripts/build_gnomad_panel.sh`); path or https URL. Recommended |
 | `--gnomad_regions` | `<gnomad_tsv>_regions.bed.gz` | Regions BED of that resource (only needed if renamed) |
+| `--clinvar_tsv` | — | Local ClinVar panel resource (`scripts/build_clinvar_panel.sh`); path or https URL. Recommended |
 
 > All filtering thresholds (germline SNV depth/VAF, somatic TMB DP/AF, ACMG scores, biomarker cutoffs, etc.) are centralised in **`conf/filters.config`**. Edit that file to adjust any threshold — individual `--tmb_min_dp`-style CLI params are deprecated.
 

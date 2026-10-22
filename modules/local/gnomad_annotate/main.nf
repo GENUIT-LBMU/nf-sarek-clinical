@@ -68,11 +68,9 @@ HDR
     n_found=\$(bcftools view -H -i 'INFO/GNOMAD_AF!="."' ${sample}.gnomad.vcf.gz | wc -l)
     echo "[gnomAD local] ${sample}: \${n_total} sites, \${n_region} in resource regions, \${n_found} with gnomAD AF" >&2
 
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        bcftools: \$(bcftools --version | head -1 | sed 's/bcftools //')
-        gnomad_resource: \$(basename ${gnomad_tsv})
-    END_VERSIONS
+    printf '"%s":\\n    bcftools: %s\\n    gnomad_resource: %s\\n' \\
+        "${task.process}" "\$(bcftools --version | head -1 | sed 's/bcftools //')" "\$(basename ${gnomad_tsv})" \\
+        > versions.yml
     """
 
     stub:
