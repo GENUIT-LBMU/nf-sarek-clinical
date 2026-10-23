@@ -3,7 +3,8 @@
     GERMLINE POSTPROCESSING SUBWORKFLOW
     =====================================
     Takes Sarek HaplotypeCaller annotated VCFs and runs:
-      - Germline SNV: [snpEff MANE] → [local gnomAD] → [local ClinVar] → dbNSFP → gene+impact filter → TSV extraction
+      - Germline SNV: [snpEff MANE] → [local gnomAD] → [local ClinVar] → [local REVEL] → dbNSFP
+                      → gene+impact filter → [SpliceAI] → TSV extraction
       - Pharmacogenomics: rsID filter → TSV
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
@@ -11,6 +12,8 @@
 include { SNPEFF_MANE              } from '../../../modules/local/snpeff_mane/main'
 include { GNOMAD_ANNOTATE          } from '../../../modules/local/gnomad_annotate/main'
 include { CLINVAR_ANNOTATE         } from '../../../modules/local/clinvar_annotate/main'
+include { REVEL_ANNOTATE           } from '../../../modules/local/revel_annotate/main'
+include { SPLICEAI                 } from '../../../modules/local/spliceai/main'
 include { SNPSIFT_DBNSFP_GERMLINE  } from '../../../modules/local/snpsift_germline/main'
 include { SNPSIFT_FILTER_GERMLINE  } from '../../../modules/local/snpsift_germline/main'
 include { SNPSIFT_EXTRACT_GERMLINE } from '../../../modules/local/snpsift_germline/main'
@@ -27,6 +30,8 @@ workflow GERMLINE_POSTPROCESS {
     ch_gnomad                // list: [tsv.gz, tsv.gz.tbi, regions.bed.gz, regions.bed.gz.tbi] or []
     ch_clinvar               // list: [tsv.gz, tsv.gz.tbi] or []
     ch_snpeff_mane           // list: [snpEff data dir, database name] or []
+    ch_revel                 // list: [tsv.gz, tsv.gz.tbi] or []
+    ch_spliceai              // list: [fasta, fasta.fai] or []
 
     main:
     // ── Local gnomAD population frequencies (optional) ───────────────────────
@@ -63,6 +68,16 @@ workflow GERMLINE_POSTPROCESS {
         ch_vcfs_for_dbnsfp = CLINVAR_ANNOTATE.out.vcf
     }
 
+    // ── Local REVEL v1.3, MANE Select score (optional) ───────────────────────
+    if (ch_revel) {
+        REVEL_ANNOTATE(
+            ch_vcfs_for_dbnsfp,
+            ch_revel[0],
+            ch_revel[1]
+        )
+        ch_vcfs_for_dbnsfp = REVEL_ANNOTATE.out.vcf
+    }
+
     // ── Germline SNV pipeline ─────────────────────────────────────────────────
     SNPSIFT_DBNSFP_GERMLINE(
         ch_vcfs_for_dbnsfp,
@@ -78,8 +93,19 @@ workflow GERMLINE_POSTPROCESS {
         params.filters.germline_snv.min_dp
     )
 
+    // ── SpliceAI on the filtered candidates (optional) ───────────────────────
+    ch_candidates = SNPSIFT_FILTER_GERMLINE.out.vcf
+    if (ch_spliceai) {
+        SPLICEAI(
+            ch_candidates,
+            ch_spliceai[0],
+            ch_spliceai[1]
+        )
+        ch_candidates = SPLICEAI.out.vcf
+    }
+
     SNPSIFT_EXTRACT_GERMLINE(
-        SNPSIFT_FILTER_GERMLINE.out.vcf,
+        ch_candidates,
         ch_snpsift_jar,
         file("${projectDir}/bin/acmg_shared.py")
     )

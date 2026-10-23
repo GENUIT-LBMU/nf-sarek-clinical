@@ -70,6 +70,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   p.Thr445Ala, TSC1 p.Lys587Arg, RECQL4 p.Arg522Cys: FAF95 10-20%, mostly admixed
   American) are BA1 even when the overall AF is < 1%. `filters.acmg.frequency_metric`
   ('faf95' / 'af'). Reports show "AF / FAF".
+- Local REVEL v1.3 resource (`--revel_tsv`, `scripts/build_revel_panel.py`,
+  new `REVEL_ANNOTATE` module): the score of the MANE Select transcript replaces
+  the dbNSFP 4.1a value (first transcript). Canonical `REVEL_score` /
+  `REVEL_source` columns.
+- SpliceAI 1.3.1 on the germline candidates (`--spliceai`, new `SPLICEAI`
+  module, `SpliceAI_DS` / `SpliceAI_detail` columns). ClinGen splicing rules
+  (Walker 2023): SpliceAI >= 0.2 gives PP3_Supporting (the stronger of REVEL and
+  SpliceAI counts), a missense BP4 needs SpliceAI <= 0.1; no PP3 / BP4 for null
+  variants. The uncalibrated 9-tool dbNSFP panel is no longer scored. The
+  germline ACMG classification no longer depends on dbNSFP when `--revel_tsv`
+  is set (dbNSFP still runs for pharmacogenomics and display). HTML report: new
+  SpliceAI column.
 
 ### Fixed
 - Germline variants with VAF > `vaf_max` (0.75) were discarded as

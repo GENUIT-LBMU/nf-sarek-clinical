@@ -40,6 +40,15 @@ snpeff_mane_data: /path/to/refs/snpeff/data
 # Without it, germline ClinVar comes from dbNSFP 4.1a (~2020, SNVs only).
 clinvar_tsv:    /path/to/refs/clinvar/clinvar_20260822_panel.tsv.gz
 
+# ── REVEL v1.3 (recommended) ──────────────────────────────────────────────────
+# Panel subset with the MANE Select score per allele (scripts/build_revel_panel.py).
+# Without it, germline REVEL comes from dbNSFP 4.1a (first transcript).
+revel_tsv:      /path/to/refs/revel/revel_v1.3_panel.tsv.gz
+
+# ── SpliceAI (germline candidates) ────────────────────────────────────────────
+spliceai:       true
+# spliceai_fasta: /path/to/refs/hg38/hg38.fa     # defaults to gcnv_fasta
+
 # ── TMB calculation (WES capture BED) ─────────────────────────────────────────
 panel_bed:      /path/to/refs/hg38/<kit>/<kit>_Regions.bed
 

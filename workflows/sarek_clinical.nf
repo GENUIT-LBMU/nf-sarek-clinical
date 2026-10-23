@@ -69,6 +69,25 @@ workflow SAREK_CLINICAL {
         log.warn "--clinvar_tsv not set: germline ClinVar comes from dbNSFP 4.1a (~2020, SNVs only). Build the local resource with scripts/build_clinvar_panel.sh."
     }
 
+    // Local REVEL v1.3 panel resource (optional). Empty list => dbNSFP 4.1a REVEL.
+    ch_revel         = params.revel_tsv
+        ? [ file(params.revel_tsv,             checkIfExists: true),
+            file("${params.revel_tsv}.tbi",    checkIfExists: true) ]
+        : []
+    if (!params.revel_tsv && !params.skip_germline_snv) {
+        log.warn "--revel_tsv not set: germline REVEL comes from dbNSFP 4.1a (first transcript, not MANE). Build the local resource with scripts/build_revel_panel.py."
+    }
+
+    // SpliceAI on germline candidates (optional). Empty list => no splicing evidence.
+    def spliceai_fasta = params.spliceai_fasta ?: params.gcnv_fasta
+    ch_spliceai      = (params.spliceai && spliceai_fasta)
+        ? [ file(spliceai_fasta,               checkIfExists: true),
+            file("${spliceai_fasta}.fai",      checkIfExists: true) ]
+        : []
+    if (params.spliceai && !spliceai_fasta && !params.skip_germline_snv) {
+        log.warn "--spliceai true but no --spliceai_fasta / --gcnv_fasta: SpliceAI skipped (no PP3/BP4 splicing evidence)."
+    }
+
     ch_germline_panel    = file(params.germline_panel)
     ch_somatic_cnv_panel = file(params.somatic_cnv_panel)
     ch_somatic_snv_panel = file(params.somatic_snv_panel)
@@ -167,7 +186,9 @@ workflow SAREK_CLINICAL {
             ch_pharmaco_variants,
             ch_gnomad,
             ch_clinvar,
-            ch_snpeff_mane
+            ch_snpeff_mane,
+            ch_revel,
+            ch_spliceai
         )
     }
 

@@ -5,7 +5,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # What it does:
 #   1. Builds + pushes the 3 custom images (civicpy, r-annotation, sigprofiler).
-#   2. Copies the 5 public images (snpeff 5.1 + 5.2, bcftools, gatk, hrprofiler) from their
+#   2. Copies the 6 public images (snpeff 5.1 + 5.2, spliceai, bcftools, gatk, hrprofiler) from their
 #      upstream registries into ${MIRROR_REGISTRY}, preserving the manifest
 #      (registry-to-registry, no local pull) via `docker buildx imagetools`.
 #   3. Captures each image's immutable sha256 digest and regenerates
@@ -44,6 +44,7 @@ echo "════════════════════════�
 PUBLIC=(
     "snpsift|quay.io/biocontainers/snpeff:5.1--hdfd78af_2|snpeff:5.1--hdfd78af_2"
     "snpeff_mane|quay.io/biocontainers/snpeff:5.2--hdfd78af_1|snpeff:5.2--hdfd78af_1"
+    "spliceai|quay.io/biocontainers/spliceai:1.3.1--pyh864c0ab_1|spliceai:1.3.1--pyh864c0ab_1"
     "bcftools|quay.io/biocontainers/bcftools:1.20--h8b25389_0|bcftools:1.20--h8b25389_0"
     "gatk|broadinstitute/gatk:4.6.2.0|gatk:4.6.2.0"
     "hrprofiler|florpio/hrprofiler:1.0-full|hrprofiler:1.0-full"
@@ -118,6 +119,7 @@ cat > "${OUT_CONFIG}" <<EOF
 process {
     withLabel:snpsift     { container = '${REF[snpsift]}' }      // snpeff 5.1
     withLabel:snpeff_mane { container = '${REF[snpeff_mane]}' }  // snpeff 5.2 (MANE re-annotation)
+    withLabel:spliceai    { container = '${REF[spliceai]}' }     // spliceai 1.3.1
     withLabel:bcftools    { container = '${REF[bcftools]}' }     // bcftools 1.20
     withLabel:gatk        { container = '${REF[gatk]}' }         // gatk 4.6.2.0
     withLabel:hrprofiler  { container = '${REF[hrprofiler]}' }   // hrprofiler 1.0-full

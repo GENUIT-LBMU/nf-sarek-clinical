@@ -571,7 +571,8 @@ def tsv_to_html_germline(path):
         ('DP',          None),
         ('VAF',         None),
         ('Cig.',        'ZYGOSITY'),
-        ('REVEL',       'dbNSFP_REVEL_score'),
+        ('REVEL',       None),
+        ('SpliceAI',    'SpliceAI_DS'),
         ('gnomAD',      None),
         ('ClinVar',     None),
         ('ACMG',        None),
@@ -644,6 +645,11 @@ def tsv_to_html_germline(path):
                 tds += "<td>" + html.escape(str(dp_val)) + "</td>"
             elif disp_name == 'ClinVar':
                 tds += "<td>" + html.escape(clinvar_display(lambda k: get_col(row, k))) + "</td>"
+            elif disp_name == 'REVEL':
+                rv = get_col(row, 'REVEL_score')
+                if rv in ('', '.'):
+                    rv = get_col(row, 'dbNSFP_REVEL_score')
+                tds += "<td>" + html.escape(rv) + "</td>"
             elif disp_name == 'gnomAD':
                 tds += "<td>" + html.escape(gnomad_display(lambda k: get_col(row, k))) + "</td>"
             elif disp_name == 'VAF':

@@ -567,6 +567,34 @@ practice guideline):
 ClinVar P/LP still exempts a variant from the VAF floor and the multi-hit filter
 regardless of stars.
 
+### REVEL v1.3 — missense scores per MANE transcript (recommended)
+
+A panel subset of REVEL v1.3 (Zenodo 7072866, ODbL). REVEL gives one score per
+amino-acid change; the build keeps, for every allele, the score of the MANE
+Select transcript (`REVEL_source = REVEL_v1.3_MANE`), or the highest score over
+the other transcripts when MANE has none (`REVEL_v1.3_other_tx`). It replaces the
+dbNSFP 4.1a REVEL value, which is the first transcript of dbNSFP's list.
+
+```bash
+# download the 25 zips of https://zenodo.org/records/7072866 into /data/refs/revel/source
+python3 scripts/build_revel_panel.py \
+    --revel-dir /data/refs/revel/source \
+    --regions   /data/refs/gnomad/gnomad_v4.1_panel_regions.bed.gz \
+    --mane      /data/refs/mane/MANE.GRCh38.v1.5.summary.txt.gz \
+    --outdir    /data/refs/revel
+# → revel_v1.3_panel.tsv.gz(.tbi), manifest   (needs python3, bgzip, tabix)
+```
+
+Then set `revel_tsv: /data/refs/revel/revel_v1.3_panel.tsv.gz`.
+
+### SpliceAI — splicing predictions
+
+With `spliceai: true` (default) and a GRCh38 FASTA (`spliceai_fasta`, defaults to
+`gcnv_fasta`), SpliceAI 1.3.1 runs on the germline candidates that passed the
+panel + impact filter (tens of variants per sample, minutes on CPU; distance 50,
+masked scores). `SpliceAI_DS` (max delta) gives PP3_Supporting when >= 0.2 and
+blocks a REVEL BP4 when > 0.1 (ClinGen, Walker et al. 2023).
+
 ### hg38 reference genome
 
 From the **GATK GCP bucket**:
@@ -682,6 +710,9 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | `--snpeff_mane_data` | — | snpEff data dir with the MANE database; re-annotates germline with MANE Select. Recommended |
 | `--snpeff_mane_db` | `GRCh38.mane.1.2.refseq` | snpEff MANE database name |
 | `--clinvar_tsv` | — | Local ClinVar panel resource (`scripts/build_clinvar_panel.sh`); path or https URL. Recommended |
+| `--revel_tsv` | — | Local REVEL v1.3 panel resource (`scripts/build_revel_panel.py`), MANE Select score. Recommended |
+| `--spliceai` | `true` | Run SpliceAI on the germline candidates (PP3 / BP4 for splicing) |
+| `--spliceai_fasta` | `gcnv_fasta` | GRCh38 FASTA (+ .fai) for SpliceAI |
 
 > All filtering thresholds (germline SNV depth/VAF, somatic TMB DP/AF, ACMG scores, biomarker cutoffs, etc.) are centralised in **`conf/filters.config`**. Edit that file to adjust any threshold — individual `--tmb_min_dp`-style CLI params are deprecated.
 
@@ -771,7 +802,12 @@ point system (Tavtigian et al. 2020): P >= 10, LP 6..9, VUS 0..5, LB -1..-6, B <
 | PM4 | +2 | stop_lost |
 | PM2_Sup | +1 | gnomAD AF < `pm2_af` and FAF95 < `pm2_af` (rare in every ancestry group; not for sites failing gnomAD QC) |
 | PP3 / BP4 | +-1 / +-2 / +-4 | REVEL >= 0.644 / 0.773 / 0.932 ; <= 0.290 / 0.183 / 0.016 (Pejaver et al. 2022) |
-| PP3_Sup / BP4_Sup (panel) | +-1 | only without REVEL: >= 75% of the 9 dbNSFP predictors agree |
+| PP3_Sup(splice) | +1 | SpliceAI max delta >= 0.2 (not added to a REVEL PP3; the stronger one counts) |
+| BP4 (missense) | | needs SpliceAI <= 0.1 when SpliceAI ran (Walker et al. 2023) |
+
+PP3 / BP4 are not applied to null variants (PVS1 already weighs them). The
+9-tool dbNSFP panel is no longer scored; `insil_dam` / `insil_ben` stay in the
+TSV as information.
 | BS1 | -4 | gnomAD FAF95 > `bs1_af` |
 | BA1 | stand-alone B | gnomAD FAF95 > `ba1_af` (also removes the variant in the germline filter) |
 

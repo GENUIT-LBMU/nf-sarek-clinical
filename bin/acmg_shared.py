@@ -267,8 +267,8 @@ def acmg_criteria_list(get_field):
       2. gnomAD BA1 rule (>5% AF -> Benign)
       3. Evidence points (Tavtigian 2020): PVS1 by gene mechanism and variant
          type (pvs1_evidence) + PM2_Supporting (rare) + PP3/BP4 from REVEL
-         (Pejaver 2022), or the 9-tool panel at Supporting when REVEL is
-         missing + BS1 (>1% AF).
+         (Pejaver 2022) and SpliceAI (Walker 2023) (pp3_bp4_evidence)
+         + BS1 (FAF95 > 1%).
          P >= 10, LP 6..9, VUS 0..5, LB -1..-6, B <= -7
 
     Returns (cls, criteria_list) where criteria_list contains the activated
@@ -317,14 +317,13 @@ def _acmg_scored(get_field):
         score += int(_E('ACMG_PM2_SCORE', '1'))
         criteria.append('PM2_Sup')
 
-    # PP3 / BP4: REVEL with the ClinGen calibrated cut-offs (Pejaver 2022);
-    # the uncalibrated 9-tool panel only when REVEL is missing, at most Supporting
-    pts, code = revel_evidence(get_field)
+    # PP3 / BP4: REVEL (Pejaver 2022) and SpliceAI (Walker 2023); not for null
+    # variants, whose splicing / LOF effect is already weighed by PVS1
     if code is None:
-        pts, code = insil_panel_evidence(get_field)
-    score += pts
-    if code:
-        criteria.append(code)
+        pts, code = pp3_bp4_evidence(get_field)
+        score += pts
+        if code:
+            criteria.append(code)
 
     # BS1 — frequency above benign threshold
     if benign is not None and benign > float(_E('ACMG_BS1_AF', '0.01')):
@@ -409,12 +408,32 @@ def pvs1_evidence(get_field):
     return full, 'PVS1'
 
 
+def revel_score(get_field):
+    """REVEL score: canonical `REVEL_score` (local REVEL v1.3, MANE Select
+    transcript, or dbNSFP 4.1a), else `dbNSFP_REVEL_score` for older tables."""
+    for name in ('REVEL_score', 'dbNSFP_REVEL_score'):
+        v = (get_field(name) or '').strip()
+        if v not in ('', '.'):
+            try:
+                return float(v.split(',')[0])
+            except ValueError:
+                pass
+    return None
+
+
+def spliceai_ds(get_field):
+    """SpliceAI max delta score (None when SpliceAI did not run)."""
+    try:
+        return float(get_field('SpliceAI_DS'))
+    except (ValueError, TypeError):
+        return None
+
+
 def revel_evidence(get_field):
     """(points, code) from REVEL with the ClinGen cut-offs (Pejaver 2022);
     (0, None) when REVEL is missing, (0, '') when it is indeterminate."""
-    try:
-        revel = float(get_field('dbNSFP_REVEL_score'))
-    except (ValueError, TypeError):
+    revel = revel_score(get_field)
+    if revel is None:
         return 0, None
     for env, default, pts, code in (
             ('ACMG_REVEL_PP3_STRONG', '0.932', 4, 'PP3_St'),
@@ -431,19 +450,25 @@ def revel_evidence(get_field):
     return 0, ''
 
 
-def insil_panel_evidence(get_field):
-    """(points, code) from the 9-tool panel, used only without REVEL:
-    a majority >= insil_majority gives PP3_Sup / BP4_Sup (+-1)."""
-    dam, ben = count_insil(get_field)
-    total = dam + ben
-    if total == 0:
+def pp3_bp4_evidence(get_field):
+    """(points, code) for non-null variants — ClinGen SVI (Pejaver 2022 for REVEL,
+    Walker 2023 for splicing):
+
+      SpliceAI >= spliceai_pp3 (0.2)       -> PP3_Sup(splice x), unless REVEL gives a
+                                              stronger PP3 (never added together)
+      missense, REVEL PP3                   -> REVEL PP3 (Sup / Mod / St)
+      missense, REVEL BP4                   -> BP4 only if SpliceAI <= spliceai_bp4 (0.1)
+                                              or SpliceAI did not run
+      no REVEL (in-frame indels, ...)       -> splicing PP3 only
+    """
+    r_pts, r_code = revel_evidence(get_field)
+    ds = spliceai_ds(get_field)
+    splice_pp3 = ds is not None and ds >= float(_E('ACMG_SPLICEAI_PP3', '0.2'))
+    if splice_pp3 and r_pts < 1:
+        return 1, 'PP3_Sup(splice {:.2f})'.format(ds)
+    if r_pts < 0 and ds is not None and ds > float(_E('ACMG_SPLICEAI_BP4', '0.1')):
         return 0, ''
-    maj = float(_E('ACMG_INSIL_MAJORITY', '0.75'))
-    if dam / total >= maj:
-        return 1, 'PP3_Sup({}/{})'.format(dam, total)
-    if ben / total >= maj:
-        return -1, 'BP4_Sup({}/{})'.format(ben, total)
-    return 0, ''
+    return r_pts, (r_code or '')
 
 
 def acmg_class(get_field):

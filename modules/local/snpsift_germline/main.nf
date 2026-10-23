@@ -132,9 +132,9 @@ process SNPSIFT_EXTRACT_GERMLINE {
 
     stub:
     """
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tgnomAD_FAF95\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
     touch ${sample}.germline_all_filtered.tsv
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tgnomAD_FAF95\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
     """
 
     script:
@@ -158,8 +158,19 @@ process SNPSIFT_EXTRACT_GERMLINE {
         CLINVAR_FIELDS="CLINVAR_ID CLINVAR_SIG CLINVAR_REVSTAT CLINVAR_CONF CLINVAR_DN"
         CLINVAR_VERSION=\$(sed -n 's/^##ClinVar_resource=<Version=\\([^,]*\\),.*/\\1/p' vcf_header.txt)
     fi
+    # Local REVEL (REVEL_ANNOTATE, --revel_tsv) and SpliceAI (SPLICEAI, --spliceai)
+    REVEL_FIELDS=""
+    REVEL_VERSION=""
+    if grep -q '^##INFO=<ID=REVEL_SCORE,' vcf_header.txt; then
+        REVEL_FIELDS="REVEL_SCORE REVEL_TX REVEL_AA"
+        REVEL_VERSION=\$(sed -n 's/^##REVEL_resource=<Version=\\([^,]*\\),.*/\\1/p' vcf_header.txt)
+    fi
+    SPLICEAI_FIELDS=""
+    if grep -q '^##INFO=<ID=SpliceAI,' vcf_header.txt; then
+        SPLICEAI_FIELDS="SpliceAI"
+    fi
     rm -f vcf_header.txt
-    export GNOMAD_VERSION CLINVAR_VERSION
+    export GNOMAD_VERSION CLINVAR_VERSION REVEL_VERSION
 
     java -jar ${snpsift_jar} extractFields -v -s ";" -e "." "${vcf}" \\
         CHROM POS ID REF ALT QUAL FILTER DP \\
@@ -183,12 +194,13 @@ process SNPSIFT_EXTRACT_GERMLINE {
         "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
         "dbNSFP_clinvar_MedGen_id" "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
         "dbNSFP_Interpro_domain" \\
-        \${GNOMAD_FIELDS} \${CLINVAR_FIELDS} \\
+        \${GNOMAD_FIELDS} \${CLINVAR_FIELDS} \${REVEL_FIELDS} \${SPLICEAI_FIELDS} \\
         > "${sample}.germline_snvs_raw.tsv"
 
     # ── Step 1: Normalize multi-annotation fields (keep first value before ;) ──────
     #   e.g. "HIGH;MODIFIER" → "HIGH",  "BRCA1;NBR2" → "BRCA1"
-    awk -F'\\t' 'BEGIN{OFS="\\t"} NR==1{print; next} {for(i=1;i<=NF;i++){n=split(\$i,a,";"); \$i=a[1]}; print}' \\
+    #   SpliceAI keeps every value (one per gene; Step 1.8 takes the maximum)
+    awk -F'\\t' 'BEGIN{OFS="\\t"} NR==1{for(i=1;i<=NF;i++) if(\$i=="SpliceAI") keep=i; print; next} {for(i=1;i<=NF;i++){if(i==keep) continue; n=split(\$i,a,";"); \$i=a[1]}; print}' \\
         "${sample}.germline_snvs_raw.tsv" > "${sample}.germline_all_extracted.tsv"
     rm -f "${sample}.germline_snvs_raw.tsv"
 
@@ -531,6 +543,75 @@ with open(TSV) as fin, open(TMP, 'w') as out:
         out.write('\\t'.join(row + [sig, stars(rev, sig), rev, cid, conf, dn, source]) + '\\n')
 os.replace(TMP, TSV)
 PYEOF_CLINVAR
+
+    # ── Step 1.8: canonical REVEL and SpliceAI columns ──────────────────────────
+    #   REVEL_score / REVEL_source:
+    #     LOCAL (REVEL_SCORE column, --revel_tsv): REVEL v1.3 score of the MANE Select
+    #       transcript (REVEL_v1.3_MANE); when REVEL lacks the MANE transcript ID, the
+    #       score of the amino-acid change of the MANE HGVS_p (REVEL_v1.3_MANE_aa), else
+    #       the highest over other transcripts (REVEL_v1.3_other_tx); no dbNSFP fallback.
+    #     LEGACY: dbNSFP 4.1a REVEL (first transcript), source dbNSFP_4.1a.
+    #   SpliceAI_DS: max of DS_AG / DS_AL / DS_DG / DS_DL over the genes scored for the
+    #     ALT allele ("." when SpliceAI did not run); SpliceAI_detail: SYMBOL:type=DS@pos.
+    python3 - <<'PYEOF_PRED'
+import os
+
+TSV = '${sample}.germline_all_extracted.tsv'
+TMP = '${sample}.germline_all_extracted.pred_tmp.tsv'
+VER = os.environ.get('REVEL_VERSION', '') or '1.3'
+
+def num(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+AA3 = {'Ala': 'A', 'Arg': 'R', 'Asn': 'N', 'Asp': 'D', 'Cys': 'C', 'Gln': 'Q', 'Glu': 'E',
+       'Gly': 'G', 'His': 'H', 'Ile': 'I', 'Leu': 'L', 'Lys': 'K', 'Met': 'M', 'Phe': 'F',
+       'Pro': 'P', 'Ser': 'S', 'Thr': 'T', 'Trp': 'W', 'Tyr': 'Y', 'Val': 'V'}
+
+def mane_aa(hgvs_p):
+    # p.Arg165Gln -> "R>Q" (missense only)
+    h = hgvs_p[2:] if hgvs_p.startswith('p.') else ''
+    ref, alt = AA3.get(h[:3]), AA3.get(h[-3:])
+    return ref + '>' + alt if ref and alt and h[3:-3].isdigit() else None
+
+with open(TSV) as fin, open(TMP, 'w') as out:
+    hdr = fin.readline().rstrip('\\n').split('\\t')
+    idx = {c: i for i, c in enumerate(hdr)}
+    local_revel = 'REVEL_SCORE' in idx
+    out.write('\\t'.join(hdr + ['REVEL_score', 'REVEL_source', 'SpliceAI_DS', 'SpliceAI_detail']) + '\\n')
+    for line in fin:
+        row = line.rstrip('\\n').split('\\t')
+        row += ['.'] * (len(hdr) - len(row))
+        g = lambda c: row[idx[c]].strip() if c in idx else '.'
+        if local_revel:
+            sc, tx = num(g('REVEL_SCORE')), g('REVEL_TX')
+            if sc is not None and tx == 'other_tx':
+                aa = mane_aa(g('ANN[*].HGVS_P'))
+                opts = dict(o.rsplit(':', 1) for o in g('REVEL_AA').split(',') if ':' in o)
+                if aa in opts and num(opts[aa]) is not None:
+                    sc, tx = num(opts[aa]), 'MANE_aa'
+            revel = '%.3f' % sc if sc is not None else '.'
+            src = ('REVEL_v' + VER + '_' + tx) if sc is not None else '.'
+        else:
+            sc = num(g('dbNSFP_REVEL_score').split(',')[0])
+            revel = '%.3f' % sc if sc is not None else '.'
+            src = 'dbNSFP_4.1a' if sc is not None else '.'
+        ds, detail = '.', '.'
+        alt = g('ALT')
+        for entry in g('SpliceAI').replace(';', ',').split(','):
+            f = entry.split('|')
+            if len(f) < 10 or f[0] != alt:
+                continue
+            for k, lab in enumerate(('AG', 'AL', 'DG', 'DL')):
+                v = num(f[2 + k])
+                if v is not None and (ds == '.' or v > float(ds)):
+                    ds = '%.2f' % v
+                    detail = '%s:%s=%.2f@%s' % (f[1], lab, v, f[6 + k])
+        out.write('\\t'.join(row + [revel, src, ds, detail]) + '\\n')
+os.replace(TMP, TSV)
+PYEOF_PRED
 
     # ── Step 2: gnomAD BA1 + ClinVar + low-VAF filter ────────────────────────────────
     #   Passing variants  → germline_snvs.pre_python.tsv  (stdout)
