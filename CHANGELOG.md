@@ -63,6 +63,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PVS1_Moderate, start_lost -> PVS1_Moderate, stop_lost -> PM4). Rare missense
   variants without functional evidence no longer reach LP, and a new null variant
   is LP instead of P. Report methodology text and criteria colours updated.
+- BA1 / BS1 use the gnomAD v4.1 max filtering allele frequency across ancestry
+  groups (new canonical `gnomAD_FAF95` column) instead of the overall AF, in the
+  germline filter and the ACMG engine; PM2_Supporting needs AF and FAF95 below
+  `pm2_af`. Variants common in one ancestry group (BRCA2 p.Ile2490Thr, CASR
+  p.Thr445Ala, TSC1 p.Lys587Arg, RECQL4 p.Arg522Cys: FAF95 10-20%, mostly admixed
+  American) are BA1 even when the overall AF is < 1%. `filters.acmg.frequency_metric`
+  ('faf95' / 'af'). Reports show "AF / FAF".
 
 ### Fixed
 - Germline variants with VAF > `vaf_max` (0.75) were discarded as

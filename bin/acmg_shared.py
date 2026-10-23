@@ -21,6 +21,9 @@ Functions
 ---------
 count_insil(get_field)            -> (dam:int, ben:int)
 gnomad_af(get_field)              -> float | None  (None = frequency unknown)
+gnomad_faf95(get_field)           -> float | None  (max FAF95 across ancestry groups)
+benign_freq(get_field)            -> float | None  (BA1/BS1 frequency: FAF95, else AF)
+gnomad_display(get_field)         -> str   (report text)
 gnomad_supports_pm2(get_field)    -> bool  (False for sites failing gnomAD QC)
 acmg_criteria_list(get_field)     -> (cls:str, criteria:list[str])
 acmg_class(get_field)             -> str   (P / LP / VUS / LB / B)
@@ -157,6 +160,43 @@ def gnomad_af(get_field):
     return 0.0
 
 
+def gnomad_faf95(get_field):
+    """Max filtering allele frequency (95% CI) across gnomAD ancestry groups.
+
+    Reads the canonical `gnomAD_FAF95` column (local gnomAD resource). None when
+    it is missing / "." (legacy mode, outside the resource regions), or when
+    frequency_metric is 'af': callers then use gnomad_af().
+    """
+    if _E('ACMG_FREQ_METRIC', 'faf95').strip().lower() == 'af':
+        return None
+    try:
+        return float(get_field('gnomAD_FAF95'))
+    except (ValueError, TypeError):
+        return None
+
+
+def benign_freq(get_field):
+    """Frequency for BA1 / BS1: FAF95 when available, else AF (None = unknown)."""
+    faf = gnomad_faf95(get_field)
+    return faf if faf is not None else gnomad_af(get_field)
+
+
+def gnomad_display(get_field):
+    """'0.0048 / FAF 0.113' for reports (AF alone when there is no FAF95)."""
+    af = (get_field('gnomAD_AF') or get_field('dbNSFP_gnomAD_exomes_AF') or '').strip()
+    if af in ('', '.'):
+        return '-'
+    faf = (get_field('gnomAD_FAF95') or '').strip()
+    try:
+        af_txt = '{:.4g}'.format(float(af.split(',')[0]))
+    except ValueError:
+        af_txt = af
+    try:
+        return '{} / FAF {:.3g}'.format(af_txt, float(faf))
+    except ValueError:
+        return af_txt
+
+
 def gnomad_supports_pm2(get_field):
     """False when the frequency comes from a site that fails gnomAD QC in both
     exomes and genomes (source *_qc_fail): low AF there reflects poor calling
@@ -256,7 +296,9 @@ def _acmg_scored(get_field):
     """BA1 + evidence scoring (no ClinVar)."""
     # ── 2. Population frequency — BA1 (common polymorphism) ────────────────
     gnomad = gnomad_af(get_field)          # None = unknown → no BA1/BS1/PM2
-    if gnomad is not None and gnomad > float(_E('ACMG_BA1_AF', '0.05')):
+    faf = gnomad_faf95(get_field)          # None → AF is used
+    benign = benign_freq(get_field)        # BA1 / BS1: FAF95, else AF
+    if benign is not None and benign > float(_E('ACMG_BA1_AF', '0.05')):
         return 'B', ['BA1']
 
     # ── 3. Evidence scoring (points: Tavtigian 2020) ─────────────────────
@@ -268,9 +310,10 @@ def _acmg_scored(get_field):
     if code:
         criteria.append(code)
 
-    # PM2_Supporting (ClinGen SVI 2020)
+    # PM2_Supporting (ClinGen SVI 2020): rare overall AND in every ancestry group
+    pm2_af = float(_E('ACMG_PM2_AF', '0.001'))
     if (gnomad is not None and gnomad_supports_pm2(get_field)
-            and gnomad < float(_E('ACMG_PM2_AF', '0.001'))):
+            and gnomad < pm2_af and (faf is None or faf < pm2_af)):
         score += int(_E('ACMG_PM2_SCORE', '1'))
         criteria.append('PM2_Sup')
 
@@ -284,7 +327,7 @@ def _acmg_scored(get_field):
         criteria.append(code)
 
     # BS1 — frequency above benign threshold
-    if gnomad is not None and gnomad > float(_E('ACMG_BS1_AF', '0.01')):
+    if benign is not None and benign > float(_E('ACMG_BS1_AF', '0.01')):
         score += int(_E('ACMG_BS1_SCORE', '-4'))
         criteria.append('BS1')
 

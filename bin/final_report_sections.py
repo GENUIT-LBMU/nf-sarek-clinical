@@ -331,7 +331,7 @@ def build_methodology_html():
          'loss of function is not the cancer mechanism), PM4 stop-lost (+2), PM2_Supporting (+1), '
          'PP3 / BP4 from REVEL with the ClinGen calibrated cut-offs (Pejaver et al. 2022: '
          '&plusmn;1 / &plusmn;2 / &plusmn;4), BS1 (&minus;4). '
-         'ClinVar classifications with &ge;2 review stars are final. gnomAD AF&nbsp;&gt;&nbsp;5% triggers BA1 (stand-alone benign). '
+         'ClinVar classifications with &ge;2 review stars are final. gnomAD frequency&nbsp;&gt;&nbsp;5% triggers BA1 (stand-alone benign); BA1, BS1 and PM2 use the maximum filtering allele frequency (FAF95) across ancestry groups. '
          'Point thresholds: P &ge;10, LP 6&ndash;9, VUS 0&ndash;5, LB &minus;1 to &minus;6, B &le;&minus;7.'),
         ('Somatic Variant Interpretation (AMP/ASCO/CAP Tiers)',
          'Somatic variants are tiered per AMP/ASCO/CAP 2017 guidelines using CIViC database evidence (A&ndash;E). '

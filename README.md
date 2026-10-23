@@ -751,7 +751,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 | `germline_cnv` | `min_qa=4` | Germline CNV quality (only panel genes are reported) |
 | `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
-| `acmg` | `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, REVEL cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
+| `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, REVEL cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
 | `biomarkers` | `tmb_high=10.0`, `msi_high=3.5`, `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds |
 | `qc` | `low_cov_threshold=50` | Tumor coverage warning |
 | `signatures` | `min_activity=0.05`, MMR/HRD signature lists | Mutational signature reporting |
@@ -769,11 +769,18 @@ point system (Tavtigian et al. 2020): P >= 10, LP 6..9, VUS 0..5, LB -1..-6, B <
 | PVS1_Mod | +2 | last exon with < 10% lost, or start_lost |
 | PVS1_NA | 0 | gene in `pvs1_not_applicable` (loss of function is not the cancer mechanism: oncogenes, POLD1/POLE, HOXB13, ...) |
 | PM4 | +2 | stop_lost |
-| PM2_Sup | +1 | gnomAD AF < `pm2_af` (not for sites failing gnomAD QC) |
+| PM2_Sup | +1 | gnomAD AF < `pm2_af` and FAF95 < `pm2_af` (rare in every ancestry group; not for sites failing gnomAD QC) |
 | PP3 / BP4 | +-1 / +-2 / +-4 | REVEL >= 0.644 / 0.773 / 0.932 ; <= 0.290 / 0.183 / 0.016 (Pejaver et al. 2022) |
 | PP3_Sup / BP4_Sup (panel) | +-1 | only without REVEL: >= 75% of the 9 dbNSFP predictors agree |
-| BS1 | -4 | gnomAD AF > `bs1_af` |
-| BA1 | stand-alone B | gnomAD AF > `ba1_af` |
+| BS1 | -4 | gnomAD FAF95 > `bs1_af` |
+| BA1 | stand-alone B | gnomAD FAF95 > `ba1_af` (also removes the variant in the germline filter) |
+
+FAF95 is the maximum filtering allele frequency (95% CI) across gnomAD ancestry
+groups (`fafmax_faf95_max_joint`): a variant common in one group, e.g. admixed
+American, is benign even when its overall AF is low (BRCA2 p.Ile2490Thr: AF 0.5%,
+FAF95 11%). Without FAF95 (legacy mode, outside the resource regions) the overall
+AF is used; `frequency_metric = 'af'` restores AF-only behaviour. Reports show
+"AF / FAF 0.113".
 
 Rare missense variants cannot reach LP from in silico and frequency evidence
 alone (maximum PP3_St + PM2_Sup = 5); a new null variant in a loss-of-function

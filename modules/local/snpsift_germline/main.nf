@@ -200,6 +200,9 @@ process SNPSIFT_EXTRACT_GERMLINE {
     #                            BA1/BS1, never used for PM2
     #     dbNSFP_v2              outside resource regions -> dbNSFP gnomAD v2.1.1 AF
     #     unknown                outside regions and no dbNSFP AF -> no BA1/BS1/PM2
+    #   gnomAD_FAF95: max filtering AF (95% CI) across ancestry groups from the local
+    #     resource (0 when absent, "." outside the regions) -> BA1/BS1/PM2 use it
+    #     with frequency_metric = 'faf95'; falls back to gnomAD_AF when ".".
     #   LEGACY mode (no --gnomad_tsv): behaviour below, unchanged.
     #
     # ── Legacy: gnomAD AF rescue (Ensembl VEP + gnomAD GraphQL fallback) ─────────
@@ -328,13 +331,13 @@ def _num(v):
 # ── LOCAL mode: frequencies from the local gnomAD resource, no network ──────
 if 'GNOMAD_REGION' in hdr:
     tag = 'gnomAD_v' + (os.environ.get('GNOMAD_VERSION', '') or 'local')
-    gi  = {k: hdr.get(k, -1) for k in ('GNOMAD_REGION', 'GNOMAD_AF', 'GNOMAD_FILTER',
+    gi  = {k: hdr.get(k, -1) for k in ('GNOMAD_REGION', 'GNOMAD_AF', 'GNOMAD_FILTER', 'GNOMAD_FAF95',
                                        'dbNSFP_gnomAD_exomes_AF', 'dbNSFP_gnomAD_genomes_AF')}
     def col(row, k):
         i = gi[k]
         return row[i].strip() if 0 <= i < len(row) else '.'
     n_base = len(hdr_list)
-    hdr_list += ['gnomAD_AF', 'gnomAD_AF_source']
+    hdr_list += ['gnomAD_AF', 'gnomAD_AF_source', 'gnomAD_FAF95']
     counts = {}
     with open(TMP, 'w') as out:
         out.write('\\t'.join(hdr_list) + '\\n')
@@ -347,6 +350,8 @@ if 'GNOMAD_REGION' in hdr:
             vals  = [(_num(a), filts[k] if k < len(filts) else '.') for k, a in enumerate(afs)]
             vals  = [(a, f) for a, f in vals if a is not None]
             region = col(row, 'GNOMAD_REGION')
+            fafs   = [x for x in (_num(f) for f in col(row, 'GNOMAD_FAF95').split(',')) if x is not None]
+            faf    = repr(max(fafs)) if (vals and fafs) else '.'
             if vals:
                 good = [a for a, f in vals if f != 'BOTH_FILTERED']
                 if good:
@@ -356,13 +361,13 @@ if 'GNOMAD_REGION' in hdr:
                     # kept for BA1/BS1 (benign direction) but never supports PM2.
                     af, src = repr(max(a for a, _f in vals)), tag + '_qc_fail'
             elif region not in ('', '.'):
-                af, src = '0', tag + '_absent'
+                af, src, faf = '0', tag + '_absent', '0'
             else:
                 v2 = [x for x in (_num(col(row, 'dbNSFP_gnomAD_exomes_AF')),
                                   _num(col(row, 'dbNSFP_gnomAD_genomes_AF'))) if x is not None]
                 af, src = (repr(max(v2)), 'dbNSFP_v2') if v2 else ('.', 'unknown')
             counts[src] = counts.get(src, 0) + 1
-            out.write('\\t'.join(row[:n_base] + [af, src]) + '\\n')
+            out.write('\\t'.join(row[:n_base] + [af, src, faf]) + '\\n')
     sys.stderr.write('[gnomAD local] ${sample}: ' + ', '.join(
         k + '=' + str(v) for k, v in sorted(counts.items())) + '\\n')
     os.replace(TMP, TSV)
@@ -534,8 +539,9 @@ PYEOF_CLINVAR
     #   Rejection reasons:
     #     multiallelic    : more than one ALT allele (e.g. GT 1/2 in the AR CAG/GGC
     #                       repeats); not reportable in a predisposition test
-    #     gnomad_BA1      : gnomAD AF > 5% (common polymorphism — ACMG BA1), read
-    #                       from the canonical gnomAD_AF column ("." = unknown)
+    #     gnomad_BA1      : gnomAD frequency > 5% (common polymorphism — ACMG BA1):
+    #                       gnomAD_FAF95 (max FAF across ancestry groups) with
+    #                       frequency_metric = 'faf95', else / when "." gnomAD_AF
     #     clinvar_benign  : ClinVar Benign/Likely_benign (unless also Pathogenic) with
     #                       >= clinvar_min_stars review stars (default 2); B/LB with
     #                       fewer stars stays and is classified by the ACMG score
@@ -554,6 +560,7 @@ PYEOF_CLINVAR
         print \$0 "\\tQC_FLAG\\tFILTER_REASON" > FILT
         min_dp_floor = ENVIRON["FILT_VAF_FLOOR_MIN_DP"]+0
         cv_min_stars = (ENVIRON["ACMG_CLINVAR_MIN_STARS"] != "") ? ENVIRON["ACMG_CLINVAR_MIN_STARS"]+0 : 2
+        use_faf = (ENVIRON["ACMG_FREQ_METRIC"] != "af")
         for (i = 1; i <= NF; i++) {
             if (\$i == "ALT")                        alt_col     = i
             if (\$i == "GEN[0].GT")                  gt_col      = i
@@ -565,6 +572,7 @@ PYEOF_CLINVAR
             if (\$i == "ClinVar_stars")               st_col      = i
             if (\$i == "dbNSFP_gnomAD_exomes_AF")     gnomad_v2   = i
             if (\$i == "gnomAD_AF")                   gnomad_can  = i
+            if (\$i == "gnomAD_FAF95")                faf_col     = i
         }
         gnomad_col = gnomad_can ? gnomad_can : gnomad_v2
         print \$0 "\\tQC_FLAG"; next
@@ -579,10 +587,14 @@ PYEOF_CLINVAR
             gt = (gt_col && gt_col <= NF) ? \$(gt_col) : "."
             reason = "multiallelic (GT=" gt "; ALT=" \$(alt_col) ")"
         }
-        # BA1: common polymorphism — gnomAD exomes AF > 5%
+        # BA1: common polymorphism — gnomAD FAF95 (or AF) > 5%
         if (reason == "" && gnomad_col && gnomad_col <= NF) {
-            af = \$(gnomad_col) + 0
-            if (\$(gnomad_col) != "." && af > ENVIRON["ACMG_BA1_AF"]+0) {
+            af  = \$(gnomad_col) + 0
+            faf = (use_faf && faf_col && faf_col <= NF && \$(faf_col) ~ /^[0-9]/) ? \$(faf_col) : ""
+            if (faf != "") {
+                if (faf + 0 > ENVIRON["ACMG_BA1_AF"]+0)
+                    reason = sprintf("gnomad_BA1 (FAF95=%.4f; AF=%.4f)", faf + 0, af)
+            } else if (\$(gnomad_col) != "." && af > ENVIRON["ACMG_BA1_AF"]+0) {
                 reason = sprintf("gnomad_BA1 (AF=%.4f)", af)
             }
         }

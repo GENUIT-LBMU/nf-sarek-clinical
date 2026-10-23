@@ -410,6 +410,7 @@ def read_tsv(path):
 from acmg_shared import (
     acmg_criteria_list as _acmg_criteria_list_shared,
     clinvar_display,
+    gnomad_display,
     getter_for_dict,
 )
 
@@ -1006,7 +1007,8 @@ def build_germline_section(germline_variants, story):
         zyg = Paragraph(zyg_raw.replace('/', '/<br/>').replace('(', '<br/>(')
                         if zyg_raw not in ('', '.') else '-', _zyg_style)
         revel  = trunc(v.get('dbNSFP_REVEL_score', '-'), 8)
-        gnomad = trunc(v.get('gnomAD_AF') or v.get('dbNSFP_gnomAD_exomes_AF', '-'), 12)
+        gnomad = Paragraph(xml_escape(gnomad_display(lambda k: (v.get(k) or '').strip()))
+                           .replace(' / ', '<br/>'), _zyg_style)
         clnsig = clinvar_display(lambda k: (v.get(k) or '').strip())
         cls    = v.get('_ACMG', 'VUS')
         criteria_codes = v.get('_ACMG_CRITERIA', [])
@@ -3081,7 +3083,8 @@ def build_methodology_section(story):
         'PM4 stop-lost (+2), PM2_Supporting (+1), PP3 / BP4 from REVEL with the ClinGen calibrated '
         'cut-offs (Pejaver et al. 2022: +/-1, +/-2, +/-4), BS1 (-4). '
         'ClinVar classifications with at least 2 review stars are final. '
-        'gnomAD AF > 5% triggers BA1 (stand-alone benign). '
+        'gnomAD frequency > 5% triggers BA1 (stand-alone benign); BA1, BS1 and PM2 use the '
+        'maximum filtering allele frequency (FAF95) across ancestry groups. '
         'Point thresholds: P >=10, LP 6-9, VUS 0-5, LB -1 to -6, B <=-7.',
         STYLE_BODY))
 
