@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   web APIs. Unknown frequency (outside the resource regions, no dbNSFP value) no
   longer triggers PM2; sites failing gnomAD QC in exomes and genomes keep their AF
   for BA1/BS1 but never support PM2.
+- Germline multi-allelic sites (more than one ALT, e.g. GT 1/2 in the AR CAG/GGC
+  repeats) are no longer reported: they are moved to `germline_all_filtered.tsv`
+  with `FILTER_REASON = multiallelic (GT=…; ALT=…)`. Such sites are not reportable
+  in a predisposition test and their VAF / ClinVar match were wrong.
 
 ### Fixed
 - Germline variants with VAF > `vaf_max` (0.75) were discarded as

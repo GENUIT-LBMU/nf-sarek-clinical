@@ -532,6 +532,8 @@ PYEOF_CLINVAR
     #   Rejected variants → germline_all_filtered.tsv  (with FILTER_REASON column)
     #
     #   Rejection reasons:
+    #     multiallelic    : more than one ALT allele (e.g. GT 1/2 in the AR CAG/GGC
+    #                       repeats); not reportable in a predisposition test
     #     gnomad_BA1      : gnomAD AF > 5% (common polymorphism — ACMG BA1), read
     #                       from the canonical gnomAD_AF column ("." = unknown)
     #     clinvar_benign  : ClinVar Benign/Likely_benign (unless also Pathogenic)
@@ -550,6 +552,8 @@ PYEOF_CLINVAR
         print \$0 "\\tQC_FLAG\\tFILTER_REASON" > FILT
         min_dp_floor = ENVIRON["FILT_VAF_FLOOR_MIN_DP"]+0
         for (i = 1; i <= NF; i++) {
+            if (\$i == "ALT")                        alt_col     = i
+            if (\$i == "GEN[0].GT")                  gt_col      = i
             if (\$i == "ANN[*].IMPACT")              impact_col  = i
             if (\$i == "GEN[0].AD")                  ad_col      = i
             if (\$i == "GEN[0].DP")                  dp_col      = i
@@ -566,6 +570,11 @@ PYEOF_CLINVAR
         flag   = ""
         clnsig = (cs_col && cs_col <= NF) ? tolower(\$(cs_col)) : "."
         clinvar_plp = (clnsig ~ /pathogenic/ && clnsig !~ /conflicting/ && clnsig !~ /benign/)
+        # Multi-allelic site (ALT "A,B"): not reportable, kept only in the filtered table
+        if (alt_col && \$(alt_col) ~ /,/) {
+            gt = (gt_col && gt_col <= NF) ? \$(gt_col) : "."
+            reason = "multiallelic (GT=" gt "; ALT=" \$(alt_col) ")"
+        }
         # BA1: common polymorphism — gnomAD exomes AF > 5%
         if (reason == "" && gnomad_col && gnomad_col <= NF) {
             af = \$(gnomad_col) + 0
