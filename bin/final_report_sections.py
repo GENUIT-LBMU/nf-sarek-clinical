@@ -252,7 +252,7 @@ def build_methodology_html():
         ['Germline SNVs',     'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
         ['Somatic SNVs',      'GATK Mutect2 v4 (tumor&ndash;normal mode)',        'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA&ndash;III'],
         ['Somatic CNVs',      'ASCAT v3 + CNVkit v0.9 (consensus)',               'GRCh38', 'HOMDEL (CN=0), AMP (CN&ge;5), 2nd-hit LOH; 38-gene somatic CNV panel'],
-        ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;4 Phred; CN&ne;2 events; 103-gene germline panel only'],
+        ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;4 Phred; CN&ne;2 events; 105-gene germline panel only'],
         ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold &ge;5%'],
         ['Somatic Consensus', 'bcftools isec (Mutect2 &cap; Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT preserved'],
         ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'Consensus VCF input; HRD+ threshold: probability &ge;0.45; SBS3/SBS8'],
@@ -273,7 +273,7 @@ def build_methodology_html():
 
     detail_sections = [
         ('Gene Panels',
-         '<b>Germline SNV + CNV panel (103 genes)</b> &mdash; Used for germline SNV filtering '
+         '<b>Germline SNV + CNV panel (105 genes)</b> &mdash; Used for germline SNV filtering '
          '(HIGH/MODERATE impact) and germline CNV reporting (CN&ne;2, QA&ge;4). '
          'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
          '<span style="font-size:0.75em; color:#94a3b8;">'
@@ -281,8 +281,8 @@ def build_methodology_html():
          'BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, '
          'CDKN2A, CFTR, CHEK2, CTNNA1, CTRC, DICER1, EGFR, ENG, EPCAM, ERBB2, FANCC, FANCD2, FANCM, '
          'FGFR1, FGFR2, FGFR3, FH, FLCN, GREM1, HOXB13, KIF1B, KIT, KRAS, LZTR1, MAX, MBD4, MDM2, '
-         'MDM4, MEN1, MET, MITF, MLH1, MLH3, MSH2, MSH3, MSH6, MUTYH, MYC, NBN, NF1, NF2, NTHL1, '
-         'PALB2, PDGFRA, PIK3CA, PMS2, POLD1, POLE, POT1, PRKAR1A, PTCH1, PTEN, RAD51C, RB1, RECQL, '
+         'MDM4, MEN1, MET, MITF, MLH1, MLH3, MRE11, MSH2, MSH3, MSH6, MUTYH, MYC, NBN, NF1, NF2, NTHL1, '
+         'PALB2, PDGFRA, PIK3CA, PMS2, POLD1, POLE, POT1, PRKAR1A, PTCH1, PTEN, RAD51C, RAD51D, RB1, RECQL, '
          'RECQL4, RET, RNF43, RPS20, SDHA, SDHAF2, SDHB, SDHC, SDHD, SMAD4, SMARCA4, SMARCB1, '
          'SMARCE1, SPINK1, STK11, SUFU, TMEM127, TP53, TSC1, TSC2, VHL, WRN'
          '</span><br/><br/>'

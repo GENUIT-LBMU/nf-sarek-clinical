@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repeats) are no longer reported: they are moved to `germline_all_filtered.tsv`
   with `FILTER_REASON = multiallelic (GT=…; ALT=…)`. Such sites are not reportable
   in a predisposition test and their VAF / ClinVar match were wrong.
+- Germline panel: RAD51D and MRE11 (HGNC symbol, not MRE11A) added (103 -> 105
+  genes); both were already in the HRR gene set but never reached the germline
+  SNV filter. The file is renamed `germline_cancer_predisposition.txt` (no gene
+  count in the name). The local gnomAD v4.1 and ClinVar resources are rebuilt
+  over the new regions (124 genes) — rebuild them after updating.
 
 ### Fixed
 - Germline variants with VAF > `vaf_max` (0.75) were discarded as

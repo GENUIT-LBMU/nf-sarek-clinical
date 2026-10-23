@@ -136,9 +136,9 @@ clinical_results/
 | 0 | **Cover Page / KPI Dashboard** | Global biomarkers (TMB, MSI, HRD, ploidy, purity, coverage) with low-coverage QC warnings when tumour mean depth < 50X |
 | 1 | **Major Clinical Findings** | Auto-populated summary: HRD pathway, MMR deficiency (SBS + ID signatures), CIViC Level A/B actionable variants, high-confidence CNVs, pathogenic germline hits |
 | 2 | **Germline–Somatic Correlation** | Two-hit events (P/LP germline + somatic second hit), biallelic somatic, MMR/HRR pathway integration |
-| 3 | **Germline SNVs** | 103-gene hereditary cancer panel; ACMG P/LP/VUS classification with 9-tool in silico panel, REVEL (ClinGen SVI concordance), ClinVar (local release, with stars), gnomAD v4.1 |
+| 3 | **Germline SNVs** | 105-gene hereditary cancer panel; ACMG P/LP/VUS classification with 9-tool in silico panel, REVEL (ClinGen SVI concordance), ClinVar (local release, with stars), gnomAD v4.1 |
 | 4 | **Pharmacogenomics** | DPYD, UGT1A1 — drug-metabolism variants from germline VCF |
-| 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM; only 103-gene panel reported (QA >= 4); MANE exon annotation |
+| 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM; only 105-gene panel reported (QA >= 4); MANE exon annotation |
 | 6 | **Somatic SNVs** | Split into *Clinically Actionable* (CIViC Tier I/II) and *Other* (Tier III) tables; Callers column shows M+S (consensus) or M (Mutect2-only); low-VAF warning for AF < 5% |
 | 7 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
 | 8 | **Somatic CNVs (GATK)** | Allele-specific paired CNV (tumour + normal BAMs); MANE annotation; diagnostic plots |
@@ -495,7 +495,7 @@ regions such as FANCD2/FANCD2P2) keep their AF for BA1/BS1 but never support PM2
 docker run --rm -u $(id -u):$(id -g) -v $PWD:$PWD -v /data/refs:/data/refs -w $PWD \
     quay.io/biocontainers/bcftools:1.20--h8b25389_0 \
     bash scripts/build_gnomad_panel.sh \
-        --genes assets/gene_panels/germline_103_cancer_predisposition.txt \
+        --genes assets/gene_panels/germline_cancer_predisposition.txt \
         --genes assets/gene_panels/somatic_snv_panel.txt \
         --genes assets/gene_panels/somatic_38_oncogenes.txt \
         --mane  /data/refs/cnv/exons_mane.txt \
@@ -660,7 +660,7 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--germline_panel` | `assets/gene_panels/germline_103_cancer_predisposition.txt` | Gene list for germline SNV/CNV filter (one symbol per line) |
+| `--germline_panel` | `assets/gene_panels/germline_cancer_predisposition.txt` | Gene list for germline SNV/CNV filter (one symbol per line) |
 | `--somatic_snv_panel` | `assets/gene_panels/somatic_snv_panel.txt` | Gene list for somatic SNV filter |
 | `--panel_bed` | — | WES capture BED for TMB calculation (mut/Mb) |
 | `--gnomad_tsv` | — | Local gnomAD panel resource (`scripts/build_gnomad_panel.sh`); path or https URL. Recommended |
@@ -789,15 +789,15 @@ The somatic SNV report table includes a **Callers** column indicating whether ea
 
 Built-in panels bundled in `assets/gene_panels/`. To use a custom panel: `--germline_panel /path/to/my_panel.txt` (one HGNC symbol per line).
 
-### Germline SNV + CNV panel (103 genes)
+### Germline SNV + CNV panel (105 genes)
 
-**File:** `germline_103_cancer_predisposition.txt` | **Used by:** Germline SNV filtering (HIGH/MODERATE impact) + Germline CNV reporting (CN!=2, QA>=4)
+**File:** `germline_cancer_predisposition.txt` | **Used by:** Germline SNV filtering (HIGH/MODERATE impact) + Germline CNV reporting (CN!=2, QA>=4)
 
 Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.
 
 <details><summary>Full gene list (click to expand)</summary>
 
-AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, CDKN2A, CFTR, CHEK2, CTNNA1, CTRC, DICER1, EGFR, ENG, EPCAM, ERBB2, FANCC, FANCD2, FANCM, FGFR1, FGFR2, FGFR3, FH, FLCN, GREM1, HOXB13, KIF1B, KIT, KRAS, LZTR1, MAX, MBD4, MDM2, MDM4, MEN1, MET, MITF, MLH1, MLH3, MSH2, MSH3, MSH6, MUTYH, MYC, NBN, NF1, NF2, NTHL1, PALB2, PDGFRA, PIK3CA, PMS2, POLD1, POLE, POT1, PRKAR1A, PTCH1, PTEN, RAD51C, RB1, RECQL, RECQL4, RET, RNF43, RPS20, SDHA, SDHAF2, SDHB, SDHC, SDHD, SMAD4, SMARCA4, SMARCB1, SMARCE1, SPINK1, STK11, SUFU, TMEM127, TP53, TSC1, TSC2, VHL, WRN
+AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, CDKN2A, CFTR, CHEK2, CTNNA1, CTRC, DICER1, EGFR, ENG, EPCAM, ERBB2, FANCC, FANCD2, FANCM, FGFR1, FGFR2, FGFR3, FH, FLCN, GREM1, HOXB13, KIF1B, KIT, KRAS, LZTR1, MAX, MBD4, MDM2, MDM4, MEN1, MET, MITF, MLH1, MLH3, MRE11, MSH2, MSH3, MSH6, MUTYH, MYC, NBN, NF1, NF2, NTHL1, PALB2, PDGFRA, PIK3CA, PMS2, POLD1, POLE, POT1, PRKAR1A, PTCH1, PTEN, RAD51C, RAD51D, RB1, RECQL, RECQL4, RET, RNF43, RPS20, SDHA, SDHAF2, SDHB, SDHC, SDHD, SMAD4, SMARCA4, SMARCB1, SMARCE1, SPINK1, STK11, SUFU, TMEM127, TP53, TSC1, TSC2, VHL, WRN
 
 </details>
 

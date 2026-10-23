@@ -1843,7 +1843,7 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
 def build_germline_cnv_section(path, story, germline_panel_path=''):
     """Append GATK germline CNV section: show segments with CN != 2.
 
-    Only panel genes (103-gene cancer-predisposition panel) are reported.
+    Only panel genes (105-gene cancer-predisposition panel) are reported.
     Filter: QA >= 4 (no NP filter — small CNVs of 1-3 exons are clinically critical).
     """
     story.append(PageBreak())
@@ -1926,7 +1926,7 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
                 '<b>Germline CNV Analysis \u2014 No Reportable Events</b><br/>'
                 'The GATK germline copy-number variant analysis did not identify '
                 'any copy-number alterations (CN \u2260 2) meeting the quality '
-                'threshold (QA \u2265 4) in the 103-gene germline '
+                'threshold (QA \u2265 4) in the 105-gene germline '
                 'cancer predisposition panel. The raw annotated segments are '
                 'available for manual review in:<br/>'
                 '\u00a0\u00a0<i>clinical_results/germline/cnv_gatk/annotated/</i>',
@@ -1982,7 +1982,7 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
     note_style = ParagraphStyle('CnvNote', parent=styles['Normal'],
                                 fontSize=6, textColor=colors.Color(0.6, 0.7, 0.8))
     story.append(Paragraph(
-        str(len(filtered)) + ' segment(s) shown (103-gene panel only, QA \u2265 4). Quality: '
+        str(len(filtered)) + ' segment(s) shown (105-gene panel only, QA \u2265 4). Quality: '
         'High (QS \u226530), Medium (QS 10\u201329), Low (QS <10 \u2014 manual review recommended).',
         note_style))
     story.append(tbl)
@@ -2974,7 +2974,7 @@ def build_methodology_section(story):
         ['Germline SNVs',      'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
         ['Somatic SNVs',       'GATK Mutect2 v4 (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
         ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
-        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=4 Phred quality; CN!=2 reported for 103-gene germline panel only'],
+        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=4 Phred quality; CN!=2 reported for 105-gene germline panel only'],
         ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold >=5%'],
         ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Consensus VCF input; SBS + ID + CN48 features; HRD+ threshold: probability >=0.45'],
@@ -3001,15 +3001,15 @@ def build_methodology_section(story):
     # ── Detailed subsections ──────────────────────────────────────────────────
     story.append(Paragraph('Gene Panels', STYLE_SUB))
     story.append(Paragraph(
-        '<b>Germline SNV + CNV panel (103 genes):</b> Used for germline SNV filtering '
+        '<b>Germline SNV + CNV panel (105 genes):</b> Used for germline SNV filtering '
         '(HIGH/MODERATE impact variants) and germline CNV reporting (CN\u22602, QA\u22654). '
         'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
         '<font size="5.5">AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, '
         'BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, '
         'CDKN2A, CFTR, CHEK2, CTNNA1, CTRC, DICER1, EGFR, ENG, EPCAM, ERBB2, FANCC, FANCD2, FANCM, '
         'FGFR1, FGFR2, FGFR3, FH, FLCN, GREM1, HOXB13, KIF1B, KIT, KRAS, LZTR1, MAX, MBD4, MDM2, '
-        'MDM4, MEN1, MET, MITF, MLH1, MLH3, MSH2, MSH3, MSH6, MUTYH, MYC, NBN, NF1, NF2, NTHL1, '
-        'PALB2, PDGFRA, PIK3CA, PMS2, POLD1, POLE, POT1, PRKAR1A, PTCH1, PTEN, RAD51C, RB1, RECQL, '
+        'MDM4, MEN1, MET, MITF, MLH1, MLH3, MRE11, MSH2, MSH3, MSH6, MUTYH, MYC, NBN, NF1, NF2, NTHL1, '
+        'PALB2, PDGFRA, PIK3CA, PMS2, POLD1, POLE, POT1, PRKAR1A, PTCH1, PTEN, RAD51C, RAD51D, RB1, RECQL, '
         'RECQL4, RET, RNF43, RPS20, SDHA, SDHAF2, SDHB, SDHC, SDHD, SMAD4, SMARCA4, SMARCB1, '
         'SMARCE1, SPINK1, STK11, SUFU, TMEM127, TP53, TSC1, TSC2, VHL, WRN</font>',
         STYLE_BODY))

@@ -21,7 +21,7 @@
 #   docker run --rm -u $(id -u):$(id -g) -v $PWD:$PWD -w $PWD \
 #       quay.io/biocontainers/bcftools:1.20--h8b25389_0 \
 #       bash scripts/build_gnomad_panel.sh \
-#           --genes assets/gene_panels/germline_103_cancer_predisposition.txt \
+#           --genes assets/gene_panels/germline_cancer_predisposition.txt \
 #           --genes assets/gene_panels/somatic_snv_panel.txt \
 #           --genes assets/gene_panels/somatic_38_oncogenes.txt \
 #           --mane  /path/to/exons_mane.txt --outdir /path/to/refs/gnomad

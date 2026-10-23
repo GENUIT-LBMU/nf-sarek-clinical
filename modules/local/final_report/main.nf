@@ -149,7 +149,7 @@ process FINAL_REPORT {
         --somatic       "\${SNV_SOMATIC}" \
         --cnv           "\${CNV_SOMATIC}" \
         --cnv-germline  "\${CNV_GERM_GATK}" \
-        --germline-panel "${projectDir}/assets/gene_panels/germline_103_cancer_predisposition.txt" \
+        --germline-panel "${projectDir}/assets/gene_panels/germline_cancer_predisposition.txt" \
         --sig           "\${SIG_SBS96}" \
         --tumor         "\${TUMOR}" \
         --tmb           "\${TMB_VAL}" \
@@ -260,7 +260,7 @@ cnv_som_gatk  = "\${CNV_SOM_GATK}"
 # CNV harmonisation helpers
 # ----
 _SOMATIC_38_PANEL = "${projectDir}/assets/gene_panels/somatic_38_oncogenes.txt"
-_GERMLINE_PANEL   = "${projectDir}/assets/gene_panels/germline_103_cancer_predisposition.txt"
+_GERMLINE_PANEL   = "${projectDir}/assets/gene_panels/germline_cancer_predisposition.txt"
 _AMP_THRESHOLD    = 5
 
 def _load_panel(path):
@@ -868,7 +868,7 @@ def tsv_to_html_germline_cnv(path):
             "<div class='callout-info'>"
             "<strong>No Reportable Germline CNV Events</strong><br>"
             "The GATK germline copy-number variant analysis did not identify any CN &ne; 2 events "
-            "meeting quality threshold in the 103-gene germline panel. "
+            "meeting quality threshold in the 105-gene germline panel. "
             "Raw annotated segments are available for review in "
             "<code>germline/cnv_gatk/annotated/</code>."
             "</div>"

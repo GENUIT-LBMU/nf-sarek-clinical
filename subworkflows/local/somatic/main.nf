@@ -38,7 +38,7 @@ workflow SOMATIC_POSTPROCESS {
     ch_snpsift_jar      // path: SnpSift.jar
     ch_somatic_snv_panel // path: somatic SNV gene panel
     ch_somatic_cnv_panel // path: somatic CNV gene panel (38 genes)
-    ch_germline_panel   // path: germline gene panel (103 genes, for LOH)
+    ch_germline_panel   // path: germline gene panel (105 genes, for LOH)
     ch_gene_coords_bed  // path: WES gene coordinates BED
     ch_panel_bed        // path: WES capture BED (for TMB)
     ch_tumor_samples    // channel: [ val(pair), val(tumor_sample) ] for mutsig tumor column
