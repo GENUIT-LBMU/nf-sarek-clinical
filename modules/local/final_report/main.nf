@@ -586,11 +586,11 @@ def tsv_to_html_germline(path):
         'B':   'badge-B',
     }
 
-    _BENIGN_CRIT = {'BA1', 'BS1', 'BP4', 'BP4_St'}
-
     def crit_badge(code):
         if code.startswith('ClinVar'):
             cls = 'badge-crit-cv'
+        elif code.endswith('_NA'):
+            cls = 'badge-crit-na'
         elif code.startswith('BP') or code.startswith('BA') or code.startswith('BS'):
             cls = 'badge-crit-b'
         else:
@@ -1311,6 +1311,7 @@ _css = (
     '.badge-crit-p { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.35); }'
     '.badge-crit-b { background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.35); }'
     '.badge-crit-cv { background:rgba(139,92,246,0.15); color:#a78bfa; border:1px solid rgba(139,92,246,0.35); }'
+    '.badge-crit-na { background:rgba(107,114,128,0.15); color:#9ca3af; border:1px solid rgba(107,114,128,0.35); }'
     '.badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:.7rem; font-weight:700; }'
     '.badge-P { background:#ef4444; color:#fff; }'
     '.badge-LP { background:#f97316; color:#fff; }'

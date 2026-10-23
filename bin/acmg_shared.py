@@ -225,12 +225,14 @@ def acmg_criteria_list(get_field):
            others  -> ACMG score
          Conflicting / other ClinVar terms -> ACMG score
       2. gnomAD BA1 rule (>5% AF -> Benign)
-      3. Evidence scoring: PVS1 (HIGH impact) + PM2 (rare) + PP3/BP4 (REVEL OR
-         9-tool panel, RESOLVED — only the strongest evidence is counted, no
-         double counting per ClinGen 2022) + BS1 (>1% AF)
+      3. Evidence points (Tavtigian 2020): PVS1 by gene mechanism and variant
+         type (pvs1_evidence) + PM2_Supporting (rare) + PP3/BP4 from REVEL
+         (Pejaver 2022), or the 9-tool panel at Supporting when REVEL is
+         missing + BS1 (>1% AF).
+         P >= 10, LP 6..9, VUS 0..5, LB -1..-6, B <= -7
 
     Returns (cls, criteria_list) where criteria_list contains the activated
-    ACMG evidence code strings (e.g. ['PVS1', 'PM2', 'PP3(7/9)']).
+    ACMG evidence code strings (e.g. ['PVS1', 'PM2_Sup', 'PP3_Mod']).
     """
     cv = clinvar_class(clinvar_sig(get_field))
     if cv is None:
@@ -257,94 +259,148 @@ def _acmg_scored(get_field):
     if gnomad is not None and gnomad > float(_E('ACMG_BA1_AF', '0.05')):
         return 'B', ['BA1']
 
-    # ── 3. Evidence scoring ────────────────────────────────────────────────
+    # ── 3. Evidence scoring (points: Tavtigian 2020) ─────────────────────
     score = 0
     criteria = []
 
-    impact = get_field('ANN[*].IMPACT').upper()
-    if impact == 'HIGH':
-        score += int(_E('ACMG_PVS1_SCORE', '8'))
-        criteria.append('PVS1')
+    pts, code = pvs1_evidence(get_field)
+    score += pts
+    if code:
+        criteria.append(code)
 
+    # PM2_Supporting (ClinGen SVI 2020)
     if (gnomad is not None and gnomad_supports_pm2(get_field)
             and gnomad < float(_E('ACMG_PM2_AF', '0.001'))):
-        score += int(_E('ACMG_PM2_SCORE', '2'))
-        criteria.append('PM2')
+        score += int(_E('ACMG_PM2_SCORE', '1'))
+        criteria.append('PM2_Sup')
 
-    # REVEL evidence
-    revel_dir = 0
-    revel_str = 0
-    revel_lbl = ''
-    try:
-        revel = float(get_field('dbNSFP_REVEL_score'))
-        if revel >= float(_E('ACMG_REVEL_PP3_STRONG', '0.932')):
-            revel_dir, revel_str, revel_lbl = 1, 4, 'PP3_St'
-        elif revel >= float(_E('ACMG_REVEL_PP3', '0.644')):
-            revel_dir, revel_str, revel_lbl = 1, 2, 'PP3'
-        elif revel >= float(_E('ACMG_REVEL_PP3_SUP', '0.5')):
-            revel_dir, revel_str, revel_lbl = 1, 1, 'PP3_Sup'
-        elif revel < float(_E('ACMG_REVEL_BP4_STRONG', '0.15')):
-            revel_dir, revel_str, revel_lbl = -1, 4, 'BP4_St'
-        elif revel < float(_E('ACMG_REVEL_BP4', '0.29')):
-            revel_dir, revel_str, revel_lbl = -1, 2, 'BP4'
-    except (ValueError, TypeError):
-        pass
-
-    # In silico panel evidence
-    dam, ben = count_insil(get_field)
-    total = dam + ben
-    panel_dir = 0
-    panel_str = 0
-    panel_lbl = ''
-    insil_maj = float(_E('ACMG_INSIL_MAJORITY', '0.75'))
-    if total > 0:
-        if ben > dam:
-            panel_dir = -1
-            ratio = ben / total
-            if ratio >= insil_maj:
-                panel_str, panel_lbl = 2, 'BP4({}/{})'.format(ben, total)
-            else:
-                panel_str, panel_lbl = 1, 'BP4_Sup({}/{})'.format(ben, total)
-        elif dam > ben:
-            panel_dir = 1
-            ratio = dam / total
-            if ratio >= insil_maj:
-                panel_str, panel_lbl = 2, 'PP3({}/{})'.format(dam, total)
-            else:
-                panel_str, panel_lbl = 1, 'PP3_Sup({}/{})'.format(dam, total)
-
-    # Resolve REVEL vs panel — never double-count (ClinGen 2022)
-    if revel_dir != 0 and panel_dir != 0:
-        if revel_dir == panel_dir:
-            if revel_str >= panel_str:
-                score += revel_dir * revel_str
-                criteria.append(revel_lbl)
-            else:
-                score += panel_dir * panel_str
-                criteria.append(panel_lbl)
-        # opposite directions -> conflicting in silico evidence, both abstain
-    elif revel_dir != 0:
-        score += revel_dir * revel_str
-        criteria.append(revel_lbl)
-    elif panel_dir != 0:
-        score += panel_dir * panel_str
-        criteria.append(panel_lbl)
+    # PP3 / BP4: REVEL with the ClinGen calibrated cut-offs (Pejaver 2022);
+    # the uncalibrated 9-tool panel only when REVEL is missing, at most Supporting
+    pts, code = revel_evidence(get_field)
+    if code is None:
+        pts, code = insil_panel_evidence(get_field)
+    score += pts
+    if code:
+        criteria.append(code)
 
     # BS1 — frequency above benign threshold
     if gnomad is not None and gnomad > float(_E('ACMG_BS1_AF', '0.01')):
         score += int(_E('ACMG_BS1_SCORE', '-4'))
         criteria.append('BS1')
 
-    sp = int(_E('ACMG_SCORE_P', '10'))
-    slp = int(_E('ACMG_SCORE_LP', '6'))
-    slb = int(_E('ACMG_SCORE_LB', '-2'))
-    if score >= sp:
+    if score >= int(_E('ACMG_SCORE_P', '10')):
         return 'P', criteria
-    if score >= slp:
+    if score >= int(_E('ACMG_SCORE_LP', '6')):
         return 'LP', criteria
-    if score <= slb:
+    if score <= int(_E('ACMG_SCORE_B', '-7')):
+        return 'B', criteria
+    if score <= int(_E('ACMG_SCORE_LB', '-1')):
         return 'LB', criteria
     return 'VUS', criteria
+
+
+# Genes where loss of function is not the cancer-predisposition mechanism
+# (oncogenes / gain of function, or LOF causing a non-cancer phenotype).
+# Overridden by filters.acmg.pvs1_not_applicable (env ACMG_PVS1_NA_GENES).
+PVS1_NA_DEFAULT = (
+    'ALK,AR,BRAF,CCND1,CCND2,CCND3,CCNE1,CDK4,CDK6,EGFR,EPCAM,ERBB2,FGFR1,FGFR2,'
+    'FGFR3,GREM1,HOXB13,KIF1B,KIT,KRAS,MDM2,MDM4,MET,MITF,MYC,PDGFRA,PIK3CA,'
+    'POLD1,POLE,RECQL,RET'
+)
+
+
+def pvs1_not_applicable_genes():
+    raw = _E('ACMG_PVS1_NA_GENES', PVS1_NA_DEFAULT)
+    return frozenset(g.strip().upper() for g in raw.split(',') if g.strip())
+
+
+def _int_or_none(x):
+    try:
+        return int(str(x).split('/')[0])
+    except (ValueError, TypeError):
+        return None
+
+
+def pvs1_evidence(get_field):
+    """(points, code) for null variants — simplified ClinGen PVS1 tree
+    (Abou Tayoun 2018). Only HIGH-impact variants are considered.
+
+      gene in pvs1_not_applicable          -> 0, 'PVS1_NA'
+      stop_gained / frameshift:
+        not in the last exon               -> PVS1        (8)
+        last exon, >= 10% of protein lost  -> PVS1_St     (4)
+        last exon, <  10% of protein lost  -> PVS1_Mod    (2)
+      splice donor / acceptor (+-1/2)      -> PVS1        (8)
+      start_lost                           -> PVS1_Mod    (2)
+      stop_lost                            -> PM4         (2)
+      other HIGH                           -> PVS1        (8)
+
+    The "last 50 nt of the penultimate exon" NMD rule is not applied (exon
+    coordinates are not in the table): such variants keep full PVS1.
+    """
+    if get_field('ANN[*].IMPACT').upper() != 'HIGH':
+        return 0, None
+    if get_field('ANN[*].GENE').strip().upper() in pvs1_not_applicable_genes():
+        return 0, 'PVS1_NA'
+    full = int(_E('ACMG_PVS1_SCORE', '8'))
+    strong = int(_E('ACMG_PVS1_STRONG_SCORE', '4'))
+    moderate = int(_E('ACMG_PVS1_MODERATE_SCORE', '2'))
+    effect = get_field('ANN[*].EFFECT').lower()
+    if 'stop_gained' in effect or 'frameshift' in effect:
+        rank = get_field('ANN[*].RANK').split('/')
+        exon, n_exons = (_int_or_none(rank[0]), _int_or_none(rank[1])) if len(rank) == 2 else (None, None)
+        if exon is not None and n_exons and exon == n_exons:
+            aa_pos = _int_or_none(get_field('ANN[*].AA_POS'))
+            aa_len = _int_or_none(get_field('ANN[*].AA_LEN'))
+            min_lost = float(_E('ACMG_PVS1_LAST_EXON_MIN_LOST', '0.10'))
+            if aa_pos and aa_len and (aa_len - aa_pos + 1) / aa_len < min_lost:
+                return moderate, 'PVS1_Mod'
+            return strong, 'PVS1_St'
+        return full, 'PVS1'
+    if 'splice_acceptor' in effect or 'splice_donor' in effect:
+        return full, 'PVS1'
+    if 'start_lost' in effect:
+        return moderate, 'PVS1_Mod'
+    if 'stop_lost' in effect:
+        return int(_E('ACMG_PM4_SCORE', '2')), 'PM4'
+    return full, 'PVS1'
+
+
+def revel_evidence(get_field):
+    """(points, code) from REVEL with the ClinGen cut-offs (Pejaver 2022);
+    (0, None) when REVEL is missing, (0, '') when it is indeterminate."""
+    try:
+        revel = float(get_field('dbNSFP_REVEL_score'))
+    except (ValueError, TypeError):
+        return 0, None
+    for env, default, pts, code in (
+            ('ACMG_REVEL_PP3_STRONG', '0.932', 4, 'PP3_St'),
+            ('ACMG_REVEL_PP3_MOD',    '0.773', 2, 'PP3_Mod'),
+            ('ACMG_REVEL_PP3_SUP',    '0.644', 1, 'PP3_Sup')):
+        if revel >= float(_E(env, default)):
+            return pts, code
+    for env, default, pts, code in (
+            ('ACMG_REVEL_BP4_STRONG', '0.016', -4, 'BP4_St'),
+            ('ACMG_REVEL_BP4_MOD',    '0.183', -2, 'BP4_Mod'),
+            ('ACMG_REVEL_BP4_SUP',    '0.290', -1, 'BP4_Sup')):
+        if revel <= float(_E(env, default)):
+            return pts, code
+    return 0, ''
+
+
+def insil_panel_evidence(get_field):
+    """(points, code) from the 9-tool panel, used only without REVEL:
+    a majority >= insil_majority gives PP3_Sup / BP4_Sup (+-1)."""
+    dam, ben = count_insil(get_field)
+    total = dam + ben
+    if total == 0:
+        return 0, ''
+    maj = float(_E('ACMG_INSIL_MAJORITY', '0.75'))
+    if dam / total >= maj:
+        return 1, 'PP3_Sup({}/{})'.format(dam, total)
+    if ben / total >= maj:
+        return -1, 'BP4_Sup({}/{})'.format(ben, total)
+    return 0, ''
 
 
 def acmg_class(get_field):

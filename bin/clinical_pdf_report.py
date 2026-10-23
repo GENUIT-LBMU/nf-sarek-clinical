@@ -1011,12 +1011,13 @@ def build_germline_section(germline_variants, story):
         cls    = v.get('_ACMG', 'VUS')
         criteria_codes = v.get('_ACMG_CRITERIA', [])
         # Colour-code each criterion: pathogenic (red) vs benign (blue)
-        _BENIGN_CRIT = {'BA1', 'BS1', 'BP4', 'BP4_St'}
         parts = []
         for code in criteria_codes:
             if code.startswith('ClinVar'):
                 colour = '#7c3aed'
-            elif code in _BENIGN_CRIT:
+            elif code.endswith('_NA'):
+                colour = '#6b7280'
+            elif code.startswith(('BA', 'BS', 'BP')):
                 colour = '#3b82f6'
             else:
                 colour = '#dc2626'
@@ -3075,11 +3076,13 @@ def build_methodology_section(story):
     story.append(Paragraph(
         'Germline variants are classified per ACMG/AMP 2015 standards (Richards et al., '
         'Genetics in Medicine 2015) with updated evidence weights (Tavtigian et al. 2020, '
-        'Biesecker et al. 2018). Evidence criteria include: PVS1 (+8), PM2 (+2), PP3 variants '
-        '(Strong/Moderate/Supporting: +4/+2/+1), BS1 (-4), BP4 variants (-4/-2). '
-        'ClinVar pathogenic/benign classifications override the evidence score when available. '
+        'Biesecker et al. 2018). Evidence points: PVS1 (+8; +4 / +2 in the last exon, +2 for '
+        'start-lost; not applied in genes where loss of function is not the cancer mechanism), '
+        'PM4 stop-lost (+2), PM2_Supporting (+1), PP3 / BP4 from REVEL with the ClinGen calibrated '
+        'cut-offs (Pejaver et al. 2022: +/-1, +/-2, +/-4), BS1 (-4). '
+        'ClinVar classifications with at least 2 review stars are final. '
         'gnomAD AF > 5% triggers BA1 (stand-alone benign). '
-        'Score thresholds: P >=10, LP 6-9, VUS -5 to 5, LB -9 to -6, B <=-10.',
+        'Point thresholds: P >=10, LP 6-9, VUS 0-5, LB -1 to -6, B <=-7.',
         STYLE_BODY))
 
     story.append(Paragraph('Somatic Variant Interpretation (AMP/ASCO/CAP Tiers)', STYLE_SUB))

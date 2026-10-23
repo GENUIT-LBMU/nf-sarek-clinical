@@ -327,10 +327,12 @@ def build_methodology_html():
         ('ACMG/AMP Variant Classification (Germline)',
          'Germline variants are classified per ACMG/AMP 2015 standards (Richards et al., '
          '<i>Genetics in Medicine</i> 2015) with updated evidence weights (Tavtigian et al. 2020). '
-         'Evidence weights: PVS1 (+8), PM2 (+2), PP3_Strong (+4), PP3 (+2), PP3_Supporting (+1), PP2 (+1), '
-         'BS1 (&minus;4), BP4_Strong (&minus;4), BP4 (&minus;2). '
-         'ClinVar P/LP annotations override the score. gnomAD AF&nbsp;&gt;&nbsp;5% triggers BA1 (stand-alone benign). '
-         'Score thresholds: P &ge;10, LP 6&ndash;9, VUS &minus;5 to 5, LB &minus;9 to &minus;6, B &le;&minus;10.'),
+         'Evidence points: PVS1 (+8; +4 / +2 in the last exon, +2 for start-lost; not applied in genes where '
+         'loss of function is not the cancer mechanism), PM4 stop-lost (+2), PM2_Supporting (+1), '
+         'PP3 / BP4 from REVEL with the ClinGen calibrated cut-offs (Pejaver et al. 2022: '
+         '&plusmn;1 / &plusmn;2 / &plusmn;4), BS1 (&minus;4). '
+         'ClinVar classifications with &ge;2 review stars are final. gnomAD AF&nbsp;&gt;&nbsp;5% triggers BA1 (stand-alone benign). '
+         'Point thresholds: P &ge;10, LP 6&ndash;9, VUS 0&ndash;5, LB &minus;1 to &minus;6, B &le;&minus;7.'),
         ('Somatic Variant Interpretation (AMP/ASCO/CAP Tiers)',
          'Somatic variants are tiered per AMP/ASCO/CAP 2017 guidelines using CIViC database evidence (A&ndash;E). '
          '<b>Tier IA/IB</b>: FDA-approved or clinical-guideline therapeutic implications. '

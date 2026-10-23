@@ -14,7 +14,7 @@ from acmg_shared import (
     INSIL_BENIGN as _INSIL_BENIGN,
 )
 
-_BENIGN_CRIT = {'BA1', 'BS1', 'BP4', 'BP4_St', 'BP4_Sup'}
+_BENIGN_CRIT = {'BA1', 'BS1', 'BP4_Sup', 'BP4_Mod', 'BP4_St'}
 
 
 def _count_insil(col_fn):

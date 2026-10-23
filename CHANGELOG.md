@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer removed by the germline filter and are scored. A ClinVar VUS with >= 2
   stars can now be brought down to LB/B by BS1/BA1 (e.g. MYC p.Asn26Ser, AF 3.2%).
   The `clinvar_benign` filter reason now shows the stars.
+- ACMG points follow ClinGen SVI (Tavtigian 2020): PM2 is Supporting (+1);
+  REVEL uses the calibrated cut-offs of Pejaver 2022 (PP3 0.644 / 0.773 / 0.932,
+  BP4 0.290 / 0.183 / 0.016); the 9-tool panel only counts when REVEL is missing,
+  at Supporting; LB is -1..-6 and B <= -7. PVS1 now depends on the gene mechanism
+  (`filters.acmg.pvs1_not_applicable`: no PVS1 in oncogenes, POLD1/POLE, HOXB13,
+  EPCAM, KIF1B, RECQL, ...) and on the variant type (last exon -> PVS1_Strong /
+  PVS1_Moderate, start_lost -> PVS1_Moderate, stop_lost -> PM4). Rare missense
+  variants without functional evidence no longer reach LP, and a new null variant
+  is LP instead of P. Report methodology text and criteria colours updated.
 
 ### Fixed
 - Germline variants with VAF > `vaf_max` (0.75) were discarded as
