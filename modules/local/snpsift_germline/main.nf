@@ -536,7 +536,9 @@ PYEOF_CLINVAR
     #                       repeats); not reportable in a predisposition test
     #     gnomad_BA1      : gnomAD AF > 5% (common polymorphism — ACMG BA1), read
     #                       from the canonical gnomAD_AF column ("." = unknown)
-    #     clinvar_benign  : ClinVar Benign/Likely_benign (unless also Pathogenic)
+    #     clinvar_benign  : ClinVar Benign/Likely_benign (unless also Pathogenic) with
+    #                       >= clinvar_min_stars review stars (default 2); B/LB with
+    #                       fewer stars stays and is classified by the ACMG score
     #     vaf_too_low     : VAF below vaf_min_high / vaf_min_moderate (default 0.20),
     #                       only when DP >= vaf_floor_min_dp (default 20) and the
     #                       variant is not ClinVar P/LP (non-conflicting)
@@ -551,6 +553,7 @@ PYEOF_CLINVAR
     NR == 1 {
         print \$0 "\\tQC_FLAG\\tFILTER_REASON" > FILT
         min_dp_floor = ENVIRON["FILT_VAF_FLOOR_MIN_DP"]+0
+        cv_min_stars = (ENVIRON["ACMG_CLINVAR_MIN_STARS"] != "") ? ENVIRON["ACMG_CLINVAR_MIN_STARS"]+0 : 2
         for (i = 1; i <= NF; i++) {
             if (\$i == "ALT")                        alt_col     = i
             if (\$i == "GEN[0].GT")                  gt_col      = i
@@ -559,6 +562,7 @@ PYEOF_CLINVAR
             if (\$i == "GEN[0].DP")                  dp_col      = i
             if (\$i == "FILTER")                     filter_col  = i
             if (\$i == "ClinVar_sig")                 cs_col      = i
+            if (\$i == "ClinVar_stars")               st_col      = i
             if (\$i == "dbNSFP_gnomAD_exomes_AF")     gnomad_v2   = i
             if (\$i == "gnomAD_AF")                   gnomad_can  = i
         }
@@ -583,8 +587,11 @@ PYEOF_CLINVAR
             }
         }
         if (reason == "" && cs_col && cs_col <= NF) {
-            if (clnsig != "." && clnsig ~ /benign/ && clnsig !~ /pathogenic/) {
-                reason = "clinvar_benign (clnsig=" \$(cs_col) ")"
+            # No stars column (older TSVs) or stars not numeric: accept as before
+            cv_st = (st_col && st_col <= NF) ? \$(st_col) : ""
+            cv_ok = (cv_st !~ /^[0-9]+\$/) || (cv_st + 0 >= cv_min_stars)
+            if (clnsig != "." && clnsig ~ /benign/ && clnsig !~ /pathogenic/ && cv_ok) {
+                reason = "clinvar_benign (clnsig=" \$(cs_col) (cv_st ~ /^[0-9]+\$/ ? ", " cv_st "*" : "") ")"
             }
         }
         if (reason == "" && ad_col && ad_col <= NF) {

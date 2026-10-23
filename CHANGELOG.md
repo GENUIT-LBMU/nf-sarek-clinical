@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   SNV filter. The file is renamed `germline_cancer_predisposition.txt` (no gene
   count in the name). The local gnomAD v4.1 and ClinVar resources are rebuilt
   over the new regions (124 genes) — rebuild them after updating.
+- ClinVar review-star threshold (`filters.acmg.clinvar_min_stars`, default 2).
+  Below it a ClinVar class is no longer final: P/LP go to the ACMG score with a
+  VUS floor (except BA1) and a `ClinVar:LP(1*)` review criterion; B/LB are no
+  longer removed by the germline filter and are scored. A ClinVar VUS with >= 2
+  stars can now be brought down to LB/B by BS1/BA1 (e.g. MYC p.Asn26Ser, AF 3.2%).
+  The `clinvar_benign` filter reason now shows the stars.
 
 ### Fixed
 - Germline variants with VAF > `vaf_max` (0.75) were discarded as

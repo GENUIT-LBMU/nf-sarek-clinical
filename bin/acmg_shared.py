@@ -167,11 +167,63 @@ def gnomad_supports_pm2(get_field):
 # =============================================================================
 # ACMG classification
 # =============================================================================
+def clinvar_stars(get_field):
+    """Review stars of the ClinVar classification (0-4), or None when unknown.
+
+    None (no `ClinVar_stars` column, older TSVs) keeps the pre-threshold
+    behaviour: the ClinVar class is accepted.
+    """
+    st = (get_field('ClinVar_stars') or '').strip()
+    try:
+        return int(st)
+    except ValueError:
+        return None
+
+
+def clinvar_class(clnsig):
+    """ClinVar significance -> 'P' / 'LP' / 'VUS' / 'LB' / 'B', or None.
+
+    None = not usable as a class (absent, conflicting, risk_factor, ...).
+    """
+    clnsig = (clnsig or '').lower()
+    if not clnsig or clnsig in ('.', 'na', 'nan'):
+        return None
+    # "Conflicting_classifications_of_pathogenicity" must NOT be read as P
+    if 'conflicting' in clnsig:
+        return None
+    if ('pathogenic' in clnsig
+            and 'likely_pathogenic' not in clnsig
+            and 'likely pathogenic' not in clnsig):
+        return 'P' if 'likely' not in clnsig else None
+    if 'likely_pathogenic' in clnsig or 'likely pathogenic' in clnsig:
+        return 'LP'
+    if 'uncertain' in clnsig:
+        return 'VUS'
+    if 'likely_benign' in clnsig or 'likely benign' in clnsig:
+        return 'LB'
+    if 'benign' in clnsig and 'pathogenic' not in clnsig:
+        return 'B'
+    return None
+
+
+def clinvar_is_final(get_field):
+    """True when the ClinVar review stars reach `clinvar_min_stars` (default 2)."""
+    st = clinvar_stars(get_field)
+    return st is None or st >= int(_E('ACMG_CLINVAR_MIN_STARS', '2'))
+
+
 def acmg_criteria_list(get_field):
     """Classify a germline variant into P / LP / VUS / LB / B with ACMG criteria.
 
     Logic priority:
-      1. ClinVar annotation (ignores 'conflicting_interpretations' — falls through)
+      1. ClinVar class, final only with >= clinvar_min_stars review stars:
+           P / LP / LB / B  -> returned as is
+           VUS              -> VUS, unless BA1 / BS1 bring it down to B / LB
+         Below the threshold:
+           P / LP  -> ACMG score, never below VUS (except BA1), criteria
+                      carry 'ClinVar:LP(1*)' for manual review
+           others  -> ACMG score
+         Conflicting / other ClinVar terms -> ACMG score
       2. gnomAD BA1 rule (>5% AF -> Benign)
       3. Evidence scoring: PVS1 (HIGH impact) + PM2 (rare) + PP3/BP4 (REVEL OR
          9-tool panel, RESOLVED — only the strongest evidence is counted, no
@@ -180,27 +232,26 @@ def acmg_criteria_list(get_field):
     Returns (cls, criteria_list) where criteria_list contains the activated
     ACMG evidence code strings (e.g. ['PVS1', 'PM2', 'PP3(7/9)']).
     """
-    # ── 1. ClinVar annotation (highest priority) ────────────────────────────
-    clnsig = clinvar_sig(get_field).lower()
-    if clnsig and clnsig not in ('.', '', 'na', 'nan'):
-        # Bug fix: "Conflicting_interpretations_of_pathogenicity" must NOT be
-        # classified as P — fall through to score-based classification.
-        if 'conflicting' in clnsig:
-            pass
-        elif ('pathogenic' in clnsig
-              and 'likely_pathogenic' not in clnsig
-              and 'likely pathogenic' not in clnsig):
-            if 'likely' not in clnsig:
-                return 'P', ['ClinVar:P']
-        elif 'likely_pathogenic' in clnsig or 'likely pathogenic' in clnsig:
-            return 'LP', ['ClinVar:LP']
-        elif 'uncertain' in clnsig:
-            return 'VUS', ['ClinVar:VUS']
-        elif 'likely_benign' in clnsig or 'likely benign' in clnsig:
-            return 'LB', ['ClinVar:LB']
-        elif 'benign' in clnsig and 'pathogenic' not in clnsig:
-            return 'B', ['ClinVar:B']
+    cv = clinvar_class(clinvar_sig(get_field))
+    if cv is None:
+        return _acmg_scored(get_field)
+    if clinvar_is_final(get_field):
+        if cv != 'VUS':
+            return cv, ['ClinVar:' + cv]
+        cls, criteria = _acmg_scored(get_field)
+        if cls in ('LB', 'B') and ('BA1' in criteria or 'BS1' in criteria):
+            return cls, ['ClinVar:VUS'] + criteria
+        return 'VUS', ['ClinVar:VUS']
+    cls, criteria = _acmg_scored(get_field)
+    if cv in ('P', 'LP'):
+        criteria = criteria + ['ClinVar:{}({}*)'.format(cv, clinvar_stars(get_field))]
+        if cls in ('LB', 'B') and 'BA1' not in criteria:
+            cls = 'VUS'
+    return cls, criteria
 
+
+def _acmg_scored(get_field):
+    """BA1 + evidence scoring (no ClinVar)."""
     # ── 2. Population frequency — BA1 (common polymorphism) ────────────────
     gnomad = gnomad_af(get_field)          # None = unknown → no BA1/BS1/PM2
     if gnomad is not None and gnomad > float(_E('ACMG_BA1_AF', '0.05')):

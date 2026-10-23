@@ -553,6 +553,20 @@ ClinVar is released monthly; rebuild to update. Germline TSVs gain
 `ClinVar_id`, `ClinVar_conf`, `ClinVar_dn` and `ClinVar_source`; the reports show
 the classification with its stars, e.g. "Benign/Likely benign (2*)".
 
+The ClinVar class is final only with at least `filters.acmg.clinvar_min_stars`
+review stars (default 2: multiple submitters without conflicts, expert panel or
+practice guideline):
+
+| ClinVar | >= min stars | below min stars |
+|---|---|---|
+| P / LP | final | ACMG score, never below VUS (except BA1); criteria carry `ClinVar:LP(1*)` for manual review |
+| VUS | VUS, but BS1 / BA1 can bring it down to LB / B | ACMG score |
+| B / LB | final; removed from the candidate table (`clinvar_benign`) | kept; ACMG score |
+| Conflicting / other | ACMG score | ACMG score |
+
+ClinVar P/LP still exempts a variant from the VAF floor and the multi-hit filter
+regardless of stars.
+
 ### hg38 reference genome
 
 From the **GATK GCP bucket**:
@@ -737,7 +751,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 | `germline_cnv` | `min_qa=4` | Germline CNV quality (only panel genes are reported) |
 | `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
-| `acmg` | `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, REVEL thresholds, `score_p=10`, `score_lp=6`, `score_lb=-2` | ACMG 2015 classification: population frequency, REVEL, in silico panel, final score cutoffs |
+| `acmg` | `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, REVEL thresholds, `score_p=10`, `score_lp=6`, `score_lb=-2`, `clinvar_min_stars=2` | ACMG 2015 classification: population frequency, REVEL, in silico panel, final score cutoffs |
 | `biomarkers` | `tmb_high=10.0`, `msi_high=3.5`, `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds |
 | `qc` | `low_cov_threshold=50` | Tumor coverage warning |
 | `signatures` | `min_activity=0.05`, MMR/HRD signature lists | Mutational signature reporting |
