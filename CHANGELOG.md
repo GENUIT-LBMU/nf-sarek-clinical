@@ -82,6 +82,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   germline ACMG classification no longer depends on dbNSFP when `--revel_tsv`
   is set (dbNSFP still runs for pharmacogenomics and display). HTML report: new
   SpliceAI column.
+- ACMG PS1 / PM5 from ClinVar at the same residue (`--clinvar_protein_index`,
+  `scripts/build_clinvar_protein_index.py`; new `ClinVar_PS1` / `ClinVar_PM5`
+  columns). References: ClinVar P/LP missense with >= `clinvar_min_stars` stars,
+  not at exon edges. PS1 (+4) needs SpliceAI < 0.2; PM5 (+2) only without PS1.
+  Leave-one-out on ClinVar missense >= 2 stars (germline genes): P/LP classified
+  LP rise from 0 to 612 of 2685; no benign variant reaches LP (0 of 1718).
 
 ### Fixed
 - Germline variants with VAF > `vaf_max` (0.75) were discarded as

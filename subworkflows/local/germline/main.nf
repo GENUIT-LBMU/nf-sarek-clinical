@@ -32,6 +32,7 @@ workflow GERMLINE_POSTPROCESS {
     ch_snpeff_mane           // list: [snpEff data dir, database name] or []
     ch_revel                 // list: [tsv.gz, tsv.gz.tbi] or []
     ch_spliceai              // list: [fasta, fasta.fai] or []
+    ch_protein_index         // path: ClinVar protein index (PS1 / PM5) or []
 
     main:
     // ── Local gnomAD population frequencies (optional) ───────────────────────
@@ -107,7 +108,8 @@ workflow GERMLINE_POSTPROCESS {
     SNPSIFT_EXTRACT_GERMLINE(
         ch_candidates,
         ch_snpsift_jar,
-        file("${projectDir}/bin/acmg_shared.py")
+        file("${projectDir}/bin/acmg_shared.py"),
+        ch_protein_index
     )
 
     // ── Pharmacogenomics ──────────────────────────────────────────────────────

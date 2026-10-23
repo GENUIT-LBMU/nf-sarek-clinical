@@ -567,6 +567,23 @@ practice guideline):
 ClinVar P/LP still exempts a variant from the VAF floor and the multi-hit filter
 regardless of stars.
 
+### ClinVar protein index — ACMG PS1 / PM5 (recommended)
+
+ClinVar P/LP missense variants in MANE Select protein coordinates. For a germline
+missense variant, `ClinVar_PS1` lists P/LP missense with the same amino-acid change
+(other nucleotide) and `ClinVar_PM5` those with another change at the same residue;
+references need >= `clinvar_min_stars` stars and are not at exon edges
+(`splice_region`). See the header of `scripts/build_clinvar_protein_index.py` for
+the bcftools + snpEff MANE commands, then:
+
+```bash
+python3 scripts/build_clinvar_protein_index.py --vcf clinvar_panel.mane.vcf --outdir /data/refs/clinvar
+# → clinvar_20260822_protein_index.tsv.gz, manifest
+```
+
+Set `clinvar_protein_index: /data/refs/clinvar/clinvar_20260822_protein_index.tsv.gz`
+and rebuild it with each ClinVar release.
+
 ### REVEL v1.3 — missense scores per MANE transcript (recommended)
 
 A panel subset of REVEL v1.3 (Zenodo 7072866, ODbL). REVEL gives one score per
@@ -710,6 +727,7 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | `--snpeff_mane_data` | — | snpEff data dir with the MANE database; re-annotates germline with MANE Select. Recommended |
 | `--snpeff_mane_db` | `GRCh38.mane.1.2.refseq` | snpEff MANE database name |
 | `--clinvar_tsv` | — | Local ClinVar panel resource (`scripts/build_clinvar_panel.sh`); path or https URL. Recommended |
+| `--clinvar_protein_index` | — | ClinVar P/LP missense in MANE protein coordinates (`scripts/build_clinvar_protein_index.py`) for PS1 / PM5. Recommended |
 | `--revel_tsv` | — | Local REVEL v1.3 panel resource (`scripts/build_revel_panel.py`), MANE Select score. Recommended |
 | `--spliceai` | `true` | Run SpliceAI on the germline candidates (PP3 / BP4 for splicing) |
 | `--spliceai_fasta` | `gcnv_fasta` | GRCh38 FASTA (+ .fai) for SpliceAI |
@@ -782,7 +800,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 | `germline_cnv` | `min_qa=4` | Germline CNV quality (only panel genes are reported) |
 | `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
-| `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, REVEL cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
+| `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, `ps1_score=4`, `pm5_score=2`, REVEL and SpliceAI cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
 | `biomarkers` | `tmb_high=10.0`, `msi_high=3.5`, `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds |
 | `qc` | `low_cov_threshold=50` | Tumor coverage warning |
 | `signatures` | `min_activity=0.05`, MMR/HRD signature lists | Mutational signature reporting |
@@ -808,6 +826,8 @@ point system (Tavtigian et al. 2020): P >= 10, LP 6..9, VUS 0..5, LB -1..-6, B <
 PP3 / BP4 are not applied to null variants (PVS1 already weighs them). The
 9-tool dbNSFP panel is no longer scored; `insil_dam` / `insil_ben` stay in the
 TSV as information.
+| PS1 | +4 | missense with the same amino-acid change as a ClinVar P/LP missense (>= 2 stars, not at an exon edge); not if SpliceAI >= 0.2 |
+| PM5 | +2 | missense at a residue where another ClinVar P/LP missense exists (when PS1 does not apply) |
 | BS1 | -4 | gnomAD FAF95 > `bs1_af` |
 | BA1 | stand-alone B | gnomAD FAF95 > `ba1_af` (also removes the variant in the germline filter) |
 

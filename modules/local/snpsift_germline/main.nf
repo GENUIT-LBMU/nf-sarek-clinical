@@ -124,6 +124,7 @@ process SNPSIFT_EXTRACT_GERMLINE {
     tuple val(sample), path(vcf)
     path snpsift_jar
     path acmg_shared    // bin/acmg_shared.py — staged for in-heredoc Python import
+    path protein_index  // ClinVar protein index (PS1 / PM5), or [] (no PS1 / PM5)
 
     output:
     tuple val(sample), path("${sample}.germline_snvs.tsv"),              emit: tsv
@@ -132,9 +133,9 @@ process SNPSIFT_EXTRACT_GERMLINE {
 
     stub:
     """
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tgnomAD_FAF95\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tClinVar_PS1\\tClinVar_PM5\\tgnomAD_FAF95\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
     touch ${sample}.germline_all_filtered.tsv
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tgnomAD_FAF95\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tClinVar_PS1\\tClinVar_PM5\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tgnomAD_FAF95\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
     """
 
     script:
@@ -612,6 +613,54 @@ with open(TSV) as fin, open(TMP, 'w') as out:
         out.write('\\t'.join(row + [revel, src, ds, detail]) + '\\n')
 os.replace(TMP, TSV)
 PYEOF_PRED
+
+    # ── Step 1.9: ClinVar same-residue evidence (ACMG PS1 / PM5) ─────────────────
+    #   From the ClinVar protein index (scripts/build_clinvar_protein_index.py,
+    #   --clinvar_protein_index), for missense variants (MANE HGVS_p):
+    #     ClinVar_PS1  P/LP missense with the same amino-acid change, other nucleotide
+    #     ClinVar_PM5  P/LP missense with another amino-acid change at the same residue
+    #   References need >= clinvar_min_stars stars and are not at exon edges
+    #   (SPLICE_REGION, where pathogenicity may come from splicing). "." = none.
+    python3 - <<'PYEOF_PS1'
+import gzip, os, re
+
+TSV   = '${sample}.germline_all_extracted.tsv'
+TMP   = '${sample}.germline_all_extracted.ps1_tmp.tsv'
+INDEX = '${protein_index}'
+MIN_STARS = int(os.environ.get('ACMG_CLINVAR_MIN_STARS', '2') or 2)
+HGVS = re.compile(r'^p\\.([A-Z][a-z]{2})(\\d+)([A-Z][a-z]{2})\$')
+
+ref = {}
+if INDEX and os.path.exists(INDEX):
+    with gzip.open(INDEX, 'rt') as fh:
+        for line in fh:
+            if line.startswith('#'):
+                continue
+            f = line.rstrip('\\n').split('\\t')
+            if int(f[6]) < MIN_STARS or f[12] == '1':
+                continue
+            ref.setdefault((f[0], int(f[1])), []).append(f)
+
+with open(TSV) as fin, open(TMP, 'w') as out:
+    hdr = fin.readline().rstrip('\\n').split('\\t')
+    idx = {c: i for i, c in enumerate(hdr)}
+    out.write('\\t'.join(hdr + ['ClinVar_PS1', 'ClinVar_PM5']) + '\\n')
+    for line in fin:
+        row = line.rstrip('\\n').split('\\t')
+        row += ['.'] * (len(hdr) - len(row))
+        g = lambda c: row[idx[c]].strip() if c in idx else '.'
+        ps1, pm5 = [], []
+        m = HGVS.match(g('ANN[*].HGVS_P'))
+        if m and 'missense' in g('ANN[*].EFFECT'):
+            key = (g('CHROM'), g('POS'), g('REF'), g('ALT'))
+            for f in ref.get((g('ANN[*].GENE'), int(m.group(2))), []):
+                if (f[8], f[9], f[10], f[11]) == key:
+                    continue
+                txt = '%s VCV%s %s %s*' % (f[4], f[7], f[5], f[6])
+                (ps1 if f[3] == m.group(3) else pm5).append(txt)
+        out.write('\\t'.join(row + [', '.join(ps1) or '.', ', '.join(pm5) or '.']) + '\\n')
+os.replace(TMP, TSV)
+PYEOF_PS1
 
     # ── Step 2: gnomAD BA1 + ClinVar + low-VAF filter ────────────────────────────────
     #   Passing variants  → germline_snvs.pre_python.tsv  (stdout)

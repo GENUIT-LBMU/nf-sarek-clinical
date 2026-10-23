@@ -88,6 +88,14 @@ workflow SAREK_CLINICAL {
         log.warn "--spliceai true but no --spliceai_fasta / --gcnv_fasta: SpliceAI skipped (no PP3/BP4 splicing evidence)."
     }
 
+    // ClinVar protein index for PS1 / PM5 (optional). [] => no PS1 / PM5.
+    ch_protein_index = params.clinvar_protein_index
+        ? file(params.clinvar_protein_index, checkIfExists: true)
+        : []
+    if (!params.clinvar_protein_index && !params.skip_germline_snv) {
+        log.warn "--clinvar_protein_index not set: no ACMG PS1 / PM5. Build it with scripts/build_clinvar_protein_index.py."
+    }
+
     ch_germline_panel    = file(params.germline_panel)
     ch_somatic_cnv_panel = file(params.somatic_cnv_panel)
     ch_somatic_snv_panel = file(params.somatic_snv_panel)
@@ -188,7 +196,8 @@ workflow SAREK_CLINICAL {
             ch_clinvar,
             ch_snpeff_mane,
             ch_revel,
-            ch_spliceai
+            ch_spliceai,
+            ch_protein_index
         )
     }
 

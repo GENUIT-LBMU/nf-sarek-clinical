@@ -268,6 +268,7 @@ def acmg_criteria_list(get_field):
       3. Evidence points (Tavtigian 2020): PVS1 by gene mechanism and variant
          type (pvs1_evidence) + PM2_Supporting (rare) + PP3/BP4 from REVEL
          (Pejaver 2022) and SpliceAI (Walker 2023) (pp3_bp4_evidence)
+         + PS1 / PM5 from ClinVar at the same residue (ps1_pm5_evidence)
          + BS1 (FAF95 > 1%).
          P >= 10, LP 6..9, VUS 0..5, LB -1..-6, B <= -7
 
@@ -321,6 +322,10 @@ def _acmg_scored(get_field):
     # variants, whose splicing / LOF effect is already weighed by PVS1
     if code is None:
         pts, code = pp3_bp4_evidence(get_field)
+        score += pts
+        if code:
+            criteria.append(code)
+        pts, code = ps1_pm5_evidence(get_field)
         score += pts
         if code:
             criteria.append(code)
@@ -469,6 +474,26 @@ def pp3_bp4_evidence(get_field):
     if r_pts < 0 and ds is not None and ds > float(_E('ACMG_SPLICEAI_BP4', '0.1')):
         return 0, ''
     return r_pts, (r_code or '')
+
+
+def ps1_pm5_evidence(get_field):
+    """(points, code) from ClinVar P/LP missense at the same residue
+    (columns ClinVar_PS1 / ClinVar_PM5, SNPSIFT_EXTRACT_GERMLINE Step 1.9):
+
+      same amino-acid change, other nucleotide  -> PS1 (+4), only if the variant
+                                                   has no splicing prediction
+                                                   (SpliceAI < spliceai_pp3)
+      other amino-acid change, same residue     -> PM5 (+2), when PS1 does not apply
+    """
+    if 'missense' not in get_field('ANN[*].EFFECT').lower():
+        return 0, None
+    has = lambda c: (get_field(c) or '').strip() not in ('', '.')
+    ds = spliceai_ds(get_field)
+    if has('ClinVar_PS1') and (ds is None or ds < float(_E('ACMG_SPLICEAI_PP3', '0.2'))):
+        return int(_E('ACMG_PS1_SCORE', '4')), 'PS1'
+    if has('ClinVar_PM5'):
+        return int(_E('ACMG_PM5_SCORE', '2')), 'PM5'
+    return 0, None
 
 
 def acmg_class(get_field):
