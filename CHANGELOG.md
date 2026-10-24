@@ -135,6 +135,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- CIViC annotation was empty in every run since 2026-01-09: civicpy 5.2.0 could
+  not unpickle the nightly cache (`Can't get attribute 'ClingenCode'`) and the
+  task copied the unannotated VCF, so every somatic variant read as Tier III.
+  Now civicpy 5.4.0 (image `civicpy:5.4.0`), a frozen dated cache passed with
+  `--civic_cache` (`scripts/build_civic_cache.sh`; no download, no staleness
+  refresh at run time), and any civicpy failure or missing CIVIC header fails
+  the task (`CIVIC_EXTRACT` too). Evidence status is now `accepted` +
+  `submitted` (before, `-i submitted` alone left accepted evidence out).
 - Somatic GATK CNV with CRAM input: CollectReadCounts and CollectAllelicCounts
   now read a CRAM with `--cram_fasta` (BAM keeps `somatic_fasta`). Since the
   germline CNV CRAM fix the somatic steps also received CRAMs and failed with

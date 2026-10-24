@@ -51,7 +51,7 @@ PUBLIC=(
 )
 # label | dockerfile                | dest repo:tag
 CUSTOM=(
-    "civicpy|Dockerfile.civicpy|civicpy:5.2.0"
+    "civicpy|Dockerfile.civicpy|civicpy:5.4.0"
     "r_base|Dockerfile.r_annotation|r-annotation:1.0.0"
     "sigprofiler|Dockerfile.sigprofiler|sigprofiler:0.1.8"
 )
@@ -124,7 +124,7 @@ process {
     withLabel:gatk        { container = '${REF[gatk]}' }         // gatk 4.6.2.0
     withLabel:hrprofiler  { container = '${REF[hrprofiler]}' }   // hrprofiler 1.0-full
     withLabel:r_base      { container = '${REF[r_base]}' }       // r-annotation 1.0.0
-    withLabel:civicpy     { container = '${REF[civicpy]}' }      // civicpy 5.2.0
+    withLabel:civicpy     { container = '${REF[civicpy]}' }      // civicpy 5.4.0
     withLabel:sigprofiler { container = '${REF[sigprofiler]}' }  // sigprofiler (SPA 1.1.3)
 }
 EOF

@@ -42,6 +42,9 @@ clinvar_tsv:    /path/to/refs/clinvar/clinvar_20260822_panel.tsv.gz
 # ClinVar P/LP missense in MANE protein coordinates, for ACMG PS1 / PM5
 # (scripts/build_clinvar_protein_index.py). Rebuild with each ClinVar release.
 clinvar_protein_index: /path/to/refs/clinvar/clinvar_20260822_protein_index.tsv.gz
+# Frozen CIViC cache for somatic annotation (scripts/build_civic_cache.sh, run
+# with the civicpy image). Required for somatic postprocessing; no network at run time.
+civic_cache:    /path/to/refs/civic/civicpy_cache_20261024.pkl
 
 # ── REVEL v1.3 (recommended) ──────────────────────────────────────────────────
 # Panel subset with the MANE Select score per allele (scripts/build_revel_panel.py).

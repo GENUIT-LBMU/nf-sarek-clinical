@@ -29,7 +29,7 @@ jobs:
         include:
           - dockerfile: docker/Dockerfile.civicpy
             image: civicpy
-            tag: "5.2.0"
+            tag: "5.4.0"
           - dockerfile: docker/Dockerfile.r_annotation
             image: r-annotation
             tag: "1.0.0"

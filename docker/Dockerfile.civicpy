@@ -21,9 +21,7 @@ COPY requirements.civicpy.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt
 
-# Pre-populate the CIViC cache at build time by downloading the nightly pkl.
-# Using --soft: downloads remote pre-built cache (avoids GraphQL rebuild).
-# This cache is bundled in the image so runtime annotation works offline.
-RUN civicpy update --soft || true
+# No CIViC cache in the image: the pipeline stages a dated cache file
+# (--civic_cache, scripts/build_civic_cache.sh) so annotation is reproducible.
 
 CMD ["/bin/bash"]

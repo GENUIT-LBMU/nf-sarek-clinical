@@ -128,6 +128,7 @@ process CIVIC_ANNOTATE {
     input:
     tuple val(pair), path(vcf)
     val genome_build
+    path civic_cache    // dated civicpy cache (scripts/build_civic_cache.sh)
 
     output:
     tuple val(pair), path("${pair}.civic.vcf.gz"), emit: vcf
@@ -139,22 +140,24 @@ process CIVIC_ANNOTATE {
 
     script:
     // Reference: GRCh38 → 'GRCh38', GRCh37 → 'GRCh37'
-    // Gracefully fall back to passing through the input VCF if CIViC annotation fails
-    // (CIVIC_EXTRACT already handles VCFs without CIVIC INFO fields → empty TSV)
+    // The staged cache is used as is: no staleness check (civicpy would
+    // re-download a cache older than 7 days) and no remote URL, so the same
+    // cache always gives the same annotation. Any failure fails the task:
+    // an unannotated VCF must never read as "no CIViC evidence".
     """
-    # Refresh cache using pre-built nightly pkl (--soft: skips GraphQL rebuild,
-    # downloads remote pkl only if cache is absent or stale).
-    CIVIC_CACHE="\${PWD}/civicpy_cache.pkl"
-    civicpy update --soft --cache-save-path "\${CIVIC_CACHE}" || true
+    export CIVICPY_CACHE_FILE="\${PWD}/${civic_cache}"
+    export CIVICPY_CACHE_TIMEOUT_DAYS=36500
+    export CIVICPY_REMOTE_CACHE_URL=file:///nonexistent
 
-    if ! CIVICPY_CACHE_FILE="\${CIVIC_CACHE}" \\
-         civicpy annotate-vcf \\
-             --input-vcf  ${vcf} \\
-             --output-vcf ${pair}.civic.vcf.gz \\
-             --reference  ${genome_build} \\
-             -i submitted 2>&1; then
-        echo "WARNING: CIViC annotation failed — passing through unannotated VCF"
-        cp ${vcf} ${pair}.civic.vcf.gz
+    civicpy annotate-vcf \\
+        --input-vcf  ${vcf} \\
+        --output-vcf ${pair}.civic.vcf.gz \\
+        --reference  ${genome_build} \\
+        -i accepted -i submitted
+
+    if ! bcftools view -h ${pair}.civic.vcf.gz | grep -q '^##INFO=<ID=CIVIC,'; then
+        echo "ERROR: civicpy wrote no CIVIC INFO header in ${pair}.civic.vcf.gz" >&2
+        exit 1
     fi
     """
 }
@@ -278,42 +281,33 @@ process CIVIC_EXTRACT {
     """
 
     script:
-    // 39-field CIViC explode (pipe-delimited INFO/CIVIC → TSV columns)
-    // Note: use printf with format string (not bash variable) to ensure real tab chars in header
+    // CIViC explode (pipe-delimited INFO/CIVIC → one TSV row per evidence item).
+    // Columns come from the CIVIC header Format string, so they always match
+    // the civicpy version that wrote the VCF (5.4.0 added "CIViC Assertion
+    // ClinGen Codes"); a record with another field count fails the task.
     """
-    # Write header with real tab characters (printf interprets \\t as tab)
-    printf "CHROM\\tPOS\\tREF\\tALT\\tAllele\\tConsequence\\tSYMBOL\\tEntrez Gene ID\\t" > ${pair}.civic.exploded.tsv
-    printf "Feature_type\\tFeature\\tHGVSc\\tHGVSp\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC Variant Name\\tCIViC Variant ID\\tCIViC Variant Aliases\\tCIViC Variant URL\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC Molecular Profile Name\\tCIViC Molecular Profile ID\\tCIViC Molecular Profile Aliases\\tCIViC Molecular Profile URL\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC HGVS\\tAllele Registry ID\\tClinVar IDs\\tCIViC Molecular Profile Score\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC Entity Type\\tCIViC Entity ID\\tCIViC Entity URL\\tCIViC Entity Source\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC Entity Variant Origin\\tCIViC Entity Status\\tCIViC Entity Significance\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC Entity Direction\\tCIViC Entity Disease\\tCIViC Entity Therapies\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC Entity Therapy Interaction Type\\tCIViC Evidence Phenotypes\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC Evidence Level\\tCIViC Evidence Rating\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC Assertion ACMG Codes\\tCIViC Assertion AMP Category\\t" >> ${pair}.civic.exploded.tsv
-    printf "CIViC Assertion NCCN Guideline\\tCIViC Assertion Regulatory Approval\\tCIViC Assertion FDA Companion Test\\n" >> ${pair}.civic.exploded.tsv
-
-    # Check if CIViC annotation was added
-    if ! bcftools view -h ${vcf} | grep -q '^##INFO=<ID=CIVIC'; then
-        echo "WARNING: No CIVIC INFO field found in ${pair} — producing empty TSV"
-        exit 0
+    # CIVIC_ANNOTATE always writes the header; without it the input is not annotated
+    fmt="\$(bcftools view -h ${vcf} | sed -n 's/^##INFO=<ID=CIVIC,.*Format: \\(.*\\)">\$/\\1/p')"
+    if [[ -z "\$fmt" ]]; then
+        echo "ERROR: no CIVIC INFO field (with Format) in ${vcf}: not a CIViC-annotated VCF" >&2
+        exit 1
     fi
+    nfields=\$(printf '%s\\n' "\$fmt" | awk -F'|' '{print NF}')
+    { printf 'CHROM\\tPOS\\tREF\\tALT\\t'; printf '%s\\n' "\$fmt" | tr '|' '\\t'; } > ${pair}.civic.exploded.tsv
 
     bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%INFO/CIVIC\\n' \\
         -i 'INFO/CIVIC!=""' ${vcf} \\
-    | awk -F'\\t' 'BEGIN{OFS="\\t"} {
-        chrom=\$1; pos=\$2; ref=\$3; alt=\$4; civ=\$5;
-        nE = split(civ, E, /,/);
+    | awk -F'\\t' -v n="\$nfields" 'BEGIN{OFS="\\t"} {
+        nE = split(\$5, E, /,/);
         for (i=1; i<=nE; i++) {
             nF = split(E[i], F, /\\|/);
-            for (k=1; k<=39; k++) if (!(k in F)) F[k]=".";
-            print chrom, pos, ref, alt, \\
-                  F[1],F[2],F[3],F[4],F[5],F[6],F[7],F[8], \\
-                  F[9],F[10],F[11],F[12],F[13],F[14],F[15],F[16], \\
-                  F[17],F[18],F[19],F[20],F[21],F[22],F[23],F[24],F[25],F[26], \\
-                  F[27],F[28],F[29],F[30],F[31],F[32],F[33],F[34],F[35],F[36],F[37],F[38],F[39];
+            if (nF != n) {
+                printf "ERROR: %s:%s has %d CIViC fields, header has %d\\n", \$1, \$2, nF, n > "/dev/stderr";
+                exit 1;
+            }
+            line = \$1 OFS \$2 OFS \$3 OFS \$4;
+            for (k=1; k<=n; k++) line = line OFS F[k];
+            print line;
         }
     }' >> ${pair}.civic.exploded.tsv
     """

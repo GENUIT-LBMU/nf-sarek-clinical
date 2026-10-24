@@ -510,6 +510,25 @@ and the `GNOMAD_*` columns (FAF95 grpmax, ancestry group, admixed-American AF,
 homozygote counts, gnomAD FILTER, and grpmax AF / AC / AN for the ClinGen VCEP
 rules; resources built before 2026-10-23 lack these and use the general rules).
 
+### CIViC cache — somatic clinical evidence (required for somatic postprocessing)
+
+civicpy reads CIViC from a pickled cache. The pipeline never downloads it at run
+time: a dated snapshot is frozen once and passed with `--civic_cache`, so the same
+cache always gives the same annotation (civicpy would otherwise replace a cache
+older than 7 days with the current nightly). The pickle is tied to the civicpy
+version, so build it with the pipeline's civicpy image:
+
+```bash
+docker run --rm -u $(id -u):$(id -g) -v $PWD:$PWD -v /data/refs:/data/refs -w $PWD \
+    nf-sarek-clinical/civicpy:5.4.0 \
+    bash scripts/build_civic_cache.sh --outdir /data/refs/civic
+# → civicpy_cache_<YYYYMMDD>.pkl + manifest (snapshot time, civicpy version, counts, md5)
+```
+
+Then set `civic_cache: /data/refs/civic/civicpy_cache_<YYYYMMDD>.pkl`. Evidence with
+status `accepted` and `submitted` (not yet reviewed by CIViC curators) is used;
+`rejected` is not. CIViC data are CC0.
+
 ### Low-mappability BED — germline CNV flags (required for germline CNV)
 
 GIAB genome stratifications v3.3 (`GRCh38_lowmappabilityall`) restricted to the
@@ -785,6 +804,7 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--skip_germline_cnv` | `false` | Skip GATK germline gCNV |
+| `--civic_cache` | — | Frozen civicpy cache (`scripts/build_civic_cache.sh`); required for somatic postprocessing |
 | `--gcnv_lowmap_bed` | — | Low-mappability BED for germline CNV (`scripts/build_lowmap_panel.sh`); required unless `--skip_germline_cnv` |
 | `--cram_fasta` | — | FASTA (+ `.fai`, `.dict`) Sarek wrote the CRAMs with; needed only when a sample has CRAM and no BAM (BAM is used when present); used by germline and somatic GATK CNV |
 | `--skip_somatic_cnv` | `false` | Skip ASCAT + CNVkit interpretation |
@@ -1026,7 +1046,7 @@ APC, B2M, BLM, BRAF, BRCA1, BRCA2, CTNNB1, EGFR, EPCAM, ERBB2, FBXW7, KRAS, MAP2
 | Task fails after a code fix | Delete stale work dir: `rm -rf clinical_work/XX/XXXX…` then re-run with `-resume` |
 | Out of memory (GATK gCNV) | Lower `process_high` memory in `conf/base.config` (default 56 GB) |
 | gCNV: `model version mismatch` | Rebuild PoN with same GATK version (`broadinstitute/gatk:4.6.2.0`) |
-| CIViC annotation fails | Requires internet on first run (downloads nightly cache); passes through unannotated on network failure |
+| CIViC annotation fails | The task fails (never passes an unannotated VCF through). Check `--civic_cache` and that it was built with the same civicpy version as the image (`scripts/build_civic_cache.sh`) |
 | ACMG classification differs HTML vs PDF | Check that `bin/final_report_acmg.py`, `bin/clinical_pdf_report.py`, and `modules/local/snpsift_germline/main.nf` Step 4 are in sync |
 | `Join mismatch` error in sarek (Mutect2) | `--tools` must be passed on the CLI in `run_full.sh`, not only in `conf/sarek.config` (already handled) |
 
@@ -1038,7 +1058,7 @@ If you use `nf-sarek-clinical` in your research, please cite:
 
 - **nf-core/sarek**: Garcia M, et al. (2020). *Genome Medicine*.
 - **dbNSFP**: Liu X, et al. (2020). *Genome Medicine*.
-- **CIViC/civicpy** (v5.2.0): Griffith M, et al. (2017). *Nature Genetics*.
+- **CIViC/civicpy** (v5.4.0): Griffith M, et al. (2017). *Nature Genetics*.
 - **SigProfilerAssignment**: Bergstrom EN, et al. (2022). *Cell Genomics*.
 - **HRProfiler**: Chopra N, et al. (2024). [github.com/FlorPio/HRProfiler-workflow](https://github.com/FlorPio/HRProfiler-workflow).
 - **GATK CNV workflow**: [github.com/FlorPio/gatk-cnv-somatic](https://github.com/FlorPio/gatk-cnv-somatic).

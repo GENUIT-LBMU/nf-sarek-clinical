@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "Building custom images under namespace: ${NAMESPACE}"
 echo ""
 
-docker build -f "${SCRIPT_DIR}/Dockerfile.civicpy"      -t "${NAMESPACE}/civicpy:5.2.0"       "${SCRIPT_DIR}"
+docker build -f "${SCRIPT_DIR}/Dockerfile.civicpy"      -t "${NAMESPACE}/civicpy:5.4.0"       "${SCRIPT_DIR}"
 docker build -f "${SCRIPT_DIR}/Dockerfile.r_annotation" -t "${NAMESPACE}/r-annotation:1.0.0" "${SCRIPT_DIR}"
 docker build -f "${SCRIPT_DIR}/Dockerfile.sigprofiler"  -t "${NAMESPACE}/sigprofiler:0.1.8"  "${SCRIPT_DIR}"
 

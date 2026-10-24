@@ -274,6 +274,9 @@ workflow SAREK_CLINICAL {
 
     ch_hrd_tsv = Channel.empty()
     if (!params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures || !params.skip_hrd) {
+        // CIViC annotation runs inside SOMATIC_POSTPROCESS with a frozen cache (no network)
+        if (!params.civic_cache) error("--civic_cache is required for somatic postprocessing (build it with scripts/build_civic_cache.sh)")
+        if (!file(params.civic_cache).exists()) error("--civic_cache not found: ${params.civic_cache}")
         SOMATIC_POSTPROCESS(
             ch_mutect2_vcfs,
             ch_strelka2_snvs,
@@ -290,7 +293,8 @@ workflow SAREK_CLINICAL {
             ch_panel_bed,
             ch_tumor_samples,
             consensus_fasta,
-            consensus_fasta_fai
+            consensus_fasta_fai,
+            file(params.civic_cache)
         )
         if (!params.skip_hrd) {
             ch_hrd_tsv = SOMATIC_POSTPROCESS.out.hrd_tsv

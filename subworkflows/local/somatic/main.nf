@@ -44,6 +44,7 @@ workflow SOMATIC_POSTPROCESS {
     ch_tumor_samples    // channel: [ val(pair), val(tumor_sample) ] for mutsig tumor column
     ch_fasta            // path: reference FASTA (for bcftools norm)
     ch_fasta_fai        // path: reference FASTA index
+    ch_civic_cache      // path: dated civicpy cache (--civic_cache)
 
     main:
 
@@ -93,7 +94,8 @@ workflow SOMATIC_POSTPROCESS {
 
     CIVIC_ANNOTATE(
         SNPSIFT_FILTER_SOMATIC.out.vcf,
-        params.genome_build
+        params.genome_build,
+        ch_civic_cache
     )
 
     SNPSIFT_EXTRACT_SOMATIC(
