@@ -792,9 +792,11 @@ def spliceai_ds(get_field):
 
 def revel_evidence(get_field):
     """(points, code) from REVEL with the ClinGen cut-offs (Pejaver 2022);
-    (0, None) when REVEL is missing, (0, '') when it is indeterminate."""
+    (0, None) when REVEL is missing or the MANE effect is not missense (a
+    synonymous / intronic MANE variant can carry the score of another
+    transcript, REVEL_v1.3_other_tx), (0, '') when it is indeterminate."""
     revel = revel_score(get_field)
-    if revel is None:
+    if revel is None or 'missense' not in (get_field('ANN[*].EFFECT') or '').lower():
         return 0, None
     for env, default, pts, code in (
             ('ACMG_REVEL_PP3_STRONG', '0.932', 4, 'PP3_St'),

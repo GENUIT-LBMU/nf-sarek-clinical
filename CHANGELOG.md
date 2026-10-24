@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variants of the panel (e.g. MSH2 c.942+3A>T) could never be reported.
 
 ### Changed
+- REVEL PP3 / BP4 only when the MANE effect is missense: a synonymous or
+  intronic MANE variant could carry the REVEL score of another transcript
+  (`REVEL_v1.3_other_tx`; 4 such rows in 1128, all filtered by BA1).
 - Germline filter (Step 2): BA1 uses the rule set of the ACMG engine (new
   column `gnomAD_BA1`) and never removes a ClinVar P/LP variant with >=
   `clinvar_min_stars` stars (founder pathogenic variants).

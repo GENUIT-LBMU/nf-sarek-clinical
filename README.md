@@ -834,7 +834,7 @@ point system (Tavtigian et al. 2020): P >= 10, LP 6..9, VUS 0..5, LB -1..-6, B <
 | PVS1_NA | 0 | gene in `pvs1_not_applicable` (loss of function is not the cancer mechanism: oncogenes, POLD1/POLE, HOXB13, ...) |
 | PM4 | +2 | stop_lost |
 | PM2_Sup | +1 | gnomAD AF < `pm2_af` and FAF95 < `pm2_af` (rare in every ancestry group; not for sites failing gnomAD QC) |
-| PP3 / BP4 | +-1 / +-2 / +-4 | REVEL >= 0.644 / 0.773 / 0.932 ; <= 0.290 / 0.183 / 0.016 (Pejaver et al. 2022) |
+| PP3 / BP4 | +-1 / +-2 / +-4 | REVEL >= 0.644 / 0.773 / 0.932 ; <= 0.290 / 0.183 / 0.016 (Pejaver et al. 2022); only when the MANE effect is missense |
 | PP3_Sup(splice) | +1 | SpliceAI max delta >= 0.2 (not added to a REVEL PP3; the stronger one counts) |
 | BP4 (missense) | | needs SpliceAI <= 0.1 when SpliceAI ran (Walker et al. 2023) |
 | PS1 | +4 | missense with the same amino-acid change as a ClinVar P/LP missense (>= 2 stars, not at an exon edge); not if SpliceAI >= 0.2 |
