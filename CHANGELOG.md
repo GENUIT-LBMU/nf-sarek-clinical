@@ -116,6 +116,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- `--skip_signatures true` now skips `MUTSIG_SIGPROFILER` (before, it only
+  stopped the report from waiting for it, and the process still ran).
+- SigProfiler image `sigprofiler:0.1.8`: SigProfilerMatrixGenerator 1.3.6 ->
+  1.4.0. The GRCh38 checksums shipped with 1.3.6 no longer match the files
+  served by the Alexandrov lab FTP, so a freshly built image failed with
+  "The specified genome GRCh38 has not been installed".
 - Germline variants with VAF > `vaf_max` (0.75) were discarded as
   `vaf_too_high`, hiding homozygous/hemizygous variants in recessive genes
   (MUTYH, NTHL1, MSH3, MBD4, FANC*, CMMRD) from reports and correlation.

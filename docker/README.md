@@ -6,7 +6,7 @@ Three custom images supplement the public biocontainers used by the pipeline:
 |---|---|---|
 | `civicpy:5.2.0` | CIViC variant annotation + Python data parsing (pandas/numpy) | `Dockerfile.civicpy` |
 | `r-annotation:1.0.0` | R + GenomicRanges + tidyverse for gene-coverage / MANE annotation | `Dockerfile.r_annotation` |
-| `sigprofiler:0.1.7` | SigProfilerAssignment for mutational signature decomposition (COSMIC v3.4) | `Dockerfile.sigprofiler` |
+| `sigprofiler:0.1.8` | SigProfilerAssignment for mutational signature decomposition (COSMIC v3.4) | `Dockerfile.sigprofiler` |
 
 The other public images (snpsift, bcftools, GATK, HRProfiler) are pulled directly from quay.io / Docker Hub by Nextflow at run time.
 
@@ -24,7 +24,7 @@ This tags the images as `nf-sarek-clinical/<name>:<version>`, which matches the 
 NAMESPACE=ghcr.io/myorg bash docker/build_local.sh
 docker push ghcr.io/myorg/civicpy:5.2.0
 docker push ghcr.io/myorg/r-annotation:1.0.0
-docker push ghcr.io/myorg/sigprofiler:0.1.7
+docker push ghcr.io/myorg/sigprofiler:0.1.8
 ```
 
 Then at run time:

@@ -53,7 +53,7 @@ PUBLIC=(
 CUSTOM=(
     "civicpy|Dockerfile.civicpy|civicpy:5.2.0"
     "r_base|Dockerfile.r_annotation|r-annotation:1.0.0"
-    "sigprofiler|Dockerfile.sigprofiler|sigprofiler:0.1.7"
+    "sigprofiler|Dockerfile.sigprofiler|sigprofiler:0.1.8"
 )
 
 declare -A REF   # label → fully-qualified digest-pinned reference
