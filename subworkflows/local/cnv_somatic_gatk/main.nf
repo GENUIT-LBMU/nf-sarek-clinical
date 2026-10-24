@@ -29,7 +29,7 @@ include { MANE_ANNOTATE_SOMATIC_CNV        } from '../../../modules/local/cnv_so
 
 workflow CNV_SOMATIC_GATK {
     take:
-    ch_bams             // channel: [ val(sample), path(bam), path(bai) ]
+    ch_bams             // channel: [ val(sample), path(bam|cram), path(bai|crai) ]
     // sample names MUST follow {PATIENT_ID}_N{XX} or {PATIENT_ID}_T{XX} convention
     ch_interval_list    // path: preprocessed.interval_list
     ch_somatic_pon      // path: somatic PoN HDF5
@@ -38,6 +38,9 @@ workflow CNV_SOMATIC_GATK {
     ch_fasta            // path: reference FASTA (main chroms)
     ch_fasta_fai        // path: reference .fai
     ch_fasta_dict       // path: reference .dict
+    ch_cram_fasta       // path: FASTA the CRAMs were written with (BAM input: unused)
+    ch_cram_fai         // path: its .fai
+    ch_cram_dict        // path: its .dict
     ch_mane_txt         // path: exons_mane.txt
     // annotate_cnvs_complete_fixed.R is bundled in bin/ (from FlorPio/gatk-cnv-somatic)
 
@@ -55,7 +58,10 @@ workflow CNV_SOMATIC_GATK {
         ch_interval_list,
         ch_fasta,
         ch_fasta_fai,
-        ch_fasta_dict
+        ch_fasta_dict,
+        ch_cram_fasta,
+        ch_cram_fai,
+        ch_cram_dict
     )
 
     // ── Step 2: DenoiseReadCounts (all samples in parallel) ───────────────────
@@ -71,7 +77,10 @@ workflow CNV_SOMATIC_GATK {
         ch_common_snps_tbi,
         ch_fasta,
         ch_fasta_fai,
-        ch_fasta_dict
+        ch_fasta_dict,
+        ch_cram_fasta,
+        ch_cram_fai,
+        ch_cram_dict
     )
 
     // ── Step 4: ModelSegments (per pair) ──────────────────────────────────────

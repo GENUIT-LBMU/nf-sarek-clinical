@@ -207,6 +207,25 @@ workflow SAREK_CLINICAL {
         )
     }
 
+    // ── CRAM reference for the GATK CNV steps ───────────────────────────────
+    // A CRAM is decoded with the FASTA Sarek wrote it with (--cram_fasta, plus
+    // .fai and .dict). Without --cram_fasta (BAM input) each step stages its own
+    // FASTA as a placeholder.
+    def cram_ref = { fasta, fai, dict ->
+        if (!params.cram_fasta) return [fasta, fai, dict]
+        def c_fai  = file("${params.cram_fasta}.fai")
+        def c_dict = file(params.cram_fasta.toString().replaceAll(/\.(fa|fasta)$/, '') + '.dict')
+        if (!c_fai.exists() || !c_dict.exists())
+            error("--cram_fasta needs ${c_fai} and ${c_dict} next to it")
+        [file(params.cram_fasta), c_fai, c_dict]
+    }
+    def check_cram = { alns, skip_flag ->
+        alns.each { sample, aln, idx ->
+            if (aln.name.endsWith('.cram') && !params.cram_fasta)
+                error("${aln} is a CRAM: set --cram_fasta to the FASTA Sarek wrote it with (or ${skip_flag} true)")
+        }
+    }
+
     // ── GERMLINE CNV – GATK gCNV ─────────────────────────────────────────────
     if (!params.skip_germline_cnv) {
         // Validate required params
@@ -226,20 +245,9 @@ workflow SAREK_CLINICAL {
         def normal_alns = recal_alns.findAll { sample, aln, idx -> sample ==~ /.*_N\d*$/ }
         if (!normal_alns)
             error("No normal BAM/CRAM found in ${sarek_out}/preprocessing/recalibrated; use --skip_germline_cnv true")
-        normal_alns.each { sample, aln, idx ->
-            if (aln.name.endsWith('.cram') && !params.cram_fasta)
-                error("${aln} is a CRAM: set --cram_fasta to the FASTA Sarek wrote it with (or --skip_germline_cnv true)")
-        }
+        check_cram(normal_alns, '--skip_germline_cnv')
         ch_normal_bams = Channel.fromList(normal_alns)
-
-        // CRAM reference: without --cram_fasta (BAM input) the gCNV FASTA is staged as a placeholder
-        def cram_fasta = params.cram_fasta ? file(params.cram_fasta) : gcnv_fasta
-        def cram_fai   = params.cram_fasta ? file("${params.cram_fasta}.fai") : gcnv_fai
-        def cram_dict  = params.cram_fasta
-            ? file(params.cram_fasta.toString().replaceAll(/\.(fa|fasta)$/, '') + '.dict')
-            : file(params.gcnv_dict)
-        if (params.cram_fasta && (!cram_fai.exists() || !cram_dict.exists()))
-            error("--cram_fasta needs ${cram_fai} and ${cram_dict} next to it")
+        def (cram_fasta, cram_fai, cram_dict) = cram_ref(gcnv_fasta, gcnv_fai, file(params.gcnv_dict))
 
         CNV_GERMLINE_GATK(
             ch_normal_bams,
@@ -302,6 +310,8 @@ workflow SAREK_CLINICAL {
         def somatic_fasta = file(params.somatic_fasta)
         def somatic_fai   = file("${params.somatic_fasta}.fai")
         def snps_tbi      = file("${params.common_snps_vcf}.tbi")
+        check_cram(recal_alns, '--skip_somatic_cnv_gatk')
+        def (cram_fasta, cram_fai, cram_dict) = cram_ref(somatic_fasta, somatic_fai, file(params.somatic_dict))
 
         CNV_SOMATIC_GATK(
             ch_bams,
@@ -312,6 +322,9 @@ workflow SAREK_CLINICAL {
             somatic_fasta,
             somatic_fai,
             file(params.somatic_dict),
+            cram_fasta,
+            cram_fai,
+            cram_dict,
             file(params.gcnv_mane_txt)
         )
     }

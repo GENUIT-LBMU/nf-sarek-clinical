@@ -135,6 +135,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Somatic GATK CNV with CRAM input: CollectReadCounts and CollectAllelicCounts
+  now read a CRAM with `--cram_fasta` (BAM keeps `somatic_fasta`). Since the
+  germline CNV CRAM fix the somatic steps also received CRAMs and failed with
+  "incompatible contigs"; before it they silently never ran on CRAM-only Sarek
+  output. A CRAM sample without `--cram_fasta` stops the run with a clear error.
+  1128 from CRAM: read/allelic counts, denoised CR, called segments and the
+  annotated TSV identical to the historic BAM run.
 - Germline CNV report texts: the HTML note said "NP >= 5 and QA >= 10" and the
   PDF "105-gene panel" and "CN != 2", while the filter is QA >=
   `filters.germline_cnv.min_qa` (4), no NP minimum, ALT `<DEL>`/`<DUP>`, panel

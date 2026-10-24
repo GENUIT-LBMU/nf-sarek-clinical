@@ -786,7 +786,7 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 |-----------|---------|-------------|
 | `--skip_germline_cnv` | `false` | Skip GATK germline gCNV |
 | `--gcnv_lowmap_bed` | — | Low-mappability BED for germline CNV (`scripts/build_lowmap_panel.sh`); required unless `--skip_germline_cnv` |
-| `--cram_fasta` | — | FASTA (+ `.fai`, `.dict`) Sarek wrote the CRAMs with; needed only when a normal has CRAM and no BAM (BAM is used when present) |
+| `--cram_fasta` | — | FASTA (+ `.fai`, `.dict`) Sarek wrote the CRAMs with; needed only when a sample has CRAM and no BAM (BAM is used when present); used by germline and somatic GATK CNV |
 | `--skip_somatic_cnv` | `false` | Skip ASCAT + CNVkit interpretation |
 | `--skip_somatic_cnv_gatk` | `false` | Skip GATK somatic CNV |
 | `--skip_signatures` | `false` | Skip mutational signatures |

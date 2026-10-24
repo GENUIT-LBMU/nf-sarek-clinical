@@ -20,6 +20,7 @@
       --common_snps_vcf         : common SNPs VCF (bgzipped + tabix indexed)
       --somatic_fasta           : reference FASTA  (main chromosomes only)
       --somatic_dict            : reference .dict
+      --cram_fasta              : FASTA (+ .fai, .dict) Sarek wrote the CRAMs with; only for CRAM input
       --gcnv_mane_txt           : MANE transcript exon coordinates
       --somatic_annotate_r      : annotate_cnvs_complete_fixed.R script path
       --somatic_min_contig_length : min contig length for plots (default: 46709983)
@@ -43,17 +44,22 @@ process GATK_COLLECT_READ_COUNTS_SOMATIC {
     path fasta
     path fasta_fai
     path fasta_dict
+    path cram_fasta, stageAs: 'cram_ref/*'   // reference of the CRAMs (BAM input: unused)
+    path cram_fai,   stageAs: 'cram_ref/*'
+    path cram_dict,  stageAs: 'cram_ref/*'
 
     output:
     tuple val(sample), val(patient_id), val(status),
           path("${sample}.counts.hdf5"), emit: counts
 
     script:
+    // A CRAM is decoded with the reference it was written with; a BAM keeps somatic_fasta
+    def ref = bam.name.endsWith('.cram') ? cram_fasta : fasta
     """
     gatk CollectReadCounts \\
         -I ${bam} \\
         -L ${interval_list} \\
-        -R ${fasta} \\
+        -R ${ref} \\
         --interval-merging-rule OVERLAPPING_ONLY \\
         --format HDF5 \\
         -O ${sample}.counts.hdf5
@@ -119,17 +125,21 @@ process GATK_COLLECT_ALLELIC_COUNTS {
     path fasta
     path fasta_fai
     path fasta_dict
+    path cram_fasta, stageAs: 'cram_ref/*'   // reference of the CRAMs (BAM input: unused)
+    path cram_fai,   stageAs: 'cram_ref/*'
+    path cram_dict,  stageAs: 'cram_ref/*'
 
     output:
     tuple val(sample), val(patient_id), val(status),
           path("${sample}.allelicCounts.tsv"), emit: allelic_counts
 
     script:
+    def ref = bam.name.endsWith('.cram') ? cram_fasta : fasta
     """
     gatk CollectAllelicCounts \\
         -I ${bam} \\
         -L ${common_snps_vcf} \\
-        -R ${fasta} \\
+        -R ${ref} \\
         -O ${sample}.allelicCounts.tsv
     """
 
