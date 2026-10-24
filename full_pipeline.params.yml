@@ -65,6 +65,7 @@ gcnv_interval_list: /path/to/refs/cnv/exomas.interval_list
 gcnv_fasta:         /path/to/refs/hg38/hg38.fa
 gcnv_dict:          /path/to/refs/hg38/hg38.dict
 gcnv_mane_txt:      /path/to/refs/cnv/exons_mane.txt
+# cram_fasta: /path/to/refs/Homo_sapiens_assembly38.fasta  # only if Sarek left CRAM and no BAM (the FASTA Sarek used; + .fai and .dict)
 # exon_annotation.R is bundled in the pipeline (bin/) — no path needed
 
 # ── Somatic CNV (GATK) ────────────────────────────────────────────────────────

@@ -126,6 +126,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Germline CNV input: Sarek `recalibrated/` is searched for `*.recal.bam` and
+  `*.recal.cram` (BAM used when both exist). Before, only BAM was searched, so
+  with CRAM output gCNV never ran and the run ended SUCCESS with no germline
+  CNV. A CRAM is read with `--cram_fasta` (the FASTA Sarek wrote it with,
+  plus `.fai` and `.dict`); the run fails if a normal is CRAM without it, if
+  an index is missing, or if no normal BAM/CRAM is found.
 - Germline CNV (`MANE_ANNOTATE_GERMLINE_CNV`): an `exon_annotation.R` failure
   now fails the task. Before, the error was only logged and the raw segments
   VCF lines were copied without a header, so every reader saw CN=2 and the

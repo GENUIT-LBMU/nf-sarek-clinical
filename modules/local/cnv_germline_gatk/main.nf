@@ -17,6 +17,7 @@
       --gcnv_ploidy_model    : directory with pre-built ploidy model
       --gcnv_pon_dir         : directory with pre-built gCNV PoN model
       --gcnv_fasta           : reference FASTA (hg38.fa)
+      --cram_fasta           : FASTA (+ .fai, .dict) Sarek wrote the CRAMs with; only for CRAM input
       --gcnv_dict            : reference .dict (hg38.dict)
       --gcnv_mane_txt        : MANE transcript exon coordinates (exons_mane.txt)
       --gcnv_exon_r          : exon_annotation.R script path
@@ -36,16 +37,21 @@ process GATK_COLLECT_READ_COUNTS_GERMLINE {
     path fasta
     path fasta_fai
     path fasta_dict
+    path cram_fasta, stageAs: 'cram_ref/*'   // reference of the CRAMs (BAM input: unused)
+    path cram_fai,   stageAs: 'cram_ref/*'
+    path cram_dict,  stageAs: 'cram_ref/*'
 
     output:
     tuple val(sample), path("${sample}.counts.hdf5"), emit: counts
 
     script:
+    // A CRAM is decoded with the reference it was written with; a BAM keeps gcnv_fasta
+    def ref = bam.name.endsWith('.cram') ? cram_fasta : fasta
     """
     gatk CollectReadCounts \\
         -I ${bam} \\
         -L ${interval_list} \\
-        -R ${fasta} \\
+        -R ${ref} \\
         --interval-merging-rule OVERLAPPING_ONLY \\
         --format HDF5 \\
         -O ${sample}.counts.hdf5

@@ -174,14 +174,20 @@ workflow SAREK_CLINICAL {
         [sample, f]
     }
 
-    // Sarek recalibrated BAMs (needed for GATK CNV modules)
-    ch_bams = Channel.fromPath(
-        "${sarek_out}/preprocessing/recalibrated/**/*.recal.bam"
-    ).map { bam ->
-        def sample = bam.parent.name
-        def bai    = bam.parent.resolve("${sample}.recal.bam.bai")
-        [sample, bam, bai]
-    }
+    // Sarek recalibrated alignments (needed for GATK CNV modules). BAM is used
+    // when present (pipeline started from BAMs, or save_output_as_bam); CRAM
+    // only for samples without a BAM. The index must sit next to the file.
+    // Resolved here (not in channel operators) so a validation error is reported alone.
+    def recal_alns = files("${sarek_out}/preprocessing/recalibrated/**/*.recal.{bam,cram}")
+        .groupBy { it.parent.name }
+        .collect { sample, files ->
+            def aln = files.find { it.name.endsWith('.bam') } ?: files[0]
+            def idx = file(aln.toString() + (aln.name.endsWith('.bam') ? '.bai' : '.crai'))
+            if (!idx.exists()) error("Index not found for ${aln}: expected ${idx}")
+            [sample, aln, idx]
+        }
+        .sort { it[0] }
+    ch_bams = Channel.fromList(recal_alns)
 
     // ── GERMLINE POSTPROCESSING (SNV + Pharmaco) ──────────────────────────────
     if (!params.skip_germline_snv || !params.skip_pharmaco) {
@@ -215,7 +221,23 @@ workflow SAREK_CLINICAL {
         def gcnv_fai   = file("${params.gcnv_fasta}.fai")
 
         // Only process normal samples for germline CNV
-        ch_normal_bams = ch_bams.filter { sample, bam, bai -> sample ==~ /.*_N\d*$/ }
+        def normal_alns = recal_alns.findAll { sample, aln, idx -> sample ==~ /.*_N\d*$/ }
+        if (!normal_alns)
+            error("No normal BAM/CRAM found in ${sarek_out}/preprocessing/recalibrated; use --skip_germline_cnv true")
+        normal_alns.each { sample, aln, idx ->
+            if (aln.name.endsWith('.cram') && !params.cram_fasta)
+                error("${aln} is a CRAM: set --cram_fasta to the FASTA Sarek wrote it with (or --skip_germline_cnv true)")
+        }
+        ch_normal_bams = Channel.fromList(normal_alns)
+
+        // CRAM reference: without --cram_fasta (BAM input) the gCNV FASTA is staged as a placeholder
+        def cram_fasta = params.cram_fasta ? file(params.cram_fasta) : gcnv_fasta
+        def cram_fai   = params.cram_fasta ? file("${params.cram_fasta}.fai") : gcnv_fai
+        def cram_dict  = params.cram_fasta
+            ? file(params.cram_fasta.toString().replaceAll(/\.(fa|fasta)$/, '') + '.dict')
+            : file(params.gcnv_dict)
+        if (params.cram_fasta && (!cram_fai.exists() || !cram_dict.exists()))
+            error("--cram_fasta needs ${cram_fai} and ${cram_dict} next to it")
 
         CNV_GERMLINE_GATK(
             ch_normal_bams,
@@ -226,6 +248,9 @@ workflow SAREK_CLINICAL {
             gcnv_fai,
             file(params.gcnv_dict),
             file(params.gcnv_mane_txt),
+            cram_fasta,
+            cram_fai,
+            cram_dict,
             ch_germline_panel,
             params.filters.germline_cnv.exclude_genes
         )

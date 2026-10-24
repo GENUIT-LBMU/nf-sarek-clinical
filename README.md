@@ -138,7 +138,7 @@ clinical_results/
 | 2 | **Germline–Somatic Correlation** | Two-hit events (P/LP germline + somatic second hit), biallelic somatic, MMR/HRR pathway integration |
 | 3 | **Germline SNVs** | 105-gene hereditary cancer panel; ACMG classification with ClinGen SVI points (PVS1 by mechanism, PM2_Supporting, calibrated REVEL), ClinVar (local release, with stars), gnomAD v4.1 |
 | 4 | **Pharmacogenomics** | DPYD, UGT1A1 — drug-metabolism variants from germline VCF |
-| 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM; deletions / duplications (gCNV ALT, against contig ploidy) in the germline panel genes minus 16 somatic oncogenes (QA >= 4); MANE exon annotation |
+| 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on the normal BAM (or CRAM, with `--cram_fasta`); deletions / duplications (gCNV ALT, against contig ploidy) in the germline panel genes minus 16 somatic oncogenes (QA >= 4); MANE exon annotation |
 | 6 | **Somatic SNVs** | Split into *Clinically Actionable* (CIViC Tier I/II) and *Other* (Tier III) tables; Callers column shows M+S (consensus) or M (Mutect2-only); low-VAF warning for AF < 5% |
 | 7 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
 | 8 | **Somatic CNVs (GATK)** | Allele-specific paired CNV (tumour + normal BAMs); MANE annotation; diagnostic plots |
@@ -423,7 +423,7 @@ Use these when a data type is missing or a module is not needed:
 
 | Flag | Default | When to use |
 |------|---------|-------------|
-| `--skip_germline_cnv true` | `false` | No normal BAMs, or no gCNV PoN built yet |
+| `--skip_germline_cnv true` | `false` | No normal BAM/CRAM, or no gCNV PoN built yet |
 | `--skip_somatic_cnv true` | `false` | No ASCAT / CNVkit output from sarek |
 | `--skip_somatic_cnv_gatk true` | `false` | No tumour BAMs, or no somatic PoN |
 | `--skip_hrd true` | `false` | No ASCAT segments (required by HRProfiler) |
@@ -761,6 +761,7 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--skip_germline_cnv` | `false` | Skip GATK germline gCNV |
+| `--cram_fasta` | — | FASTA (+ `.fai`, `.dict`) Sarek wrote the CRAMs with; needed only when a normal has CRAM and no BAM (BAM is used when present) |
 | `--skip_somatic_cnv` | `false` | Skip ASCAT + CNVkit interpretation |
 | `--skip_somatic_cnv_gatk` | `false` | Skip GATK somatic CNV |
 | `--skip_signatures` | `false` | Skip mutational signatures |

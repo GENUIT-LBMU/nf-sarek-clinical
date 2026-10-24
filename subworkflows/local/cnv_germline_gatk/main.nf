@@ -4,7 +4,7 @@
     ================================
     Orchestrates the 5-step gCNV CASE-mode germline CNV calling pipeline.
 
-    Input:  per-sample BAMs from Sarek preprocessing/recalibrated/
+    Input:  per-sample BAM (preferred) or CRAM from Sarek preprocessing/recalibrated/
     Output: annotated segments TSV per sample
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
@@ -17,7 +17,7 @@ include { MANE_ANNOTATE_GERMLINE_CNV             } from '../../../modules/local/
 
 workflow CNV_GERMLINE_GATK {
     take:
-    ch_bams             // channel: [ val(sample), path(bam), path(bai) ]
+    ch_bams             // channel: [ val(sample), path(bam|cram), path(bai|crai) ]
     ch_interval_list    // path: preprocessed.interval_list
     ch_ploidy_model     // path: pre-built ploidy model directory
     ch_pon_dir          // path: pre-built gCNV PoN directory
@@ -25,6 +25,9 @@ workflow CNV_GERMLINE_GATK {
     ch_fasta_fai        // path: reference FASTA .fai
     ch_fasta_dict       // path: reference .dict
     ch_mane_txt         // path: exons_mane.txt
+    ch_cram_fasta       // path: FASTA the CRAMs were written with (gcnv_fasta if none)
+    ch_cram_fai         // path: its .fai
+    ch_cram_dict        // path: its .dict
     ch_gene_panel       // path: germline panel (genes annotated)
     exclude_genes       // val: comma-separated panel genes left out
     // exon_annotation.R is bundled in bin/ (from FlorPio/gatk-cnv-somatic)
@@ -36,7 +39,10 @@ workflow CNV_GERMLINE_GATK {
         ch_interval_list,
         ch_fasta,
         ch_fasta_fai,
-        ch_fasta_dict
+        ch_fasta_dict,
+        ch_cram_fasta,
+        ch_cram_fai,
+        ch_cram_dict
     )
 
     // ── Step 2: DetermineGermlineContigPloidy (CASE, per sample) ─────────────
