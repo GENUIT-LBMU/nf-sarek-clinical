@@ -83,7 +83,10 @@ echo "Genes: ${N_GENES}  regions: $(wc -l < "$TMP/regions.bed")  bp: $(awk '{s+=
 # ── 3. Query gnomAD per chromosome ────────────────────────────────────────────
 # Columns kept (joint = exomes + genomes). FILTER is kept so that sites failing
 # QC in both datasets can be treated as "frequency unknown" downstream.
-FMT='%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t%INFO/AC_joint\t%INFO/AN_joint\t%INFO/AF_joint\t%INFO/nhomalt_joint\t%INFO/fafmax_faf95_max_joint\t%INFO/grpmax_joint\t%INFO/AF_joint_amr\t%INFO/AN_joint_amr\t%INFO/nhomalt_joint_XY\n'
+# grpmax (AF/AC/AN of the group with the highest AF) excludes the bottlenecked
+# groups (e.g. ASJ: BRCA1 c.68_69del, AF_asj 0.4%, has grpmax = mid); used by
+# the ClinGen VCEP gene-specific frequency rules.
+FMT='%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t%INFO/AC_joint\t%INFO/AN_joint\t%INFO/AF_joint\t%INFO/nhomalt_joint\t%INFO/fafmax_faf95_max_joint\t%INFO/grpmax_joint\t%INFO/AF_joint_amr\t%INFO/AN_joint_amr\t%INFO/nhomalt_joint_XY\t%INFO/AF_grpmax_joint\t%INFO/AC_grpmax_joint\t%INFO/AN_grpmax_joint\n'
 for chrom in $(cut -f1 "$TMP/regions.bed" | uniq); do
     url="${BASE_URL}/${VERSION}/vcf/joint/gnomad.joint.v${VERSION}.sites.${chrom}.vcf.bgz"
     awk -v c="$chrom" '$1==c' "$TMP/regions.bed" > "$TMP/r.${chrom}.bed"
@@ -102,7 +105,7 @@ done
 # ── 4. Assemble, deduplicate (overlapping -R regions), compress, index ─────────
 {
     printf '## gnomad_version=%s source=%s padding_bp=%s genes=%s\n' "${VERSION}" "gnomad.joint.v${VERSION}.sites" "${PADDING}" "${N_GENES}"
-    printf '#CHROM\tPOS\tREF\tALT\tGNOMAD_FILTER\tGNOMAD_AC\tGNOMAD_AN\tGNOMAD_AF\tGNOMAD_NHOMALT\tGNOMAD_FAF95\tGNOMAD_GRPMAX\tGNOMAD_AF_AMR\tGNOMAD_AN_AMR\tGNOMAD_NHOMALT_XY\n'
+    printf '#CHROM\tPOS\tREF\tALT\tGNOMAD_FILTER\tGNOMAD_AC\tGNOMAD_AN\tGNOMAD_AF\tGNOMAD_NHOMALT\tGNOMAD_FAF95\tGNOMAD_GRPMAX\tGNOMAD_AF_AMR\tGNOMAD_AN_AMR\tGNOMAD_NHOMALT_XY\tGNOMAD_AF_GRPMAX\tGNOMAD_AC_GRPMAX\tGNOMAD_AN_GRPMAX\n'
     for chrom in $(cut -f1 "$TMP/regions.bed" | uniq); do
         sort -k2,2n -k3,3 -k4,4 -u "$TMP/q.${chrom}.tsv"
     done

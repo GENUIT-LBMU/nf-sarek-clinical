@@ -133,9 +133,9 @@ process SNPSIFT_EXTRACT_GERMLINE {
 
     stub:
     """
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tClinVar_PS1\\tClinVar_PM5\\tgnomAD_FAF95\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tClinVar_PS1\\tClinVar_PM5\\tgnomAD_FAF95\\tgnomAD_AC\\tgnomAD_NHOMALT\\tgnomAD_AF_GRPMAX\\tgnomAD_AC_GRPMAX\\tgnomAD_AN_GRPMAX\\tgnomAD_BA1\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
     touch ${sample}.germline_all_filtered.tsv
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tClinVar_PS1\\tClinVar_PM5\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tgnomAD_FAF95\\tACMG_class\\tACMG_criteria\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tClinVar_PS1\\tClinVar_PM5\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tgnomAD_FAF95\\tgnomAD_AC\\tgnomAD_NHOMALT\\tgnomAD_AF_GRPMAX\\tgnomAD_AC_GRPMAX\\tgnomAD_AN_GRPMAX\\tgnomAD_BA1\\tACMG_class\\tACMG_criteria\\tACMG_spec\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
     """
 
     script:
@@ -151,6 +151,10 @@ process SNPSIFT_EXTRACT_GERMLINE {
     if grep -q '^##INFO=<ID=GNOMAD_AF,' vcf_header.txt; then
         GNOMAD_FIELDS="GNOMAD_REGION GNOMAD_FILTER GNOMAD_AF GNOMAD_AC GNOMAD_AN GNOMAD_FAF95 GNOMAD_GRPMAX GNOMAD_AF_AMR GNOMAD_AN_AMR GNOMAD_NHOMALT GNOMAD_NHOMALT_XY"
         GNOMAD_VERSION=\$(sed -n 's/^##gnomAD_resource=<Version=\\([^,]*\\),.*/\\1/p' vcf_header.txt)
+        # grpmax AF/AC/AN: resources built with them (ClinGen VCEP frequency rules)
+        if grep -q '^##INFO=<ID=GNOMAD_AF_GRPMAX,' vcf_header.txt; then
+            GNOMAD_FIELDS="\${GNOMAD_FIELDS} GNOMAD_AF_GRPMAX GNOMAD_AC_GRPMAX GNOMAD_AN_GRPMAX"
+        fi
     fi
     # Same for the local ClinVar resource (CLINVAR_ANNOTATE, --clinvar_tsv)
     CLINVAR_FIELDS=""
@@ -216,6 +220,9 @@ process SNPSIFT_EXTRACT_GERMLINE {
     #   gnomAD_FAF95: max filtering AF (95% CI) across ancestry groups from the local
     #     resource (0 when absent, "." outside the regions) -> BA1/BS1/PM2 use it
     #     with frequency_metric = 'faf95'; falls back to gnomAD_AF when ".".
+    #   gnomAD_AC, gnomAD_NHOMALT, gnomAD_AF_GRPMAX, gnomAD_AC_GRPMAX, gnomAD_AN_GRPMAX
+    #     (resource built with the grpmax columns): ClinGen VCEP gene-specific
+    #     BA1/BS1/PM2 rules (acmg_shared VCEP_SPECS); 0 when absent, "." outside.
     #   LEGACY mode (no --gnomad_tsv): behaviour below, unchanged.
     #
     # ── Legacy: gnomAD AF rescue (Ensembl VEP + gnomAD GraphQL fallback) ─────────
@@ -345,12 +352,26 @@ def _num(v):
 if 'GNOMAD_REGION' in hdr:
     tag = 'gnomAD_v' + (os.environ.get('GNOMAD_VERSION', '') or 'local')
     gi  = {k: hdr.get(k, -1) for k in ('GNOMAD_REGION', 'GNOMAD_AF', 'GNOMAD_FILTER', 'GNOMAD_FAF95',
+                                       'GNOMAD_AC', 'GNOMAD_NHOMALT', 'GNOMAD_AF_GRPMAX',
+                                       'GNOMAD_AC_GRPMAX', 'GNOMAD_AN_GRPMAX',
                                        'dbNSFP_gnomAD_exomes_AF', 'dbNSFP_gnomAD_genomes_AF')}
+    # grpmax columns only exist in resources built with them (ClinGen VCEP rules)
+    has_grp = gi['GNOMAD_AF_GRPMAX'] >= 0
+    EXTRA = ['GNOMAD_AC', 'GNOMAD_NHOMALT', 'GNOMAD_AF_GRPMAX', 'GNOMAD_AC_GRPMAX', 'GNOMAD_AN_GRPMAX']
+    def maxval(row, k):
+        # grpmax "." for an allele seen only in bottlenecked groups (ASJ, FIN, ...),
+        # which the VCEP rules exclude -> 0
+        v = _num(col(row, k))
+        if v is None:
+            return '0'
+        return '%d' % v if k != 'GNOMAD_AF_GRPMAX' else repr(v)
     def col(row, k):
         i = gi[k]
         return row[i].strip() if 0 <= i < len(row) else '.'
     n_base = len(hdr_list)
     hdr_list += ['gnomAD_AF', 'gnomAD_AF_source', 'gnomAD_FAF95']
+    if has_grp:
+        hdr_list += ['gnomAD_' + k[7:] for k in EXTRA]
     counts = {}
     with open(TMP, 'w') as out:
         out.write('\\t'.join(hdr_list) + '\\n')
@@ -380,7 +401,14 @@ if 'GNOMAD_REGION' in hdr:
                                   _num(col(row, 'dbNSFP_gnomAD_genomes_AF'))) if x is not None]
                 af, src = (repr(max(v2)), 'dbNSFP_v2') if v2 else ('.', 'unknown')
             counts[src] = counts.get(src, 0) + 1
-            out.write('\\t'.join(row[:n_base] + [af, src, faf]) + '\\n')
+            extra = []
+            if has_grp:
+                # inside the regions: absent -> 0; outside -> "." (general rules)
+                if vals:
+                    extra = [maxval(row, k) for k in EXTRA]
+                else:
+                    extra = ['0' if src.endswith('_absent') else '.'] * len(EXTRA)
+            out.write('\\t'.join(row[:n_base] + [af, src, faf] + extra) + '\\n')
     sys.stderr.write('[gnomAD local] ${sample}: ' + ', '.join(
         k + '=' + str(v) for k, v in sorted(counts.items())) + '\\n')
     os.replace(TMP, TSV)
@@ -662,6 +690,28 @@ with open(TSV) as fin, open(TMP, 'w') as out:
 os.replace(TMP, TSV)
 PYEOF_PS1
 
+    # ── Step 1.95: BA1 by the ACMG engine rule set (column gnomAD_BA1) ───────────
+    #   acmg_shared.ba1_reason(): ClinGen VCEP gene threshold (VCEP_SPECS) when the
+    #   gene has one and the gnomAD grpmax columns are present, else ba1_af on
+    #   FAF95 / AF. Text of the Step 2 reason, "." = BA1 not met.
+    python3 - <<'PYEOF_BA1'
+import os, sys
+sys.path.insert(0, '.')
+from acmg_shared import ba1_reason, getter_for_row_hdr
+
+TSV = '${sample}.germline_all_extracted.tsv'
+TMP = '${sample}.germline_all_extracted.ba1_tmp.tsv'
+with open(TSV) as fin, open(TMP, 'w') as out:
+    hdr = fin.readline().rstrip('\\n').split('\\t')
+    idx = {c: i for i, c in enumerate(hdr)}
+    out.write('\\t'.join(hdr + ['gnomAD_BA1']) + '\\n')
+    for line in fin:
+        row = line.rstrip('\\n').split('\\t')
+        row += ['.'] * (len(hdr) - len(row))
+        out.write('\\t'.join(row + [ba1_reason(getter_for_row_hdr(row, idx)) or '.']) + '\\n')
+os.replace(TMP, TSV)
+PYEOF_BA1
+
     # ── Step 2: gnomAD BA1 + ClinVar + low-VAF filter ────────────────────────────────
     #   Passing variants  → germline_snvs.pre_python.tsv  (stdout)
     #   Rejected variants → germline_all_filtered.tsv  (with FILTER_REASON column)
@@ -669,9 +719,11 @@ PYEOF_PS1
     #   Rejection reasons:
     #     multiallelic    : more than one ALT allele (e.g. GT 1/2 in the AR CAG/GGC
     #                       repeats); not reportable in a predisposition test
-    #     gnomad_BA1      : gnomAD frequency > 5% (common polymorphism — ACMG BA1):
-    #                       gnomAD_FAF95 (max FAF across ancestry groups) with
-    #                       frequency_metric = 'faf95', else / when "." gnomAD_AF
+    #     gnomad_BA1      : common polymorphism (ACMG BA1), column gnomAD_BA1 of
+    #                       Step 1.95: ClinGen VCEP gene threshold, else gnomAD
+    #                       FAF95 (or AF) > ba1_af (5%). Never for ClinVar P/LP
+    #                       with >= clinvar_min_stars stars (founder pathogenic
+    #                       variants): they reach the ACMG step with their class
     #     clinvar_benign  : ClinVar Benign/Likely_benign (unless also Pathogenic) with
     #                       >= clinvar_min_stars review stars (default 2); B/LB with
     #                       fewer stars stays and is classified by the ACMG score
@@ -703,6 +755,7 @@ PYEOF_PS1
             if (\$i == "dbNSFP_gnomAD_exomes_AF")     gnomad_v2   = i
             if (\$i == "gnomAD_AF")                   gnomad_can  = i
             if (\$i == "gnomAD_FAF95")                faf_col     = i
+            if (\$i == "gnomAD_BA1")                  ba1_col     = i
         }
         gnomad_col = gnomad_can ? gnomad_can : gnomad_v2
         print \$0 "\\tQC_FLAG"; next
@@ -717,8 +770,13 @@ PYEOF_PS1
             gt = (gt_col && gt_col <= NF) ? \$(gt_col) : "."
             reason = "multiallelic (GT=" gt "; ALT=" \$(alt_col) ")"
         }
-        # BA1: common polymorphism — gnomAD FAF95 (or AF) > 5%
-        if (reason == "" && gnomad_col && gnomad_col <= NF) {
+        cv_st0 = (st_col && st_col <= NF) ? \$(st_col) : ""
+        clinvar_final_plp = clinvar_plp && ((cv_st0 !~ /^[0-9]+\$/) || (cv_st0 + 0 >= cv_min_stars))
+        # BA1: common polymorphism — rule set of the ACMG engine (Step 1.95)
+        if (reason == "" && ba1_col && ba1_col <= NF) {
+            if (\$(ba1_col) != "." && !clinvar_final_plp) reason = \$(ba1_col)
+        } else if (reason == "" && gnomad_col && gnomad_col <= NF) {
+            # older tables without gnomAD_BA1: gnomAD FAF95 (or AF) > ba1_af
             af  = \$(gnomad_col) + 0
             faf = (use_faf && faf_col && faf_col <= NF && \$(faf_col) ~ /^[0-9]/) ? \$(faf_col) : ""
             if (faf != "") {
@@ -886,7 +944,8 @@ PYEOF
     # ── Step 4: ACMG annotation of all candidate variants ────────────────────────
     #   Reads germline_snvs.tsv and appends:
     #     ACMG_class    : P / LP / VUS / LB / B
-    #     ACMG_criteria : pipe-separated evidence codes (e.g. PM2|BP4(9/9))
+    #     ACMG_criteria : pipe-separated evidence codes (e.g. PM2_Sup|PP3_Mod)
+    #     ACMG_spec     : rule set used (ClinGen VCEP GNxxx vX.Y, or ACMG/SVI general)
     #     insil_dam     : number of in silico tools voting damaging
     #     insil_ben     : number voting benign/tolerated
     #     insil_total   : total tools with a clear verdict
@@ -899,6 +958,7 @@ sys.path.insert(0, '.')
 from acmg_shared import (
     count_insil as _count_insil,
     acmg_criteria_list as _acmg_criteria_list_shared,
+    acmg_spec as _acmg_spec,
     getter_for_row_hdr,
 )
 
@@ -923,7 +983,7 @@ def get_col(row, name):
     i = hdr.get(name, -1)
     return row[i].strip() if 0 <= i < len(row) else '.'
 
-new_cols = ['ACMG_class', 'ACMG_criteria', 'insil_dam', 'insil_ben', 'insil_total']
+new_cols = ['ACMG_class', 'ACMG_criteria', 'ACMG_spec', 'insil_dam', 'insil_ben', 'insil_total']
 with open(TSV_OUT, 'w') as out:
     out.write("\\t".join(raw_header + new_cols) + "\\n")
     for line in lines[1:]:
@@ -931,7 +991,8 @@ with open(TSV_OUT, 'w') as out:
         acmg, criteria = acmg_criteria_list(row, hdr)
         dam, ben = _count_insil(lambda name, r=row: get_col(r, name))
         total = dam + ben
-        extra = [acmg, '|'.join(criteria) if criteria else '.', str(dam), str(ben), str(total)]
+        extra = [acmg, '|'.join(criteria) if criteria else '.',
+                 _acmg_spec(getter_for_row_hdr(row, hdr)), str(dam), str(ben), str(total)]
         out.write("\\t".join(row + extra) + "\\n")
 PYEOF
     """

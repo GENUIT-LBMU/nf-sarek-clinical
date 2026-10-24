@@ -9,7 +9,8 @@
                           regions. Inside + no GNOMAD_AF  => absent from gnomAD.
                           Outside                          => frequency unknown.
       INFO/GNOMAD_*       AF, AC, AN, FAF95 (grpmax), GRPMAX, AF_AMR, AN_AMR,
-                          NHOMALT, NHOMALT_XY, FILTER — matched by CHROM/POS/REF/ALT.
+                          NHOMALT, NHOMALT_XY, FILTER — matched by CHROM/POS/REF/ALT;
+                          AF/AC/AN_GRPMAX when the resource has them.
 
     No network access: replaces the Ensembl / gnomAD web-API rescue.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -49,6 +50,17 @@ process GNOMAD_ANNOTATE {
 ##INFO=<ID=GNOMAD_AN_AMR,Number=1,Type=Integer,Description="gnomAD joint number of alleles, admixed American group">
 ##INFO=<ID=GNOMAD_NHOMALT_XY,Number=A,Type=Integer,Description="gnomAD joint homozygous/hemizygous count in XY samples">
 HDR
+    # grpmax AF/AC/AN (ClinGen VCEP frequency rules): only in resources built
+    # with them by scripts/build_gnomad_panel.sh; older resources still work
+    cols="${cols}"
+    if tabix -H ${gnomad_tsv} | grep -q 'GNOMAD_AF_GRPMAX'; then
+        cols="\${cols},INFO/GNOMAD_AF_GRPMAX,INFO/GNOMAD_AC_GRPMAX,INFO/GNOMAD_AN_GRPMAX"
+        cat >> gnomad_header.txt <<'HDR'
+##INFO=<ID=GNOMAD_AF_GRPMAX,Number=A,Type=Float,Description="gnomAD joint allele frequency in the ancestry group with the maximum AF (bottlenecked groups excluded)">
+##INFO=<ID=GNOMAD_AC_GRPMAX,Number=A,Type=Integer,Description="gnomAD joint allele count in the ancestry group with the maximum AF">
+##INFO=<ID=GNOMAD_AN_GRPMAX,Number=A,Type=Integer,Description="gnomAD joint number of alleles in the ancestry group with the maximum AF">
+HDR
+    fi
     # Record resource version + checksum in the VCF header (read by SNPSIFT_EXTRACT_GERMLINE)
     ver=\$(tabix -H ${gnomad_tsv} | sed -n 's/^## gnomad_version=\\([^ ]*\\).*/\\1/p')
     echo "##gnomAD_resource=<Version=\${ver:-unknown},File=${gnomad_tsv},MD5=\$(md5sum ${gnomad_tsv} | cut -d' ' -f1)>" >> gnomad_header.txt
@@ -60,7 +72,7 @@ HDR
         ${vcf} -Ou \\
     | bcftools annotate \\
         -a ${gnomad_tsv} \\
-        -c ${cols} \\
+        -c \${cols} \\
         -Oz -o ${sample}.gnomad.vcf.gz
 
     n_total=\$(bcftools view -H ${sample}.gnomad.vcf.gz | wc -l)

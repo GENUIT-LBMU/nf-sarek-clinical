@@ -330,8 +330,12 @@ def build_methodology_html():
          'Evidence points: PVS1 (+8; +4 / +2 in the last exon, +2 for start-lost; not applied in genes where '
          'loss of function is not the cancer mechanism), PM4 stop-lost (+2), PM2_Supporting (+1), '
          'PP3 / BP4 from REVEL with the ClinGen calibrated cut-offs (Pejaver et al. 2022: '
-         '&plusmn;1 / &plusmn;2 / &plusmn;4), BS1 (&minus;4). '
+         '&plusmn;1 / &plusmn;2 / &plusmn;4) and SpliceAI (Walker et al. 2023), PS1 (+4) / PM5 (+2) from ClinVar '
+         'P/LP missense at the same residue, PM1 (+2 / +1; PP3 + PM1 &le; 4), BS1 (&minus;4), BS1_Supporting (&minus;1). '
          'ClinVar classifications with &ge;2 review stars are final. gnomAD frequency&nbsp;&gt;&nbsp;5% triggers BA1 (stand-alone benign); BA1, BS1 and PM2 use the maximum filtering allele frequency (FAF95) across ancestry groups. '
+         'For APC, ATM, BRAF, BRCA1, BRCA2, CDH1, DICER1, ENG, KRAS, MLH1, MSH2, MSH6, PALB2, PMS2, PTEN, TP53 and VHL, '
+         'BA1 / BS1 / PM2 thresholds and PM1 hotspots / domains follow the ClinGen Variant Curation Expert Panel '
+         'specifications (CSpec registry; PM1 hotspot counts from cancerhotspots.org v2); ClinVar P/LP with &ge;2 stars is never removed by BA1. '
          'Point thresholds: P &ge;10, LP 6&ndash;9, VUS 0&ndash;5, LB &minus;1 to &minus;6, B &le;&minus;7.'),
         ('Somatic Variant Interpretation (AMP/ASCO/CAP Tiers)',
          'Somatic variants are tiered per AMP/ASCO/CAP 2017 guidelines using CIViC database evidence (A&ndash;E). '

@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the HTML and PDF germline tables. Non-PASS variants are flagged, not removed.
 
 ### Changed
+- Germline filter (Step 2): BA1 uses the rule set of the ACMG engine (new
+  column `gnomAD_BA1`) and never removes a ClinVar P/LP variant with >=
+  `clinvar_min_stars` stars (founder pathogenic variants).
 - With `--gnomad_tsv` set, no patient coordinates are sent to Ensembl or gnomAD
   web APIs. Unknown frequency (outside the resource regions, no dbNSFP value) no
   longer triggers PM2; sites failing gnomAD QC in exomes and genomes keep their AF
@@ -88,6 +91,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not at exon edges. PS1 (+4) needs SpliceAI < 0.2; PM5 (+2) only without PS1.
   Leave-one-out on ClinVar missense >= 2 stars (germline genes): P/LP classified
   LP rise from 0 to 612 of 2685; no benign variant reaches LP (0 of 1718).
+- ClinGen VCEP gene specifications (CSpec registry, Released, 2026-10-23) in
+  `bin/acmg_shared.py` (`VCEP_SPECS`, `VCEP_PM1`; `vcep_specs = true`):
+  gene-specific BA1 / BS1 / BS1_Supporting (-1) / PM2_Supporting for APC, ATM,
+  BRAF, BRCA1, BRCA2, CDH1, DICER1, ENG, KRAS, MLH1, MSH2, MSH6, PALB2, PMS2,
+  PTEN, TP53, VHL, and PM1 (+2 / +1; PP3 + PM1 at most 4) for TP53, PTEN, DICER1,
+  ENG, VHL, KRAS, BRAF (TP53 / VHL hotspot counts from cancerhotspots.org v2,
+  `scripts/build_vcep_hotspots.py`). New `ACMG_spec` column (rule set used).
+  `scripts/build_gnomad_panel.sh` adds grpmax AF / AC / AN (`GNOMAD_AF_GRPMAX`,
+  `GNOMAD_AC_GRPMAX`, `GNOMAD_AN_GRPMAX`; older resources use the general rules).
+  Leave-one-out on ClinVar >= 2 stars in the 17 genes (30,919 variants): B/LB
+  classified B/LB rise from 1,291 to 2,379 of 14,850; P/LP classified P/LP from
+  13,830 to 13,938 of 16,069 (PM1: KRAS, TP53, VHL, BRAF, PTEN); P/LP classified
+  B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
 - Germline variants with VAF > `vaf_max` (0.75) were discarded as

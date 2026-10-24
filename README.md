@@ -506,7 +506,8 @@ docker run --rm -u $(id -u):$(id -g) -v $PWD:$PWD -v /data/refs:/data/refs -w $P
 Then set `gnomad_tsv: /data/refs/gnomad/gnomad_v4.1_panel.tsv.gz`. Rebuild it
 whenever a gene panel changes. Germline TSVs gain `gnomAD_AF`, `gnomAD_AF_source`
 and the `GNOMAD_*` columns (FAF95 grpmax, ancestry group, admixed-American AF,
-homozygote counts, gnomAD FILTER).
+homozygote counts, gnomAD FILTER, and grpmax AF / AC / AN for the ClinGen VCEP
+rules; resources built before 2026-10-23 lack these and use the general rules).
 
 ### snpEff MANE database — germline nomenclature (recommended)
 
@@ -800,7 +801,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 | `germline_cnv` | `min_qa=4` | Germline CNV quality (only panel genes are reported) |
 | `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
-| `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, `ps1_score=4`, `pm5_score=2`, REVEL and SpliceAI cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
+| `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, `ps1_score=4`, `pm5_score=2`, `pm1_score=2`, `pm1_sup_score=1`, `bs1_sup_score=-1`, `vcep_specs=true`, REVEL and SpliceAI cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
 | `biomarkers` | `tmb_high=10.0`, `msi_high=3.5`, `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds |
 | `qc` | `low_cov_threshold=50` | Tumor coverage warning |
 | `signatures` | `min_activity=0.05`, MMR/HRD signature lists | Mutational signature reporting |
@@ -822,14 +823,16 @@ point system (Tavtigian et al. 2020): P >= 10, LP 6..9, VUS 0..5, LB -1..-6, B <
 | PP3 / BP4 | +-1 / +-2 / +-4 | REVEL >= 0.644 / 0.773 / 0.932 ; <= 0.290 / 0.183 / 0.016 (Pejaver et al. 2022) |
 | PP3_Sup(splice) | +1 | SpliceAI max delta >= 0.2 (not added to a REVEL PP3; the stronger one counts) |
 | BP4 (missense) | | needs SpliceAI <= 0.1 when SpliceAI ran (Walker et al. 2023) |
+| PS1 | +4 | missense with the same amino-acid change as a ClinVar P/LP missense (>= 2 stars, not at an exon edge); not if SpliceAI >= 0.2 |
+| PM5 | +2 | missense at a residue where another ClinVar P/LP missense exists (when PS1 does not apply) |
+| PM1 / PM1_Sup | +2 / +1 | VCEP genes only: hotspot / critical domain (see below); PP3 + PM1 at most +4 (Pejaver et al. 2022) |
+| BS1 | -4 | gnomAD FAF95 > `bs1_af`, or the VCEP gene threshold |
+| BS1_Sup | -1 | VCEP gene threshold (BRCA1, BRCA2, PTEN, ENG) |
+| BA1 | stand-alone B | gnomAD FAF95 > `ba1_af`, or the VCEP gene threshold (also removes the variant in the germline filter, except ClinVar P/LP with >= `clinvar_min_stars` stars) |
 
 PP3 / BP4 are not applied to null variants (PVS1 already weighs them). The
 9-tool dbNSFP panel is no longer scored; `insil_dam` / `insil_ben` stay in the
 TSV as information.
-| PS1 | +4 | missense with the same amino-acid change as a ClinVar P/LP missense (>= 2 stars, not at an exon edge); not if SpliceAI >= 0.2 |
-| PM5 | +2 | missense at a residue where another ClinVar P/LP missense exists (when PS1 does not apply) |
-| BS1 | -4 | gnomAD FAF95 > `bs1_af` |
-| BA1 | stand-alone B | gnomAD FAF95 > `ba1_af` (also removes the variant in the germline filter) |
 
 FAF95 is the maximum filtering allele frequency (95% CI) across gnomAD ancestry
 groups (`fafmax_faf95_max_joint`): a variant common in one group, e.g. admixed
@@ -837,6 +840,55 @@ American, is benign even when its overall AF is low (BRCA2 p.Ile2490Thr: AF 0.5%
 FAF95 11%). Without FAF95 (legacy mode, outside the resource regions) the overall
 AF is used; `frequency_metric = 'af'` restores AF-only behaviour. Reports show
 "AF / FAF 0.113".
+
+#### ClinGen VCEP gene specifications
+
+For 17 genes the frequency rules (and PM1 for 7 of them) follow the Released
+specifications of the ClinGen Variant Curation Expert Panels, copied from the
+[CSpec registry](https://cspec.genome.network) on 2026-10-23 into
+`bin/acmg_shared.py` (`VCEP_SPECS`, `VCEP_PM1`). `vcep_specs = false` turns them
+off. The `ACMG_spec` column of the annotated TSV names the rule set used.
+FAF = gnomAD grpmax FAF95 (0 when gnomAD computes none, e.g. AC = 1); grpmax
+AF / AC / AN come from the gnomAD resource built with the grpmax columns (older
+resources: general rules). gnomAD v4 grpmax and FAF exclude the bottlenecked
+groups (ASJ, FIN, AMI, remaining).
+
+| Gene | Spec | BA1 | BS1 | BS1_Sup | PM2_Sup |
+|---|---|---|---|---|---|
+| APC | GN089 v2.1 | FAF >= 0.1% | FAF >= 0.001% | | AF <= 0.0003% if AC > 1; AF < 0.001% if AC <= 1 |
+| ATM | GN020 v1.6 | FAF > 0.5% | FAF > 0.05% | | grpmax AF <= 0.001%, or AC = 1 |
+| BRCA1, BRCA2 | GN092 / GN097 v1.2 | FAF > 0.1% | FAF > 0.01% | FAF > 0.002% | absent (AC = 0) |
+| CDH1 | GN007 v3.1 | FAF >= 0.2% | FAF >= 0.1% | | AF <= 1/100,000; grpmax AF <= 1/50,000 if grpmax AC >= 2 |
+| DICER1 | GN024 v1.4 | grpmax AF > 0.3% (AN > 2,000, AC >= 5) | grpmax AF > 0.03% (idem) | | AF < 0.0005% and grpmax AC <= 1 |
+| ENG | GN136 v1.1 | FAF >= 1% | FAF > 0.2%, or BS1_Sup with >= 2 homozygotes | FAF > 0.08% | AC < 6, or grpmax AF < 0.004% |
+| KRAS, BRAF | GN044 / GN049 v2.3 | FAF >= 0.05% | FAF >= 0.025% | | absent |
+| MLH1, MSH2 | GN115 / GN137 v2.0 | FAF >= 0.1% | FAF >= 0.01% | | AF < 0.002% |
+| MSH6 | GN138 v2.0 | FAF >= 0.22% | FAF >= 0.022% | | AF < 0.002% |
+| PMS2 | GN139 v2.0 | FAF >= 0.28% | FAF >= 0.028% | | AF < 0.002% |
+| PALB2 | GN077 v1.3 | FAF > 0.1% | FAF > 0.01% | | grpmax AF <= 1/300,000, or AC = 1 |
+| PTEN | GN003 v3.2 | FAF > 0.056% | FAF >= 0.0043% | FAF >= 0.00043% | AF < 0.001%; grpmax AF < 0.002% if grpmax AC >= 2 |
+| TP53 | GN009 v2.4 | FAF >= 0.1% (grpmax AN >= 2,000, AC >= 2) | FAF >= 0.03% (idem) | | AF < 0.003%; grpmax AF < 0.004% if grpmax AC >= 2 |
+| VHL | GN078 v1.1 | FAF >= 0.0156% | FAF >= 0.00156% | | FAF <= 0.000156% (or none) |
+
+PM1 (missense, MANE protein numbering): TP53 codons 175, 245, 248, 249, 273,
+282 or cancerhotspots.org >= 10 for the same change (Moderate), 2-9
+(Supporting); PTEN 90-94, 123-130, 166-168; DICER1 metal-ion residues S1344,
+E1705, D1709, D1713, G1809, D1810, E1813 (Moderate) and the RNase IIIb domain
+1682-1846 (Supporting); ENG S278, F282 and cysteines C207, C350, C363, C382,
+C394, C412, C516, C549, C582; VHL cancerhotspots.org >= 10 (Moderate), < 10
+(Supporting); KRAS P-loop 10-17, SW1 25-40, SW2 57-64, SAK 145-156; BRAF exons
+6 and 11, P-loop 459-474, CR3 594-627. Hotspot counts: cancerhotspots.org v2
+(Chang et al. 2018; `scripts/build_vcep_hotspots.py`), check its terms of use.
+
+Not automated: the non-cancer gnomAD v2.1 / v3.1 subsets and read depth of the
+BRCA1/2 PM2 rule (AC = 0 in gnomAD v4.1 is used), the founder-variant exclusion
+of the MMR BA1 / BS1 rules (ClinVar P/LP with >= 2 stars keeps its class and is
+never removed by BA1), the TP53 CHIP recalculation by allele balance, and the
+VHL germline hotspot table (not in the CSpec API). Not included: CHEK2, RAD51C,
+MUTYH, SDHB, SMAD4 (specifications not released), NF1 (no rules in the API),
+PIK3CA (brain-malformation / mosaic specification) and LZTR1 (RASopathy, not
+schwannomatosis). Other VCEP rules (gene PVS1 trees, other PP3 tools, PS3 / PS4)
+are not applied.
 
 Rare missense variants cannot reach LP from in silico and frequency evidence
 alone (maximum PP3_St + PM2_Sup = 5); a new null variant in a loss-of-function
