@@ -225,7 +225,9 @@ workflow SAREK_CLINICAL {
             gcnv_fasta,
             gcnv_fai,
             file(params.gcnv_dict),
-            file(params.gcnv_mane_txt)
+            file(params.gcnv_mane_txt),
+            ch_germline_panel,
+            params.filters.germline_cnv.exclude_genes
         )
     }
 

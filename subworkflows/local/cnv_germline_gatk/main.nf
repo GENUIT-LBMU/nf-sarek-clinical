@@ -25,6 +25,8 @@ workflow CNV_GERMLINE_GATK {
     ch_fasta_fai        // path: reference FASTA .fai
     ch_fasta_dict       // path: reference .dict
     ch_mane_txt         // path: exons_mane.txt
+    ch_gene_panel       // path: germline panel (genes annotated)
+    exclude_genes       // val: comma-separated panel genes left out
     // exon_annotation.R is bundled in bin/ (from FlorPio/gatk-cnv-somatic)
 
     main:
@@ -67,7 +69,9 @@ workflow CNV_GERMLINE_GATK {
     // ── Step 5: MANE Annotation ───────────────────────────────────────────────
     MANE_ANNOTATE_GERMLINE_CNV(
         GATK_POSTPROCESS_GERMLINE_CNV_CALLS.out.segments_vcf,
-        ch_mane_txt
+        ch_mane_txt,
+        ch_gene_panel,
+        exclude_genes
     )
 
     emit:

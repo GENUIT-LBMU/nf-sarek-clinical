@@ -118,8 +118,8 @@ _TR = {
                           'es': 'Variantes Germinales (Clasificaci\u00f3n ACMG)'},
     'sect_somatic':      {'en': 'Somatic Variants (AMP/ASCO/CAP Tier Classification)',
                           'es': 'Variantes Som\u00e1ticas (Clasificaci\u00f3n AMP/ASCO/CAP)'},
-    'sect_germ_cnv':     {'en': 'Germline CNVs (GATK gCNV) \u2014 CN \u2260 2',
-                          'es': 'CNVs Germinales (GATK gCNV) \u2014 CN \u2260 2'},
+    'sect_germ_cnv':     {'en': 'Germline CNVs (GATK gCNV) \u2014 deletions / duplications',
+                          'es': 'CNVs Germinales (GATK gCNV) \u2014 deleciones / duplicaciones'},
     'sect_som_cnv':      {'en': 'Somatic CNVs \u2014 Reportable Events',
                           'es': 'CNVs Som\u00e1ticos \u2014 Eventos Reportables'},
     'sect_seqq':         {'en': 'Sequencing Quality \u2014 Per-Gene Coverage',
@@ -1844,7 +1844,7 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
 
 
 def build_germline_cnv_section(path, story, germline_panel_path=''):
-    """Append GATK germline CNV section: show segments with CN != 2.
+    """Append GATK germline CNV section: segments with ALT <DEL>/<DUP>.
 
     Only panel genes (105-gene cancer-predisposition panel) are reported.
     Filter: QA >= 4 (no NP filter — small CNVs of 1-3 exons are clinically critical).
@@ -1871,15 +1871,21 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
     with open(path) as fh:
         rows = list(_csv.DictReader(fh, delimiter='\t'))
 
-    # Group by segment (CHROM, POS, END), filter CN != 2
+    # Group by segment (CHROM, POS, END); events are ALT <DEL>/<DUP>, which
+    # gCNV sets against the contig ploidy (male chrX: 1 copy is reference).
+    # Old tables without ALT fall back to CN != 2.
+    def _is_event(row):
+        if 'ALT' in row:
+            return (row.get('ALT') or '').strip() in ('<DEL>', '<DUP>')
+        try:
+            return int((row.get('CN') or '2').strip()) != 2
+        except ValueError:
+            return False
+
     segments = {}
     seg_order = []
     for row in rows:
-        try:
-            cn_int = int(row.get('CN', '2').strip())
-        except ValueError:
-            cn_int = 2
-        if cn_int == 2:
+        if not _is_event(row):
             continue
         key = (row.get('CHROM', ''), row.get('POS', ''), row.get('END', ''))
         if key not in segments:
@@ -1928,9 +1934,9 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
             Paragraph(
                 '<b>Germline CNV Analysis \u2014 No Reportable Events</b><br/>'
                 'The GATK germline copy-number variant analysis did not identify '
-                'any copy-number alterations (CN \u2260 2) meeting the quality '
-                'threshold (QA \u2265 4) in the 105-gene germline '
-                'cancer predisposition panel. The raw annotated segments are '
+                'any deletion or duplication meeting the quality '
+                'threshold (QA \u2265 4) in the germline cancer predisposition '
+                'panel genes. The raw annotated segments are '
                 'available for manual review in:<br/>'
                 '\u00a0\u00a0<i>clinical_results/germline/cnv_gatk/annotated/</i>',
                 callout_style,
@@ -1954,6 +1960,10 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
             cn = int(cn_str)
         except (ValueError, TypeError):
             cn = -1
+        if alt == '<DEL>':
+            return 'HOMDEL' if cn == 0 else f'DEL (CN={cn})'
+        if alt == '<DUP>':
+            return f'AMP (CN={cn})' if cn >= 4 else f'DUP (CN={cn})'
         if cn == 0:   return 'HOMDEL'
         elif cn == 1: return 'DEL (CN=1)'
         elif cn == 3: return 'DUP (CN=3)'
@@ -2977,7 +2987,7 @@ def build_methodology_section(story):
         ['Germline SNVs',      'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
         ['Somatic SNVs',       'GATK Mutect2 v4 (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
         ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
-        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=4 Phred quality; CN!=2 reported for 105-gene germline panel only'],
+        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=4 Phred quality; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded'],
         ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold >=5%'],
         ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Consensus VCF input; SBS + ID + CN48 features; HRD+ threshold: probability >=0.45'],

@@ -8,7 +8,9 @@ library(GenomicRanges)
 #Archivos VCF : Mejor poner direcciones de VCF en un txt o la direccion de la carpeta con los txt
 option_list<-list(
   make_option("--vcf",help="text file containing list of vcf files, or directory containing all vcf files",dest='vcf'),
-  make_option("--MANE",help='MANE_Select file to be used',dest='MANE')
+  make_option("--MANE",help='MANE_Select file to be used',dest='MANE'),
+  make_option("--genes",help='gene panel file (first column = gene symbol, # = comment)',dest='genes'),
+  make_option("--exclude",default="",help='comma-separated genes removed from the panel',dest='exclude')
 )
 opt<-parse_args(OptionParser(option_list=option_list))
 
@@ -39,20 +41,22 @@ MANE_G <- makeGRangesFromDataFrame(MANE_file,
                                  end.field = "end",
                                  keep.extra.columns = TRUE)
 
-#Crear un vector con los genes de interes
-genes_list <- c("AIP", "ALK", "APC", "ATM", "ATR", "AXIN2", "BAP1", "BARD1", "BLM", "BMPR1A", "BRCA1", 
-                "BRCA2", "BRIP1", "BUB1B", "CASR", "CDC73", "CDH1", "CDK4", "CDKN1B", "CDKN2A", 
-                "CFTR", "CHEK2", "CTNNA1", "CTRC", "DICER1", "ENG", "EPCAM", "FANCC", "FANCD2", 
-                "FANCM", "FH", "FLCN", "GREM1", "HOXB13", "KIF1B", "KIT", "LZTR1", "MAX", "MBD4", 
-                "MEN1", "MET", "MITF", "MLH1", "MLH3", "MRE11A", "MSH2", "MSH3", "MSH6", "MUTYH", 
-                "NF1", "NF2", "NBN", "NTHL1", "PALB2", "PDGFRA", "PIK3CA", "PMS2", "POLD1", "POLE", 
-                "POT1", "PRKAR1A", "PRSS1", "PTCH1", "PTEN", "RAD51C", "RAD51D", "RB1", "RECQL", 
-                "RECQL4", "RET", "RNF43", "RPS20", "SDHA", "SDHAF2", "SDHB", "SDHC", "SDHD", "SMAD4", 
-                "SMARCA4", "SMARCB1", "SMARCE1", "SPINK1", "STK11", "SUFU", "TMEM127", "TP53", 
-                "TSC1", "TSC2", "VHL", "WRN", "CYP2D6") 
-
-
-
+#Lista de genes: primera columna del panel germinal, menos los excluidos
+if (is.null(opt$genes) || !file.exists(opt$genes)) {
+  stop("Falta el panel de genes (--genes): ", opt$genes)
+}
+panel_lines <- trimws(readLines(opt$genes))
+panel_lines <- panel_lines[panel_lines != "" & !startsWith(panel_lines, "#")]
+genes_list <- unique(trimws(sub("\t.*", "", panel_lines)))
+exclude <- trimws(strsplit(opt$exclude, ",")[[1]])
+genes_list <- setdiff(genes_list, exclude)
+if (length(genes_list) == 0) {
+  stop("La lista de genes quedó vacía: ", opt$genes)
+}
+missing_mane <- setdiff(genes_list, MANE_file$gene_symbol)
+if (length(missing_mane) > 0) {
+  stop("Genes del panel ausentes en MANE: ", paste(missing_mane, collapse = ", "))
+}
 
 #Si el vcf_file es un directorio, se leen todos los archivos vcf dentro de ese directorio
 

@@ -138,7 +138,7 @@ clinical_results/
 | 2 | **Germline–Somatic Correlation** | Two-hit events (P/LP germline + somatic second hit), biallelic somatic, MMR/HRR pathway integration |
 | 3 | **Germline SNVs** | 105-gene hereditary cancer panel; ACMG classification with ClinGen SVI points (PVS1 by mechanism, PM2_Supporting, calibrated REVEL), ClinVar (local release, with stars), gnomAD v4.1 |
 | 4 | **Pharmacogenomics** | DPYD, UGT1A1 — drug-metabolism variants from germline VCF |
-| 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM; only 105-gene panel reported (QA >= 4); MANE exon annotation |
+| 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on normal BAM; deletions / duplications (gCNV ALT, against contig ploidy) in the germline panel genes minus 16 somatic oncogenes (QA >= 4); MANE exon annotation |
 | 6 | **Somatic SNVs** | Split into *Clinically Actionable* (CIViC Tier I/II) and *Other* (Tier III) tables; Callers column shows M+S (consensus) or M (Mutect2-only); low-VAF warning for AF < 5% |
 | 7 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
 | 8 | **Somatic CNVs (GATK)** | Allele-specific paired CNV (tumour + normal BAMs); MANE annotation; diagnostic plots |
@@ -812,7 +812,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 | Section | Key parameters | Description |
 |---------|---------------|-------------|
 | `germline_snv` | `min_dp=5`, `vaf_min_high=0.20`, `vaf_min_moderate=0.20`, `vaf_floor_min_dp=20`, `vaf_max=0.75`, `multi_hit_distance=30`, `multi_hit_vaf=0.40`, `multi_hit_min_gq=20`, `gnomad_rescue_max=50`, `noncoding_splice=true` | Germline SNV depth, low-VAF floor, zygosity (`vaf_max`, not a filter), multi-hit nearby artefacts (low VAF, FILTER != PASS or low GQ), gnomAD API rescue, non-coding splice candidates (SpliceAI >= 0.2) |
-| `germline_cnv` | `min_qa=4` | Germline CNV quality (only panel genes are reported) |
+| `germline_cnv` | `min_qa=4`, `exclude_genes=AR,BRAF,CCND1,…` | Germline CNV quality; panel genes left out of germline CNV (somatic oncogenes) |
 | `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
 | `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, `ps1_score=4`, `pm5_score=2`, `pm1_score=2`, `pm1_sup_score=1`, `bs1_sup_score=-1`, `vcep_specs=true`, REVEL and SpliceAI cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
@@ -957,7 +957,7 @@ Built-in panels bundled in `assets/gene_panels/`. To use a custom panel: `--germ
 
 ### Germline SNV + CNV panel (105 genes)
 
-**File:** `germline_cancer_predisposition.txt` | **Used by:** Germline SNV filtering (HIGH/MODERATE impact; splice-region / synonymous / intronic with SpliceAI >= 0.2) + Germline CNV reporting (CN!=2, QA>=4)
+**File:** `germline_cancer_predisposition.txt` | **Used by:** Germline SNV filtering (HIGH/MODERATE impact; splice-region / synonymous / intronic with SpliceAI >= 0.2) + Germline CNV reporting (panel minus `filters.germline_cnv.exclude_genes`; `<DEL>`/`<DUP>`, QA>=4)
 
 Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.
 

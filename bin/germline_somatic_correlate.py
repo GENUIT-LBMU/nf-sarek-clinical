@@ -85,10 +85,10 @@ def load_germline_variants(path):
 
 
 def load_germline_cnv_variants(path, panel_genes=None):
-    """Load GATK gCNV germline deletions (CN<2, QA>=4) in panel genes.
+    """Load GATK gCNV germline deletions (ALT <DEL>, QA>=4) in panel genes.
 
     Returns one record per gene per segment with affected exons listed.
-    Duplications (CN>2) are excluded — they are not classic 1st TSG hits.
+    Duplications (<DUP>) are excluded — they are not classic 1st TSG hits.
     Only genes in the germline cancer-predisposition panel are reported.
     QA >= 4 : ALT allele Phred quality >= 4 (~60% confidence in the DEL/DUP call)
     """
@@ -107,7 +107,12 @@ def load_germline_cnv_variants(path, panel_genes=None):
                 cn_int = int(row.get('CN', '2').strip())
             except ValueError:
                 cn_int = 2
-            if cn_int >= 2:
+            # gCNV sets ALT against the contig ploidy (male chrX: CN=1 is
+            # reference); old tables without ALT fall back to CN < 2.
+            if 'ALT' in row:
+                if (row.get('ALT') or '').strip() != '<DEL>':
+                    continue
+            elif cn_int >= 2:
                 continue  # diploid or duplication — skip
             key = (row.get('CHROM', ''), row.get('POS', ''), row.get('END', ''))
             if key not in segments:

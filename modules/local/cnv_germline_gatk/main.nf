@@ -194,6 +194,8 @@ process MANE_ANNOTATE_GERMLINE_CNV {
     input:
     tuple val(sample), path(segments_vcf_gz)
     path mane_txt       // exons_mane.txt
+    path gene_panel     // germline panel: first column = gene symbol
+    val  exclude_genes  // comma-separated panel genes left out of germline CNV
 
     output:
     tuple val(sample), path("${sample}_segments_annotated.tsv"), emit: annotated_tsv
@@ -209,7 +211,9 @@ process MANE_ANNOTATE_GERMLINE_CNV {
     # Any R failure fails the task: a missing table must never read as "no CNV"
     Rscript ${projectDir}/bin/exon_annotation.R \\
         --vcf  vcf_in \\
-        --MANE ${mane_txt}
+        --MANE ${mane_txt} \\
+        --genes ${gene_panel} \\
+        --exclude "${exclude_genes}"
 
     # exon_annotation.R writes <input>.txt next to each input VCF
     out=vcf_in/${sample}_segments.txt

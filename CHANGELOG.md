@@ -42,6 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variants of the panel (e.g. MSH2 c.942+3A>T) could never be reported.
 
 ### Changed
+- Germline CNV gene list: `exon_annotation.R` reads `--genes` (the germline
+  panel, `params.germline_panel`) instead of a fixed list of 91 genes, minus
+  `filters.germline_cnv.exclude_genes` (16 somatic oncogenes: AR, BRAF,
+  CCND1-3, CCNE1, CDK6, EGFR, ERBB2, FGFR1-3, KRAS, MDM2, MDM4, MYC). MRE11 is
+  now annotated (the old list used MRE11A, absent from MANE); CYP2D6 and PRSS1
+  are out. The R stops if a panel gene is missing from the MANE exon table.
+- Germline CNV events are the gCNV ALT `<DEL>` / `<DUP>` (copy number against
+  the contig ploidy) instead of `CN != 2`, in the HTML, PDF and correlation.
+  With `CN != 2`, the single male chrX copy read as a deletion and a male chrX
+  CN=2 duplication was hidden. Section titles say "deletions / duplications".
 - REVEL PP3 / BP4 only when the MANE effect is missense: a synonymous or
   intronic MANE variant could carry the REVEL score of another transcript
   (`REVEL_v1.3_other_tx`; 4 such rows in 1128, all filtered by BA1).

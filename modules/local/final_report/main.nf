@@ -813,8 +813,18 @@ def tsv_to_html_somatic(path, civic_idx):
     )
 
 # ----
-# Germline CNV GATK table: CN != 2, deduplicated by segment, quality-badged
+# Germline CNV GATK table: ALT <DEL>/<DUP> (CN vs contig ploidy), deduplicated by segment, quality-badged
 # ----
+def germline_cnv_is_event(row):
+    # gCNV sets ALT to <DEL>/<DUP> against the contig ploidy (male chrX: 1 copy is
+    # reference). Old tables without ALT fall back to CN != 2.
+    if 'ALT' in row:
+        return (row.get('ALT') or '').strip() in ('<DEL>', '<DUP>')
+    try:
+        return int((row.get('CN') or '2').strip()) != 2
+    except ValueError:
+        return False
+
 def tsv_to_html_germline_cnv(path):
     # One row per exon -> group by (CHROM, POS, END). Only panel genes, QA >= 4.
     MIN_QA = int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA','4'))
@@ -831,11 +841,7 @@ def tsv_to_html_germline_cnv(path):
     seg_order = []
     for row in rows:
         cn_raw = row.get('CN', '2').strip()
-        try:
-            cn_int = int(cn_raw)
-        except ValueError:
-            cn_int = 2
-        if cn_int == 2:
+        if not germline_cnv_is_event(row):
             continue
         key = (row.get('CHROM',''), row.get('POS',''), row.get('END',''))
         if key not in segments:
@@ -875,8 +881,8 @@ def tsv_to_html_germline_cnv(path):
         return (
             "<div class='callout-info'>"
             "<strong>No Reportable Germline CNV Events</strong><br>"
-            "The GATK germline copy-number variant analysis did not identify any CN &ne; 2 events "
-            "meeting quality threshold in the 105-gene germline panel. "
+            "The GATK germline copy-number variant analysis did not identify any deletion or duplication "
+            "meeting quality threshold in the germline panel genes. "
             "Raw annotated segments are available for review in "
             "<code>germline/cnv_gatk/annotated/</code>."
             "</div>"
@@ -897,6 +903,10 @@ def tsv_to_html_germline_cnv(path):
             cn = int(cn_str)
         except (ValueError, TypeError):
             cn = -1
+        if alt == '<DEL>':
+            return "HOMDEL" if cn == 0 else "DEL (CN=" + str(cn) + ")"
+        if alt == '<DUP>':
+            return ("AMP (CN=" + str(cn) + ")") if cn >= 4 else ("DUP (CN=" + str(cn) + ")")
         if cn == 0: return "HOMDEL"
         elif cn == 1: return "DEL (CN=1)"
         elif cn == 3: return "DUP (CN=3)"
@@ -922,7 +932,7 @@ def tsv_to_html_germline_cnv(path):
             "</tr>\\n"
         )
     note = ("<div style='font-size:.75rem;color:rgba(226,232,240,.6);margin:6px 0 4px;'>"
-            + str(len(filtered)) + " segment(s) with CN &ne; 2 (NP &ge; 5 and QA &ge; 10)."
+            + str(len(filtered)) + " deletion / duplication segment(s) (NP &ge; 5 and QA &ge; 10)."
             " Quality: <span class='badge badge-P'>High</span> QS &ge; 30 &nbsp;"
             "<span class='badge badge-LP'>Medium</span> QS 10&ndash;29 &nbsp;"
             "<span class='badge badge-VUS'>Low</span> QS &lt; 10 (manual review recommended)."
@@ -1276,7 +1286,7 @@ sections += '<section><h2>Germline&#8211;Somatic Correlation</h2>' + _corr_html 
 
 # CNV sections
 # Germline: GATK gCNV — constitutional CN changes in normal sample (unchanged)
-sections += "<section><h2>Germline CNVs (GATK) &#8212; CN &ne; 2</h2>" + tsv_to_html_germline_cnv(cnv_germ_gatk) + "</section>\\n"
+sections += "<section><h2>Germline CNVs (GATK) &#8212; deletions / duplications</h2>" + tsv_to_html_germline_cnv(cnv_germ_gatk) + "</section>\\n"
 # Somatic: unified HOMDEL / AMP / LOH from CNVkit+ASCAT+GATK
 sections += ("<section><h2>Somatic CNVs &#8212; Reportable Events</h2>"
              + build_unified_cnv_html(files.get('Somatic CNVs', ''), cnv_som_gatk)
