@@ -10,7 +10,8 @@ option_list<-list(
   make_option("--vcf",help="text file containing list of vcf files, or directory containing all vcf files",dest='vcf'),
   make_option("--MANE",help='MANE_Select file to be used',dest='MANE'),
   make_option("--genes",help='gene panel file (first column = gene symbol, # = comment)',dest='genes'),
-  make_option("--exclude",default="",help='comma-separated genes removed from the panel',dest='exclude')
+  make_option("--exclude",default="",help='comma-separated genes removed from the panel',dest='exclude'),
+  make_option("--lowmap",help='low-mappability BED (0-based, may be gzipped)',dest='lowmap')
 )
 opt<-parse_args(OptionParser(option_list=option_list))
 
@@ -57,6 +58,14 @@ missing_mane <- setdiff(genes_list, MANE_file$gene_symbol)
 if (length(missing_mane) > 0) {
   stop("Genes del panel ausentes en MANE: ", paste(missing_mane, collapse = ", "))
 }
+
+#Regiones de baja mapeabilidad (BED, 0-based) -> GRanges 1-based
+if (is.null(opt$lowmap) || !file.exists(opt$lowmap)) {
+  stop("Falta el BED de baja mapeabilidad (--lowmap): ", opt$lowmap)
+}
+lowmap_df <- read.delim(opt$lowmap, header = FALSE, comment.char = "#",
+                        colClasses = c("character", "integer", "integer"))[, 1:3]
+LOWMAP_G <- reduce(GRanges(lowmap_df[[1]], IRanges(lowmap_df[[2]] + 1, lowmap_df[[3]])))
 
 #Si el vcf_file es un directorio, se leen todos los archivos vcf dentro de ese directorio
 
@@ -107,11 +116,27 @@ result <- list()
     gen = MANE_file$gene_symbol[subject_hits],
     exon = MANE_file$exon[subject_hits]
   )
+#Fraccion de cada exon (dentro del segmento) en baja mapeabilidad
+  exon_in_seg <- pintersect(vcf_G[[i]][query_hits], MANE_G[subject_hits], ignore.strand = TRUE)
+  ov <- findOverlaps(exon_in_seg, LOWMAP_G)
+  lm_bp <- numeric(length(exon_in_seg))
+  if (length(ov) > 0) {
+    w <- width(pintersect(exon_in_seg[queryHits(ov)], LOWMAP_G[subjectHits(ov)]))
+    lm_bp <- as.numeric(tapply(c(w, rep(0, length(exon_in_seg))),
+                               c(queryHits(ov), seq_along(exon_in_seg)), sum))
+  }
+  result[[i]]$exon_bp <- width(exon_in_seg)
+  result[[i]]$lowmap_bp <- lm_bp
 #Unir al data frame original los exones para no perder los calls en las regiones no anotadas por MANE y filtrar por lista de genes
 final <- vcf[[i]] |>
   left_join(result[[i]], by = c("CHROM" = "chr", "POS" = "start", "END" = "end")) |>
-  dplyr::select(CHROM, POS, END, ID, REF, ALT, QUAL, FILTER, GT, CN, NP, QA, QS, QSE, QSS, gen, exon) |>
-  dplyr::filter(gen %in% genes_list)
+  dplyr::filter(gen %in% genes_list) |>
+#LOWMAP: fraccion del exon; LOWMAP_SEG: fraccion de las bases exonicas del panel en el segmento
+  dplyr::group_by(CHROM, POS, END) |>
+  dplyr::mutate(LOWMAP = sprintf("%.2f", lowmap_bp / exon_bp),
+                LOWMAP_SEG = sprintf("%.2f", sum(lowmap_bp) / sum(exon_bp))) |>
+  dplyr::ungroup() |>
+  dplyr::select(CHROM, POS, END, ID, REF, ALT, QUAL, FILTER, GT, CN, NP, QA, QS, QSE, QSS, gen, exon, LOWMAP, LOWMAP_SEG)
 #Guardar el resultado final en un archivo de texto
 output_file[i] <- sub(".vcf", ".txt", filenames[i])
   print("Generado el anotado del VCF:")

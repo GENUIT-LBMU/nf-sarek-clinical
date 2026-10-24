@@ -92,8 +92,15 @@ def _int_or_none(value):
         return None
 
 
+def _float_or_none(value):
+    try:
+        return float((value or '').strip())
+    except ValueError:
+        return None
+
+
 def load_germline_cnv_variants(path, panel_genes=None):
-    """Load GATK gCNV germline deletions (ALT <DEL>, QA>=4) in panel genes.
+    """Load GATK gCNV germline deletions (ALT <DEL>, QA>=4, not low-mappability) in panel genes.
 
     Returns one record per gene per segment with affected exons listed.
     Duplications (<DUP>) are excluded — they are not classic 1st TSG hits.
@@ -101,6 +108,7 @@ def load_germline_cnv_variants(path, panel_genes=None):
     QA >= 4 : ALT allele Phred quality >= 4 (~60% confidence in the DEL/DUP call)
     """
     MIN_QA = int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA', '4'))
+    LOWMAP_FRAC = float(os.environ.get('FILT_GERMLINE_CNV_LOWMAP_FRAC', '0.5'))
     variants = []
     if not path or not os.path.isfile(path):
         return variants
@@ -135,6 +143,9 @@ def load_germline_cnv_variants(path, panel_genes=None):
                     'np':    np_val,
                     'qa':    _int_or_none(row.get('QA')),
                     'qs':    row.get('QS', '.'),
+                    # fraction of panel exon bp in low-mappability regions
+                    # (pseudogenes / paralogs); None for old tables
+                    'lowmap': _float_or_none(row.get('LOWMAP_SEG')),
                     'genes': {},   # gene -> set of exon ints
                 }
                 seg_order.append(key)
@@ -156,6 +167,8 @@ def load_germline_cnv_variants(path, panel_genes=None):
             continue
         if seg['qa'] < MIN_QA:
             continue
+        if seg['lowmap'] is not None and seg['lowmap'] >= LOWMAP_FRAC:
+            continue  # shown apart in the reports, never a first hit
         cn  = seg['cn']
         locus = seg['chrom'] + ':' + seg['pos'] + '-' + seg['end']
         for gene, exon_set in seg['genes'].items():

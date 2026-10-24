@@ -525,7 +525,8 @@ civic_index = load_civic_index(files['CIViC annotation'])
 
 # ----
 import sys as _sys3; _sys3.path.insert(0, '${projectDir}/bin')
-from final_report_sections import (_CPIC_TABLE, _alert_badge, tsv_to_html_pharmaco, fetch_clinical_trials_html, build_methodology_html)
+from final_report_sections import (_CPIC_TABLE, _alert_badge, tsv_to_html_pharmaco, fetch_clinical_trials_html, build_methodology_html,
+                                   tsv_to_html_germline_cnv)
 
 # ----
 # Generic TSV -> HTML table
@@ -810,138 +811,6 @@ def tsv_to_html_somatic(path, civic_idx):
         filter_bar +
         "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
         "<tbody id='tbl-somatic'>" + tbody + "</tbody></table></div>"
-    )
-
-# ----
-# Germline CNV GATK table: ALT <DEL>/<DUP> (CN vs contig ploidy), deduplicated by segment, quality-badged
-# ----
-def germline_cnv_is_event(row):
-    # gCNV sets ALT to <DEL>/<DUP> against the contig ploidy (male chrX: 1 copy is
-    # reference). Old tables without ALT fall back to CN != 2.
-    if 'ALT' in row:
-        return (row.get('ALT') or '').strip() in ('<DEL>', '<DUP>')
-    try:
-        return int((row.get('CN') or '2').strip()) != 2
-    except ValueError:
-        return False
-
-def tsv_to_html_germline_cnv(path):
-    # One row per exon -> group by (CHROM, POS, END). Only panel genes, QA >= MIN_QA.
-    MIN_QA = int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA','4'))
-    _panel_genes = _load_panel(_GERMLINE_PANEL)
-    if not path or not os.path.isfile(path):
-        return "<p class='warn'>Germline CNV (GATK) file not found: " + html.escape(path or "N/A") + "</p>"
-    with open(path) as fh:
-        reader = csv.DictReader(fh, delimiter='\\t')
-        rows = list(reader)
-    if not rows:
-        return "<p class='warn'>Germline CNV (GATK): empty file</p>"
-    # Group rows by segment
-    segments = {}
-    seg_order = []
-    for row in rows:
-        cn_raw = row.get('CN', '2').strip()
-        if not germline_cnv_is_event(row):
-            continue
-        key = (row.get('CHROM',''), row.get('POS',''), row.get('END',''))
-        if key not in segments:
-            segments[key] = {
-                'chrom': row.get('CHROM',''),
-                'pos':   row.get('POS',''),
-                'end':   row.get('END',''),
-                'alt':   row.get('ALT','.'),
-                'qual':  row.get('QUAL','.'),
-                'filter':row.get('FILTER','.'),
-                'gt':    row.get('GT','.'),
-                'cn':    cn_raw,
-                'np':    row.get('NP','.'),
-                'qa':    row.get('QA','0'),
-                'qs':    row.get('QS','.'),
-                'genes': [],
-            }
-            seg_order.append(key)
-        gene = row.get('gen','').strip()
-        if gene and gene not in segments[key]['genes']:
-            segments[key]['genes'].append(gene)
-    # Panel genes only, QA >= MIN_QA
-    filtered = []
-    for key in seg_order:
-        seg = segments[key]
-        try:
-            qa_val = int(float(seg.get('qa') or ''))
-        except (ValueError, TypeError, OverflowError):
-            continue  # non-numeric QA: treated as below threshold
-        if qa_val < MIN_QA:
-            continue
-        panel_hits = [g for g in seg['genes'] if g in _panel_genes]
-        if panel_hits:
-            seg['genes'] = panel_hits
-            filtered.append(seg)
-    if not filtered:
-        return (
-            "<div class='callout-info'>"
-            "<strong>No Reportable Germline CNV Events</strong><br>"
-            "The GATK germline copy-number variant analysis did not identify any deletion or duplication "
-            "meeting the quality threshold (QA &ge; " + str(MIN_QA) + ") in the germline panel genes "
-            "(somatic oncogenes excluded). "
-            "Raw annotated segments are available for review in "
-            "<code>germline/cnv_gatk/annotated/</code>."
-            "</div>"
-        )
-    def qs_badge(qs_str):
-        try:
-            qs = float(qs_str)
-        except (ValueError, TypeError):
-            return "<span class='badge badge-III'>Unknown</span>"
-        if qs >= 30:
-            return "<span class='badge badge-P'>High</span>"
-        elif qs >= 10:
-            return "<span class='badge badge-LP'>Medium</span>"
-        else:
-            return "<span class='badge badge-VUS'>Low</span>"
-    def cn_type(alt, cn_str):
-        try:
-            cn = int(cn_str)
-        except (ValueError, TypeError):
-            cn = -1
-        if alt == '<DEL>':
-            return "HOMDEL" if cn == 0 else "DEL (CN=" + str(cn) + ")"
-        if alt == '<DUP>':
-            return ("AMP (CN=" + str(cn) + ")") if cn >= 4 else ("DUP (CN=" + str(cn) + ")")
-        if cn == 0: return "HOMDEL"
-        elif cn == 1: return "DEL (CN=1)"
-        elif cn == 3: return "DUP (CN=3)"
-        elif cn >= 4: return "AMP (CN=" + str(cn) + ")"
-        return alt or "CNV"
-    th = ("<th>Locus</th><th>Gene(s)</th><th>Type</th><th>CN</th>"
-          "<th>NP (intervals)</th><th>QA</th><th>QS</th><th>Quality</th>")
-    tbody = ""
-    for seg in filtered:
-        locus = seg['chrom'] + ":" + seg['pos'] + "-" + seg['end']
-        genes = ", ".join(seg['genes']) if seg['genes'] else "."
-        ctype = cn_type(seg['alt'], seg['cn'])
-        tbody += (
-            "<tr>"
-            "<td>" + html.escape(locus) + "</td>"
-            "<td><strong>" + html.escape(genes) + "</strong></td>"
-            "<td>" + html.escape(ctype) + "</td>"
-            "<td>" + html.escape(seg['cn']) + "</td>"
-            "<td>" + html.escape(seg['np']) + "</td>"
-            "<td>" + html.escape(seg['qa']) + "</td>"
-            "<td>" + html.escape(seg['qs']) + "</td>"
-            "<td>" + qs_badge(seg['qs']) + "</td>"
-            "</tr>\\n"
-        )
-    note = ("<div style='font-size:.75rem;color:rgba(226,232,240,.6);margin:6px 0 4px;'>"
-            + str(len(filtered)) + " deletion / duplication segment(s) (germline panel genes, somatic oncogenes excluded; QA &ge; " + str(MIN_QA) + ")."
-            " Quality: <span class='badge badge-P'>High</span> QS &ge; 30 &nbsp;"
-            "<span class='badge badge-LP'>Medium</span> QS 10&ndash;29 &nbsp;"
-            "<span class='badge badge-VUS'>Low</span> QS &lt; 10 (manual review recommended)."
-            "</div>")
-    return (
-        note +
-        "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
-        "<tbody>" + tbody + "</tbody></table></div>"
     )
 
 # ----
@@ -1287,7 +1156,7 @@ sections += '<section><h2>Germline&#8211;Somatic Correlation</h2>' + _corr_html 
 
 # CNV sections
 # Germline: GATK gCNV — constitutional CN changes in normal sample (unchanged)
-sections += "<section><h2>Germline CNVs (GATK) &#8212; deletions / duplications</h2>" + tsv_to_html_germline_cnv(cnv_germ_gatk) + "</section>\\n"
+sections += "<section><h2>Germline CNVs (GATK) &#8212; deletions / duplications</h2>" + tsv_to_html_germline_cnv(cnv_germ_gatk, _load_panel(_GERMLINE_PANEL)) + "</section>\\n"
 # Somatic: unified HOMDEL / AMP / LOH from CNVkit+ASCAT+GATK
 sections += ("<section><h2>Somatic CNVs &#8212; Reportable Events</h2>"
              + build_unified_cnv_html(files.get('Somatic CNVs', ''), cnv_som_gatk)

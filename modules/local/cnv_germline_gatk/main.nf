@@ -202,6 +202,7 @@ process MANE_ANNOTATE_GERMLINE_CNV {
     path mane_txt       // exons_mane.txt
     path gene_panel     // germline panel: first column = gene symbol
     val  exclude_genes  // comma-separated panel genes left out of germline CNV
+    path lowmap_bed     // low-mappability regions (scripts/build_lowmap_panel.sh)
 
     output:
     tuple val(sample), path("${sample}_segments_annotated.tsv"), emit: annotated_tsv
@@ -219,7 +220,8 @@ process MANE_ANNOTATE_GERMLINE_CNV {
         --vcf  vcf_in \\
         --MANE ${mane_txt} \\
         --genes ${gene_panel} \\
-        --exclude "${exclude_genes}"
+        --exclude "${exclude_genes}" \\
+        --lowmap ${lowmap_bed}
 
     # exon_annotation.R writes <input>.txt next to each input VCF
     out=vcf_in/${sample}_segments.txt
@@ -230,7 +232,7 @@ process MANE_ANNOTATE_GERMLINE_CNV {
 
     # The report readers need these columns; anything else is a broken table
     header="\$(head -1 "\$out")"
-    for col in CHROM POS END CN QA gen; do
+    for col in CHROM POS END CN QA gen LOWMAP LOWMAP_SEG; do
         if ! printf '%s\\n' "\$header" | tr '\\t' '\\n' | grep -qx "\$col"; then
             echo "ERROR: \$out lacks column \$col (header: \$header)" >&2
             exit 1

@@ -138,7 +138,7 @@ clinical_results/
 | 2 | **Germline–Somatic Correlation** | Two-hit events (P/LP germline + somatic second hit), biallelic somatic, MMR/HRR pathway integration |
 | 3 | **Germline SNVs** | 105-gene hereditary cancer panel; ACMG classification with ClinGen SVI points (PVS1 by mechanism, PM2_Supporting, calibrated REVEL), ClinVar (local release, with stars), gnomAD v4.1 |
 | 4 | **Pharmacogenomics** | DPYD, UGT1A1 — drug-metabolism variants from germline VCF |
-| 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on the normal BAM (or CRAM, with `--cram_fasta`); deletions / duplications (gCNV ALT, against contig ploidy) in the germline panel genes minus 16 somatic oncogenes (QA >= 4); MANE exon annotation |
+| 5 | **Germline CNVs (GATK gCNV)** | Copy-number calls on the normal BAM (or CRAM, with `--cram_fasta`); deletions / duplications (gCNV ALT, against contig ploidy) in the germline panel genes minus 16 somatic oncogenes (QA >= 4); MANE exon annotation; segments in GIAB low-mappability regions (pseudogenes: CHEK2 ex11-15, PMS2CL, SDHA, FANCD2, NF1) listed apart, need orthogonal confirmation, not correlated |
 | 6 | **Somatic SNVs** | Split into *Clinically Actionable* (CIViC Tier I/II) and *Other* (Tier III) tables; Callers column shows M+S (consensus) or M (Mutect2-only); low-VAF warning for AF < 5% |
 | 7 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
 | 8 | **Somatic CNVs (GATK)** | Allele-specific paired CNV (tumour + normal BAMs); MANE annotation; diagnostic plots |
@@ -222,6 +222,7 @@ gcnv_interval_list: /data/refs/cnv/exomas.interval_list
 gcnv_fasta:         /data/refs/hg38/hg38.fa
 gcnv_dict:          /data/refs/hg38/hg38.dict
 gcnv_mane_txt:      /data/refs/cnv/exons_mane.txt
+gcnv_lowmap_bed:    /data/refs/cnv/lowmap/GRCh38_lowmappabilityall_panel.bed.gz
 
 # Somatic GATK CNV
 somatic_pon_hdf5:        /data/refs/cnv/wes-do-gc.pon.hdf5
@@ -509,6 +510,29 @@ and the `GNOMAD_*` columns (FAF95 grpmax, ancestry group, admixed-American AF,
 homozygote counts, gnomAD FILTER, and grpmax AF / AC / AN for the ClinGen VCEP
 rules; resources built before 2026-10-23 lack these and use the general rules).
 
+### Low-mappability BED — germline CNV flags (required for germline CNV)
+
+GIAB genome stratifications v3.3 (`GRCh38_lowmappabilityall`) restricted to the
+MANE exons (±1 kb) of the germline panel. Read counts in pseudogene / paralog
+regions (CHEK2 exons 11–15, PMS2 / PMS2CL, SDHA, FANCD2, NF1, …) are unreliable:
+reads map with low MAPQ and gCNV calls recurrent artefacts (CHEK2 exon 14 HOMDEL
+in most normals). Segments with ≥ `filters.germline_cnv.lowmap_min_frac` (0.5) of
+their panel exon bases in these regions are listed in a separate table that asks
+for orthogonal confirmation (MLPA), and are not used by the germline–somatic
+correlation. They are not hidden: real PMS2 exon 12–15 deletions fall there.
+
+```bash
+bash scripts/build_lowmap_panel.sh \
+    --genes assets/gene_panels/germline_cancer_predisposition.txt \
+    --mane  /data/refs/cnv/exons_mane.txt \
+    --outdir /data/refs/cnv/lowmap
+# → GRCh38_lowmappabilityall_panel.bed.gz, manifest (needs curl + bedtools)
+```
+
+Then set `gcnv_lowmap_bed: /data/refs/cnv/lowmap/GRCh38_lowmappabilityall_panel.bed.gz`.
+The annotated germline CNV TSV gains `LOWMAP` (fraction of each exon) and
+`LOWMAP_SEG` (fraction of the segment's panel exon bases).
+
 ### snpEff MANE database — germline nomenclature (recommended)
 
 Sarek runs snpEff with `-canon`, which keeps the transcript with the longest CDS.
@@ -761,6 +785,7 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--skip_germline_cnv` | `false` | Skip GATK germline gCNV |
+| `--gcnv_lowmap_bed` | — | Low-mappability BED for germline CNV (`scripts/build_lowmap_panel.sh`); required unless `--skip_germline_cnv` |
 | `--cram_fasta` | — | FASTA (+ `.fai`, `.dict`) Sarek wrote the CRAMs with; needed only when a normal has CRAM and no BAM (BAM is used when present) |
 | `--skip_somatic_cnv` | `false` | Skip ASCAT + CNVkit interpretation |
 | `--skip_somatic_cnv_gatk` | `false` | Skip GATK somatic CNV |
@@ -813,7 +838,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 | Section | Key parameters | Description |
 |---------|---------------|-------------|
 | `germline_snv` | `min_dp=5`, `vaf_min_high=0.20`, `vaf_min_moderate=0.20`, `vaf_floor_min_dp=20`, `vaf_max=0.75`, `multi_hit_distance=30`, `multi_hit_vaf=0.40`, `multi_hit_min_gq=20`, `gnomad_rescue_max=50`, `noncoding_splice=true` | Germline SNV depth, low-VAF floor, zygosity (`vaf_max`, not a filter), multi-hit nearby artefacts (low VAF, FILTER != PASS or low GQ), gnomAD API rescue, non-coding splice candidates (SpliceAI >= 0.2) |
-| `germline_cnv` | `min_qa=4`, `exclude_genes=AR,BRAF,CCND1,…` | Germline CNV quality; panel genes left out of germline CNV (somatic oncogenes) |
+| `germline_cnv` | `min_qa=4`, `lowmap_min_frac=0.5`, `exclude_genes=AR,BRAF,CCND1,…` | Germline CNV quality; low-mappability fraction above which a segment is listed apart; panel genes left out of germline CNV (somatic oncogenes) |
 | `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
 | `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, `ps1_score=4`, `pm5_score=2`, `pm1_score=2`, `pm1_sup_score=1`, `bs1_sup_score=-1`, `vcep_specs=true`, REVEL and SpliceAI cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |

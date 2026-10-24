@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Germline CNV low-mappability flag (`--gcnv_lowmap_bed`, built by
+  `scripts/build_lowmap_panel.sh` from GIAB stratifications v3.3
+  `GRCh38_lowmappabilityall`, panel MANE exons ±1 kb). The annotated TSV gains
+  `LOWMAP` / `LOWMAP_SEG`; segments with >= `lowmap_min_frac` (0.5) of their panel
+  exon bases in these regions go to a separate "low-mappability — orthogonal
+  confirmation required" table in HTML and PDF and are not used by the
+  correlation. CHEK2 exon 14 HOMDEL (pseudogene artefact, 5 of 7 normals, shown as
+  "High" and as a first hit) and a FANCD2 HOMDEL in 1229 move there; MLH1
+  exon 4–6 deletion in 711 is unchanged.
 - Local gnomAD v4.1 population frequencies for germline SNVs (`--gnomad_tsv`).
   `scripts/build_gnomad_panel.sh` builds a ~13 MB subset of gnomAD v4.1 joint
   (exomes+genomes) over the MANE exons (±100 bp) of the panel genes; the new

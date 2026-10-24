@@ -216,6 +216,8 @@ workflow SAREK_CLINICAL {
         if (!params.gcnv_fasta)         error("--gcnv_fasta is required when --skip_germline_cnv false")
         if (!params.gcnv_dict)          error("--gcnv_dict is required when --skip_germline_cnv false")
         if (!params.gcnv_mane_txt)      error("--gcnv_mane_txt is required when --skip_germline_cnv false")
+        if (!params.gcnv_lowmap_bed)    error("--gcnv_lowmap_bed is required when --skip_germline_cnv false (build it with scripts/build_lowmap_panel.sh)")
+        if (!file(params.gcnv_lowmap_bed).exists()) error("--gcnv_lowmap_bed not found: ${params.gcnv_lowmap_bed}")
 
         def gcnv_fasta = file(params.gcnv_fasta)
         def gcnv_fai   = file("${params.gcnv_fasta}.fai")
@@ -252,7 +254,8 @@ workflow SAREK_CLINICAL {
             cram_fai,
             cram_dict,
             ch_germline_panel,
-            params.filters.germline_cnv.exclude_genes
+            params.filters.germline_cnv.exclude_genes,
+            file(params.gcnv_lowmap_bed)
         )
     }
 

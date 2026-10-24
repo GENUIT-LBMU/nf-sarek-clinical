@@ -26,6 +26,7 @@ from xml.sax.saxutils import escape as xml_escape
 # ---------------------------------------------------------------------------
 _E = os.environ.get
 FILT_GERMLINE_CNV_MIN_QA = int(_E('FILT_GERMLINE_CNV_MIN_QA', '4'))
+FILT_GERMLINE_CNV_LOWMAP_FRAC = float(_E('FILT_GERMLINE_CNV_LOWMAP_FRAC', '0.5'))
 BIO_TMB_HIGH       = float(_E('BIO_TMB_HIGH', '10.0'))
 BIO_TMB_BORDERLINE = float(_E('BIO_TMB_BORDERLINE', '6.0'))
 BIO_MSI_HIGH       = float(_E('BIO_MSI_HIGH', '3.5'))
@@ -1848,6 +1849,8 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
 
     Only germline panel genes (somatic oncogenes excluded upstream) are reported.
     Filter: QA >= FILT_GERMLINE_CNV_MIN_QA (no NP filter — small CNVs of 1-3 exons are clinically critical).
+    Segments with LOWMAP_SEG >= FILT_GERMLINE_CNV_LOWMAP_FRAC (pseudogenes / paralogs)
+    go to a separate table, never to the main one.
     """
     story.append(PageBreak())
     story.append(Paragraph(T('sect_germ_cnv'), STYLE_H2))
@@ -1882,6 +1885,14 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
         except ValueError:
             return False
 
+    # LOWMAP_SEG: fraction of the segment's panel exon bp in low-mappability
+    # regions; None for old tables without the column.
+    def _lowmap(row):
+        try:
+            return float((row.get('LOWMAP_SEG') or '').strip())
+        except ValueError:
+            return None
+
     segments = {}
     seg_order = []
     for row in rows:
@@ -1898,6 +1909,7 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
                 'np':    row.get('NP', '.'),
                 'qa':    row.get('QA', '0'),
                 'qs':    row.get('QS', '.'),
+                'lowmap': _lowmap(row),
                 'genes': [],
             }
             seg_order.append(key)
@@ -1920,6 +1932,9 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
         if panel_hits:
             seg['genes'] = panel_hits
             filtered.append(seg)
+    LOWMAP_FRAC = FILT_GERMLINE_CNV_LOWMAP_FRAC
+    lowmap_segs = [s for s in filtered if s['lowmap'] is not None and s['lowmap'] >= LOWMAP_FRAC]
+    filtered = [s for s in filtered if s not in lowmap_segs]
 
     if not filtered:
         # Styled callout box
@@ -1936,7 +1951,9 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
                 'The GATK germline copy-number variant analysis did not identify '
                 'any deletion or duplication meeting the quality '
                 'threshold (QA \u2265 ' + str(MIN_QA) + ') in the germline cancer predisposition '
-                'panel genes. The raw annotated segments are '
+                'panel genes'
+                + (' outside low-mappability regions (see below)' if lowmap_segs else '') +
+                '. The raw annotated segments are '
                 'available for manual review in:<br/>'
                 '\u00a0\u00a0<i>clinical_results/germline/cnv_gatk/annotated/</i>',
                 callout_style,
@@ -1953,7 +1970,6 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
             ('ROUNDEDCORNERS', [4]),
         ]))
         story.append(callout_tbl)
-        return
 
     def cn_type(alt, cn_str):
         try:
@@ -1973,33 +1989,55 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
     col_headers = ['Locus', 'Gene(s)', 'Type', 'CN', 'NP', 'QA', 'QS', 'Quality']
     col_widths  = [USABLE_W * w for w in [0.20, 0.16, 0.12, 0.05, 0.06, 0.06, 0.06, 0.09]]
 
-    data_rows = []
-    for seg in filtered:
-        locus = seg['chrom'] + ':' + seg['pos'] + '-' + seg['end']
-        genes = ', '.join(seg['genes']) if seg['genes'] else '.'
-        ctype = cn_type(seg['alt'], seg['cn'])
-        try:
-            qs_f = float(seg['qs'])
-            qs_label = 'High' if qs_f >= 30 else ('Medium' if qs_f >= 10 else 'Low')
-        except (ValueError, TypeError):
-            qs_label = 'Unknown'
-        data_rows.append([locus, genes, ctype, seg['cn'], seg['np'], seg['qa'], seg['qs'], qs_label])
-
-    tbl = build_variant_table(
-        col_headers, col_widths, data_rows,
-        colour_col_idx=7,
-        colour_fn=lambda val: (C_ACMG_P if val == 'High' else
-                               (C_ACMG_LP if val == 'Medium' else
-                                (C_ACMG_VUS if val == 'Low' else colors.grey))),
-    )
     note_style = ParagraphStyle('CnvNote', parent=styles['Normal'],
                                 fontSize=6, textColor=colors.Color(0.6, 0.7, 0.8))
-    story.append(Paragraph(
-        str(len(filtered)) + ' segment(s) shown (germline panel genes, somatic oncogenes excluded; QA \u2265 '
-        + str(MIN_QA) + '). Quality: '
-        'High (QS \u226530), Medium (QS 10\u201329), Low (QS <10 \u2014 manual review recommended).',
-        note_style))
-    story.append(tbl)
+    if filtered:
+        data_rows = []
+        for seg in filtered:
+            locus = seg['chrom'] + ':' + seg['pos'] + '-' + seg['end']
+            genes = ', '.join(seg['genes']) if seg['genes'] else '.'
+            ctype = cn_type(seg['alt'], seg['cn'])
+            try:
+                qs_f = float(seg['qs'])
+                qs_label = 'High' if qs_f >= 30 else ('Medium' if qs_f >= 10 else 'Low')
+            except (ValueError, TypeError):
+                qs_label = 'Unknown'
+            data_rows.append([locus, genes, ctype, seg['cn'], seg['np'], seg['qa'], seg['qs'], qs_label])
+
+        tbl = build_variant_table(
+            col_headers, col_widths, data_rows,
+            colour_col_idx=7,
+            colour_fn=lambda val: (C_ACMG_P if val == 'High' else
+                                   (C_ACMG_LP if val == 'Medium' else
+                                    (C_ACMG_VUS if val == 'Low' else colors.grey))),
+        )
+        story.append(Paragraph(
+            str(len(filtered)) + ' segment(s) shown (germline panel genes, somatic oncogenes excluded; QA \u2265 '
+            + str(MIN_QA) + '). Quality: '
+            'High (QS \u226530), Medium (QS 10\u201329), Low (QS <10 \u2014 manual review recommended).',
+            note_style))
+        story.append(tbl)
+
+    if lowmap_segs:
+        lm_rows = []
+        for seg in lowmap_segs:
+            lm_rows.append([seg['chrom'] + ':' + seg['pos'] + '-' + seg['end'],
+                            ', '.join(seg['genes']) if seg['genes'] else '.',
+                            cn_type(seg['alt'], seg['cn']), seg['cn'], seg['np'], seg['qa'], seg['qs'],
+                            str(int(round(seg['lowmap'] * 100))) + '%'])
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(
+            '<b>Low-mappability regions (pseudogenes / paralogs) \u2014 not reportable without '
+            'orthogonal confirmation</b>', styles['Normal']))
+        story.append(Paragraph(
+            str(len(lowmap_segs)) + ' segment(s) with \u2265 ' + str(int(round(LOWMAP_FRAC * 100)))
+            + '% of their panel exon bases in GIAB low-mappability regions. Read counts there are '
+            'unreliable (reads map to the pseudogene with low MAPQ); confirm by MLPA or another '
+            'orthogonal method before clinical use. Not used in the germline\u2013somatic correlation.',
+            note_style))
+        story.append(build_variant_table(
+            col_headers[:-1] + ['Low-map'], col_widths, lm_rows,
+            colour_col_idx=7, colour_fn=lambda val: colors.grey))
 
 
 def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, story,
@@ -2988,7 +3026,7 @@ def build_methodology_section(story):
         ['Germline SNVs',      'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
         ['Somatic SNVs',       'GATK Mutect2 v4 (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
         ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
-        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=' + str(FILT_GERMLINE_CNV_MIN_QA) + ' Phred quality; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded'],
+        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=' + str(FILT_GERMLINE_CNV_MIN_QA) + ' Phred quality; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded; GIAB low-mappability segments shown apart'],
         ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold >=5%'],
         ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Consensus VCF input; SBS + ID + CN48 features; HRD+ threshold: probability >=0.45'],
@@ -3018,7 +3056,9 @@ def build_methodology_section(story):
         '<b>Germline SNV + CNV panel (105 genes):</b> Used for germline SNV filtering '
         '(HIGH/MODERATE impact variants; splice-region, synonymous and intronic with SpliceAI >= 0.2) '
         'and germline CNV reporting (deletions / duplications vs contig ploidy, somatic oncogenes '
-        'excluded, QA\u2265' + str(FILT_GERMLINE_CNV_MIN_QA) + '). '
+        'excluded, QA\u2265' + str(FILT_GERMLINE_CNV_MIN_QA) + '; segments with \u2265'
+        + str(int(round(FILT_GERMLINE_CNV_LOWMAP_FRAC * 100))) + '% of exon bases in GIAB low-mappability '
+        'regions are listed apart and need orthogonal confirmation). '
         'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
         '<font size="5.5">AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, '
         'BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, '

@@ -30,6 +30,7 @@ workflow CNV_GERMLINE_GATK {
     ch_cram_dict        // path: its .dict
     ch_gene_panel       // path: germline panel (genes annotated)
     exclude_genes       // val: comma-separated panel genes left out
+    ch_lowmap_bed       // path: low-mappability BED (segments flagged, not hidden)
     // exon_annotation.R is bundled in bin/ (from FlorPio/gatk-cnv-somatic)
 
     main:
@@ -77,7 +78,8 @@ workflow CNV_GERMLINE_GATK {
         GATK_POSTPROCESS_GERMLINE_CNV_CALLS.out.segments_vcf,
         ch_mane_txt,
         ch_gene_panel,
-        exclude_genes
+        exclude_genes,
+        ch_lowmap_bed
     )
 
     emit:

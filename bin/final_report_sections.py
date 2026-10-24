@@ -16,6 +16,7 @@ import os
 import csv
 
 _GCNV_MIN_QA = str(int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA', '4')))
+_GCNV_LOWMAP_PCT = str(int(round(float(os.environ.get('FILT_GERMLINE_CNV_LOWMAP_FRAC', '0.5')) * 100)))
 
 # ---------------------------------------------------------------------------
 # CPIC Pharmacogenomics lookup table
@@ -254,7 +255,7 @@ def build_methodology_html():
         ['Germline SNVs',     'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
         ['Somatic SNVs',      'GATK Mutect2 v4 (tumor&ndash;normal mode)',        'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA&ndash;III'],
         ['Somatic CNVs',      'ASCAT v3 + CNVkit v0.9 (consensus)',               'GRCh38', 'HOMDEL (CN=0), AMP (CN&ge;5), 2nd-hit LOH; 38-gene somatic CNV panel'],
-        ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;' + _GCNV_MIN_QA + ' Phred; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded'],
+        ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;' + _GCNV_MIN_QA + ' Phred; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded; GIAB low-mappability segments shown apart'],
         ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold &ge;5%'],
         ['Somatic Consensus', 'bcftools isec (Mutect2 &cap; Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT preserved'],
         ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'Consensus VCF input; HRD+ threshold: probability &ge;0.45; SBS3/SBS8'],
@@ -276,7 +277,7 @@ def build_methodology_html():
     detail_sections = [
         ('Gene Panels',
          '<b>Germline SNV + CNV panel (105 genes)</b> &mdash; Used for germline SNV filtering '
-         '(HIGH/MODERATE impact; splice-region, synonymous and intronic with SpliceAI &ge;0.2) and germline CNV reporting (deletions / duplications, somatic oncogenes excluded, QA&ge;' + _GCNV_MIN_QA + '). '
+         '(HIGH/MODERATE impact; splice-region, synonymous and intronic with SpliceAI &ge;0.2) and germline CNV reporting (deletions / duplications, somatic oncogenes excluded, QA&ge;' + _GCNV_MIN_QA + '; segments with &ge;' + _GCNV_LOWMAP_PCT + '% of exon bases in GIAB low-mappability regions are listed apart and need orthogonal confirmation). '
          'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
          '<span style="font-size:0.75em; color:#94a3b8;">'
          'AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, '
@@ -372,3 +373,172 @@ def build_methodology_html():
     )
 
     return method_css + overview_table + details_html + disclaimer
+
+
+# ----
+# Germline CNV GATK table: ALT <DEL>/<DUP> (CN vs contig ploidy), deduplicated by segment, quality-badged
+# ----
+def germline_cnv_is_event(row):
+    # gCNV sets ALT to <DEL>/<DUP> against the contig ploidy (male chrX: 1 copy is
+    # reference). Old tables without ALT fall back to CN != 2.
+    if 'ALT' in row:
+        return (row.get('ALT') or '').strip() in ('<DEL>', '<DUP>')
+    try:
+        return int((row.get('CN') or '2').strip()) != 2
+    except ValueError:
+        return False
+
+def germline_cnv_lowmap(row):
+    # LOWMAP_SEG = fraction of the segment's panel exon bp in low-mappability
+    # regions (pseudogenes / paralogs); None for old tables without the column.
+    try:
+        return float((row.get('LOWMAP_SEG') or '').strip())
+    except ValueError:
+        return None
+
+def tsv_to_html_germline_cnv(path, _panel_genes):
+    # One row per exon -> group by (CHROM, POS, END). Only panel genes, QA >= MIN_QA.
+    # Low-mappability segments go to a separate table, never to the main one.
+    MIN_QA = int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA','4'))
+    LOWMAP_FRAC = float(os.environ.get('FILT_GERMLINE_CNV_LOWMAP_FRAC','0.5'))
+    if not path or not os.path.isfile(path):
+        return "<p class='warn'>Germline CNV (GATK) file not found: " + html.escape(path or "N/A") + "</p>"
+    with open(path) as fh:
+        reader = csv.DictReader(fh, delimiter='\t')
+        rows = list(reader)
+    if not rows:
+        return "<p class='warn'>Germline CNV (GATK): empty file</p>"
+    # Group rows by segment
+    segments = {}
+    seg_order = []
+    for row in rows:
+        cn_raw = row.get('CN', '2').strip()
+        if not germline_cnv_is_event(row):
+            continue
+        key = (row.get('CHROM',''), row.get('POS',''), row.get('END',''))
+        if key not in segments:
+            segments[key] = {
+                'chrom': row.get('CHROM',''),
+                'pos':   row.get('POS',''),
+                'end':   row.get('END',''),
+                'alt':   row.get('ALT','.'),
+                'qual':  row.get('QUAL','.'),
+                'filter':row.get('FILTER','.'),
+                'gt':    row.get('GT','.'),
+                'cn':    cn_raw,
+                'np':    row.get('NP','.'),
+                'qa':    row.get('QA','0'),
+                'qs':    row.get('QS','.'),
+                'lowmap': germline_cnv_lowmap(row),
+                'genes': [],
+            }
+            seg_order.append(key)
+        gene = row.get('gen','').strip()
+        if gene and gene not in segments[key]['genes']:
+            segments[key]['genes'].append(gene)
+    # Panel genes only, QA >= MIN_QA
+    filtered = []
+    for key in seg_order:
+        seg = segments[key]
+        try:
+            qa_val = int(float(seg.get('qa') or ''))
+        except (ValueError, TypeError, OverflowError):
+            continue  # non-numeric QA: treated as below threshold
+        if qa_val < MIN_QA:
+            continue
+        panel_hits = [g for g in seg['genes'] if g in _panel_genes]
+        if panel_hits:
+            seg['genes'] = panel_hits
+            filtered.append(seg)
+    lowmap_segs = [s for s in filtered if s['lowmap'] is not None and s['lowmap'] >= LOWMAP_FRAC]
+    filtered = [s for s in filtered if s not in lowmap_segs]
+    main_html = ""
+    if not filtered:
+        main_html = (
+            "<div class='callout-info'>"
+            "<strong>No Reportable Germline CNV Events</strong><br>"
+            "The GATK germline copy-number variant analysis did not identify any deletion or duplication "
+            "meeting the quality threshold (QA &ge; " + str(MIN_QA) + ") in the germline panel genes "
+            "(somatic oncogenes excluded)"
+            + (" outside low-mappability regions (see below). " if lowmap_segs else ". ") +
+            "Raw annotated segments are available for review in "
+            "<code>germline/cnv_gatk/annotated/</code>."
+            "</div>"
+        )
+    def qs_badge(qs_str):
+        try:
+            qs = float(qs_str)
+        except (ValueError, TypeError):
+            return "<span class='badge badge-III'>Unknown</span>"
+        if qs >= 30:
+            return "<span class='badge badge-P'>High</span>"
+        elif qs >= 10:
+            return "<span class='badge badge-LP'>Medium</span>"
+        else:
+            return "<span class='badge badge-VUS'>Low</span>"
+    def cn_type(alt, cn_str):
+        try:
+            cn = int(cn_str)
+        except (ValueError, TypeError):
+            cn = -1
+        if alt == '<DEL>':
+            return "HOMDEL" if cn == 0 else "DEL (CN=" + str(cn) + ")"
+        if alt == '<DUP>':
+            return ("AMP (CN=" + str(cn) + ")") if cn >= 4 else ("DUP (CN=" + str(cn) + ")")
+        if cn == 0: return "HOMDEL"
+        elif cn == 1: return "DEL (CN=1)"
+        elif cn == 3: return "DUP (CN=3)"
+        elif cn >= 4: return "AMP (CN=" + str(cn) + ")"
+        return alt or "CNV"
+    def seg_rows(segs, lowmap):
+        out = ""
+        for seg in segs:
+            locus = seg['chrom'] + ":" + seg['pos'] + "-" + seg['end']
+            genes = ", ".join(seg['genes']) if seg['genes'] else "."
+            ctype = cn_type(seg['alt'], seg['cn'])
+            last = ("<td>" + str(int(round(seg['lowmap'] * 100))) + "%</td>") if lowmap \
+                else ("<td>" + qs_badge(seg['qs']) + "</td>")
+            out += (
+                "<tr>"
+                "<td>" + html.escape(locus) + "</td>"
+                "<td><strong>" + html.escape(genes) + "</strong></td>"
+                "<td>" + html.escape(ctype) + "</td>"
+                "<td>" + html.escape(seg['cn']) + "</td>"
+                "<td>" + html.escape(seg['np']) + "</td>"
+                "<td>" + html.escape(seg['qa']) + "</td>"
+                "<td>" + html.escape(seg['qs']) + "</td>"
+                + last +
+                "</tr>\n"
+            )
+        return out
+    th = ("<th>Locus</th><th>Gene(s)</th><th>Type</th><th>CN</th>"
+          "<th>NP (intervals)</th><th>QA</th><th>QS</th>")
+    lowmap_html = ""
+    if lowmap_segs:
+        lowmap_html = (
+            "<h4 style='margin:14px 0 4px;'>Low-mappability regions (pseudogenes / paralogs) &mdash; "
+            "not reportable without orthogonal confirmation</h4>"
+            "<div style='font-size:.75rem;color:rgba(226,232,240,.6);margin:0 0 4px;'>"
+            + str(len(lowmap_segs)) + " segment(s) with &ge; " + str(int(round(LOWMAP_FRAC * 100)))
+            + "% of their panel exon bases in GIAB low-mappability regions. Read counts there are "
+            "unreliable (reads map to the pseudogene with low MAPQ); confirm by MLPA or another "
+            "orthogonal method before clinical use. Not used in the germline&ndash;somatic correlation."
+            "</div>"
+            "<div class='tbl-wrap'><table><thead><tr>" + th + "<th>Low-map exon bases</th></tr></thead>"
+            "<tbody>" + seg_rows(lowmap_segs, True) + "</tbody></table></div>"
+        )
+    if not filtered:
+        return main_html + lowmap_html
+    tbody = seg_rows(filtered, False)
+    note = ("<div style='font-size:.75rem;color:rgba(226,232,240,.6);margin:6px 0 4px;'>"
+            + str(len(filtered)) + " deletion / duplication segment(s) (germline panel genes, somatic oncogenes excluded; QA &ge; " + str(MIN_QA) + ")."
+            " Quality: <span class='badge badge-P'>High</span> QS &ge; 30 &nbsp;"
+            "<span class='badge badge-LP'>Medium</span> QS 10&ndash;29 &nbsp;"
+            "<span class='badge badge-VUS'>Low</span> QS &lt; 10 (manual review recommended)."
+            "</div>")
+    return (
+        note +
+        "<div class='tbl-wrap'><table><thead><tr>" + th + "<th>Quality</th></tr></thead>"
+        "<tbody>" + tbody + "</tbody></table></div>"
+        + lowmap_html
+    )
