@@ -84,6 +84,14 @@ def load_germline_variants(path):
     return variants
 
 
+def _int_or_none(value):
+    """'4' and '4.0' -> 4; empty or non-numeric -> None."""
+    try:
+        return int(float((value or '').strip()))
+    except (ValueError, OverflowError):
+        return None
+
+
 def load_germline_cnv_variants(path, panel_genes=None):
     """Load GATK gCNV germline deletions (ALT <DEL>, QA>=4) in panel genes.
 
@@ -116,9 +124,8 @@ def load_germline_cnv_variants(path, panel_genes=None):
                 continue  # diploid or duplication — skip
             key = (row.get('CHROM', ''), row.get('POS', ''), row.get('END', ''))
             if key not in segments:
-                try:
-                    np_val = int(row.get('NP', '0'))
-                except ValueError:
+                np_val = _int_or_none(row.get('NP'))
+                if np_val is None:
                     np_val = 0
                 segments[key] = {
                     'chrom': row.get('CHROM', ''),
@@ -126,7 +133,7 @@ def load_germline_cnv_variants(path, panel_genes=None):
                     'end':   row.get('END', ''),
                     'cn':    cn_int,
                     'np':    np_val,
-                    'qa':    int(row.get('QA', '0') or '0'),
+                    'qa':    _int_or_none(row.get('QA')),
                     'qs':    row.get('QS', '.'),
                     'genes': {},   # gene -> set of exon ints
                 }
@@ -143,7 +150,11 @@ def load_germline_cnv_variants(path, panel_genes=None):
 
     for key in seg_order:
         seg = segments[key]
-        if seg.get('qa', 0) < MIN_QA:
+        if seg['qa'] is None:
+            print('WARNING: germline CNV ' + seg['chrom'] + ':' + seg['pos'] + '-'
+                  + seg['end'] + ' has non-numeric QA, skipped', file=sys.stderr)
+            continue
+        if seg['qa'] < MIN_QA:
             continue
         cn  = seg['cn']
         locus = seg['chrom'] + ':' + seg['pos'] + '-' + seg['end']

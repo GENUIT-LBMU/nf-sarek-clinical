@@ -868,9 +868,9 @@ def tsv_to_html_germline_cnv(path):
     for key in seg_order:
         seg = segments[key]
         try:
-            qa_val = int(seg.get('qa', '0') or '0')
-        except (ValueError, TypeError):
-            qa_val = 0
+            qa_val = int(float(seg.get('qa') or ''))
+        except (ValueError, TypeError, OverflowError):
+            continue  # non-numeric QA: treated as below threshold
         if qa_val < MIN_QA:
             continue
         panel_hits = [g for g in seg['genes'] if g in _panel_genes]

@@ -126,6 +126,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Germline CNV readers: a non-integer QA (`.`, empty, text) made
+  `germline_somatic_correlate.py` crash, and since the reports call it with
+  `|| true` the whole germline-somatic section disappeared silently. QA is now
+  read as a number (`4.0` = 4) in correlation, HTML and PDF; a non-numeric QA
+  skips the segment (below threshold) and the correlation logs a warning.
 - Germline CNV input: Sarek `recalibrated/` is searched for `*.recal.bam` and
   `*.recal.cram` (BAM used when both exist). Before, only BAM was searched, so
   with CRAM output gCNV never ran and the run ended SUCCESS with no germline
