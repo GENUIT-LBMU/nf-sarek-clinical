@@ -609,9 +609,23 @@ Then set `revel_tsv: /data/refs/revel/revel_v1.3_panel.tsv.gz`.
 
 With `spliceai: true` (default) and a GRCh38 FASTA (`spliceai_fasta`, defaults to
 `gcnv_fasta`), SpliceAI 1.3.1 runs on the germline candidates that passed the
-panel + impact filter (tens of variants per sample, minutes on CPU; distance 50,
-masked scores). `SpliceAI_DS` (max delta) gives PP3_Supporting when >= 0.2 and
-blocks a REVEL BP4 when > 0.1 (ClinGen, Walker et al. 2023).
+panel + impact filter (one to two hundred variants per sample, minutes on CPU;
+distance 50, masked scores). `SpliceAI_DS` (max delta) gives PP3_Supporting when
+>= 0.2 and blocks a REVEL BP4 when > 0.1 (ClinGen, Walker et al. 2023).
+
+**Non-coding splice candidates** (`filters.germline_snv.noncoding_splice = true`,
+needs SpliceAI): besides HIGH / MODERATE, the panel filter lets through LOW /
+MODIFIER variants of panel genes whose effect is `splice_region_variant`,
+`splice_donor_5th_base_variant`, `splice_donor_region_variant`,
+`splice_polypyrimidine_tract_variant`, `synonymous_variant` or `intron_variant`
+(UTR, upstream and downstream stay out). Step 2 keeps them only when
+`SpliceAI_DS >= acmg.spliceai_pp3` (0.2) or ClinVar is P/LP (any stars); the rest
+go to the filtered table as `spliceai_below_threshold (non-coding, DS=...)`. Kept
+variants are scored like any other (typically PP3_Sup(splice) + PM2_Sup = VUS;
+ClinVar >= 2 stars is final). On ClinVar >= 2 stars non-coding variants of the
+panel genes, SpliceAI >= 0.2 recovers 471 / 503 P/LP and 18 / 1,478 B/LB (random
+sample); P/LP below 0.2 (e.g. PALB2 c.3350+5G>A, RB1 c.264+5G>A) are kept through
+the ClinVar exemption.
 
 ### hg38 reference genome
 
@@ -797,7 +811,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 
 | Section | Key parameters | Description |
 |---------|---------------|-------------|
-| `germline_snv` | `min_dp=5`, `vaf_min_high=0.20`, `vaf_min_moderate=0.20`, `vaf_floor_min_dp=20`, `vaf_max=0.75`, `multi_hit_distance=30`, `multi_hit_vaf=0.40`, `multi_hit_min_gq=20`, `gnomad_rescue_max=50` | Germline SNV depth, low-VAF floor, zygosity (`vaf_max`, not a filter), multi-hit nearby artefacts (low VAF, FILTER != PASS or low GQ), gnomAD API rescue |
+| `germline_snv` | `min_dp=5`, `vaf_min_high=0.20`, `vaf_min_moderate=0.20`, `vaf_floor_min_dp=20`, `vaf_max=0.75`, `multi_hit_distance=30`, `multi_hit_vaf=0.40`, `multi_hit_min_gq=20`, `gnomad_rescue_max=50`, `noncoding_splice=true` | Germline SNV depth, low-VAF floor, zygosity (`vaf_max`, not a filter), multi-hit nearby artefacts (low VAF, FILTER != PASS or low GQ), gnomAD API rescue, non-coding splice candidates (SpliceAI >= 0.2) |
 | `germline_cnv` | `min_qa=4` | Germline CNV quality (only panel genes are reported) |
 | `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
@@ -943,7 +957,7 @@ Built-in panels bundled in `assets/gene_panels/`. To use a custom panel: `--germ
 
 ### Germline SNV + CNV panel (105 genes)
 
-**File:** `germline_cancer_predisposition.txt` | **Used by:** Germline SNV filtering (HIGH/MODERATE impact) + Germline CNV reporting (CN!=2, QA>=4)
+**File:** `germline_cancer_predisposition.txt` | **Used by:** Germline SNV filtering (HIGH/MODERATE impact; splice-region / synonymous / intronic with SpliceAI >= 0.2) + Germline CNV reporting (CN!=2, QA>=4)
 
 Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.
 

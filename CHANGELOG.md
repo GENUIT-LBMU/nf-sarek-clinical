@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `QC_FLAG` column in germline TSVs (`DP<20`, `VAF_baja`, and the VCF FILTER
   when not PASS: `CNN_SNP`, `CNN_INDEL`, `LowQual`), shown inside the VAF cell
   of the HTML and PDF germline tables. Non-PASS variants are flagged, not removed.
+- Non-coding splice candidates (`filters.germline_snv.noncoding_splice`, needs
+  SpliceAI): splice-region (+3..+8 / -3..-20, donor 5th base, polypyrimidine
+  tract), synonymous and intronic variants of panel genes now reach SpliceAI and
+  are kept when `SpliceAI_DS >= 0.2` or ClinVar is P/LP (any stars); otherwise
+  they are filtered as `spliceai_below_threshold`. Before, only HIGH / MODERATE
+  variants passed the panel filter, so 504 ClinVar >= 2 stars P/LP non-coding
+  variants of the panel (e.g. MSH2 c.942+3A>T) could never be reported.
 
 ### Changed
 - Germline filter (Step 2): BA1 uses the rule set of the ACMG engine (new

@@ -91,7 +91,8 @@ workflow GERMLINE_POSTPROCESS {
         SNPSIFT_DBNSFP_GERMLINE.out.vcf,
         ch_germline_panel,
         ch_snpsift_jar,
-        params.filters.germline_snv.min_dp
+        params.filters.germline_snv.min_dp,
+        ch_spliceai ? params.filters.germline_snv.noncoding_splice : false
     )
 
     // ── SpliceAI on the filtered candidates (optional) ───────────────────────

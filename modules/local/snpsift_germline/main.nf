@@ -4,7 +4,9 @@
     ===================================
     Steps:
       1. dbNSFP annotation (SnpSift dbnsfp)
-      2. Gene panel + impact filter (SnpSift filter)
+      2. Gene panel + impact filter (SnpSift filter): HIGH / MODERATE, plus splice-region,
+         synonymous and intronic variants when noncoding_splice is on (Step 2 keeps
+         those only with SpliceAI >= 0.2 or ClinVar P/LP)
       3. Field extraction to TSV (SnpSift extractFields)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
@@ -79,6 +81,8 @@ process SNPSIFT_FILTER_GERMLINE {
     path gene_panel
     path snpsift_jar
     val min_dp
+    val noncoding_splice    // true: also LOW / MODIFIER splice-region, synonymous and
+                            // intronic variants (kept in Step 2 only if SpliceAI >= 0.2)
 
     output:
     tuple val(sample), path("${sample}.filtered.vcf.gz"), emit: vcf
@@ -93,22 +97,53 @@ process SNPSIFT_FILTER_GERMLINE {
     # Build dynamic filter expression from gene panel file
     genes=\$(grep -v '^#' ${gene_panel} | paste -sd '|')
 
-    python3 - "\$genes" ${min_dp} <<'PYEOF'
+    python3 - "\$genes" ${min_dp} ${noncoding_splice} <<'PYEOF'
 import sys, subprocess, os
 
 genes_raw = sys.argv[1]
 min_dp    = sys.argv[2]
+noncoding = sys.argv[3] == 'true'
 
 gene_list = [g.strip() for g in genes_raw.split("|") if g.strip()]
 gene_expr  = " | ".join([f"(ANN[*].GENE = '{g}')" for g in gene_list])
-filter_expr = f"({gene_expr}) & (ANN[*].IMPACT = 'HIGH' | ANN[*].IMPACT = 'MODERATE') & ( DP >= {min_dp} )"
+impact_expr = "ANN[*].IMPACT = 'HIGH' | ANN[*].IMPACT = 'MODERATE'"
+if noncoding:
+    # Non-coding splice candidates (GS15): splice region (+3..+8 / -3..-20 and the
+    # donor 5th base / polypyrimidine tract), synonymous and intronic; UTR,
+    # upstream and downstream stay out. Step 2 keeps them only with SpliceAI >= 0.2.
+    effects = ('splice_region_variant', 'splice_donor_5th_base_variant',
+               'splice_donor_region_variant', 'splice_polypyrimidine_tract_variant',
+               'synonymous_variant', 'intron_variant')
+    impact_expr += " | (ANN[*].EFFECT =~ '" + "|".join(effects) + "')"
+filter_expr = f"({gene_expr}) & ({impact_expr}) & ( DP >= {min_dp} )"
 
 with open("filter_expr.txt", "w") as fh:
     fh.write(filter_expr)
 PYEOF
 
-    java -jar ${snpsift_jar} filter "\$(cat filter_expr.txt)" ${vcf} \\
-        | gzip -c > ${sample}.filtered.vcf.gz
+    java -jar ${snpsift_jar} filter "\$(cat filter_expr.txt)" ${vcf} > filtered.vcf
+
+    # Panel-gene annotations first (stable order): the extraction keeps the first ANN
+    # entry, and a non-coding panel variant can be listed after a neighbouring gene
+    # (e.g. downstream_gene_variant FPGS before intron_variant ENG)
+    python3 - "\$genes" filtered.vcf <<'PYEOF' | gzip -c > ${sample}.filtered.vcf.gz
+import sys
+panel = set(g.strip() for g in sys.argv[1].split("|") if g.strip())
+for line in open(sys.argv[2]):
+    if line.startswith("#"):
+        sys.stdout.write(line)
+        continue
+    f = line.rstrip("\\n").split("\\t")
+    info = f[7].split(";")
+    for i, x in enumerate(info):
+        if x.startswith("ANN="):
+            ann = x[4:].split(",")
+            top = [a for a in ann if len(a.split("|")) > 3 and a.split("|")[3] in panel]
+            info[i] = "ANN=" + ",".join(top + [a for a in ann if a not in top])
+    f[7] = ";".join(info)
+    sys.stdout.write("\\t".join(f) + "\\n")
+PYEOF
+    rm -f filtered.vcf
     """
 }
 
@@ -727,6 +762,9 @@ PYEOF_BA1
     #     clinvar_benign  : ClinVar Benign/Likely_benign (unless also Pathogenic) with
     #                       >= clinvar_min_stars review stars (default 2); B/LB with
     #                       fewer stars stays and is classified by the ACMG score
+    #     spliceai_below_threshold : non-coding candidate (LOW / MODIFIER impact:
+    #                       splice region, synonymous, intronic) with SpliceAI_DS below
+    #                       spliceai_pp3 (0.2) or not scored, unless ClinVar P/LP
     #     vaf_too_low     : VAF below vaf_min_high / vaf_min_moderate (default 0.20),
     #                       only when DP >= vaf_floor_min_dp (default 20) and the
     #                       variant is not ClinVar P/LP (non-conflicting)
@@ -756,7 +794,9 @@ PYEOF_BA1
             if (\$i == "gnomAD_AF")                   gnomad_can  = i
             if (\$i == "gnomAD_FAF95")                faf_col     = i
             if (\$i == "gnomAD_BA1")                  ba1_col     = i
+            if (\$i == "SpliceAI_DS")                 sai_col     = i
         }
+        sai_min = (ENVIRON["ACMG_SPLICEAI_PP3"] != "") ? ENVIRON["ACMG_SPLICEAI_PP3"]+0 : 0.2
         gnomad_col = gnomad_can ? gnomad_can : gnomad_v2
         print \$0 "\\tQC_FLAG"; next
     }
@@ -793,6 +833,13 @@ PYEOF_BA1
             if (clnsig != "." && clnsig ~ /benign/ && clnsig !~ /pathogenic/ && cv_ok) {
                 reason = "clinvar_benign (clnsig=" \$(cs_col) (cv_st ~ /^[0-9]+\$/ ? ", " cv_st "*" : "") ")"
             }
+        }
+        # Non-coding splice candidate (LOW / MODIFIER, GS15): kept only with a SpliceAI
+        # prediction >= spliceai_pp3 or ClinVar P/LP (any stars)
+        if (reason == "" && impact_col && \$(impact_col) !~ /HIGH|MODERATE/ && !clinvar_plp) {
+            ds = (sai_col && sai_col <= NF) ? \$(sai_col) : "."
+            if (ds !~ /^[0-9]/ || ds + 0 < sai_min)
+                reason = "spliceai_below_threshold (non-coding, DS=" ds ")"
         }
         if (reason == "" && ad_col && ad_col <= NF) {
             n = split(\$(ad_col), arr, ",")
