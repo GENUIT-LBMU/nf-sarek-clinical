@@ -1846,8 +1846,8 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
 def build_germline_cnv_section(path, story, germline_panel_path=''):
     """Append GATK germline CNV section: segments with ALT <DEL>/<DUP>.
 
-    Only panel genes (105-gene cancer-predisposition panel) are reported.
-    Filter: QA >= 4 (no NP filter — small CNVs of 1-3 exons are clinically critical).
+    Only germline panel genes (somatic oncogenes excluded upstream) are reported.
+    Filter: QA >= FILT_GERMLINE_CNV_MIN_QA (no NP filter — small CNVs of 1-3 exons are clinically critical).
     """
     story.append(PageBreak())
     story.append(Paragraph(T('sect_germ_cnv'), STYLE_H2))
@@ -1935,7 +1935,7 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
                 '<b>Germline CNV Analysis \u2014 No Reportable Events</b><br/>'
                 'The GATK germline copy-number variant analysis did not identify '
                 'any deletion or duplication meeting the quality '
-                'threshold (QA \u2265 4) in the germline cancer predisposition '
+                'threshold (QA \u2265 ' + str(MIN_QA) + ') in the germline cancer predisposition '
                 'panel genes. The raw annotated segments are '
                 'available for manual review in:<br/>'
                 '\u00a0\u00a0<i>clinical_results/germline/cnv_gatk/annotated/</i>',
@@ -1995,7 +1995,8 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
     note_style = ParagraphStyle('CnvNote', parent=styles['Normal'],
                                 fontSize=6, textColor=colors.Color(0.6, 0.7, 0.8))
     story.append(Paragraph(
-        str(len(filtered)) + ' segment(s) shown (105-gene panel only, QA \u2265 4). Quality: '
+        str(len(filtered)) + ' segment(s) shown (germline panel genes, somatic oncogenes excluded; QA \u2265 '
+        + str(MIN_QA) + '). Quality: '
         'High (QS \u226530), Medium (QS 10\u201329), Low (QS <10 \u2014 manual review recommended).',
         note_style))
     story.append(tbl)
@@ -2987,7 +2988,7 @@ def build_methodology_section(story):
         ['Germline SNVs',      'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
         ['Somatic SNVs',       'GATK Mutect2 v4 (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
         ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
-        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=4 Phred quality; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded'],
+        ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=' + str(FILT_GERMLINE_CNV_MIN_QA) + ' Phred quality; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded'],
         ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold >=5%'],
         ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Consensus VCF input; SBS + ID + CN48 features; HRD+ threshold: probability >=0.45'],
@@ -3016,7 +3017,8 @@ def build_methodology_section(story):
     story.append(Paragraph(
         '<b>Germline SNV + CNV panel (105 genes):</b> Used for germline SNV filtering '
         '(HIGH/MODERATE impact variants; splice-region, synonymous and intronic with SpliceAI >= 0.2) '
-        'and germline CNV reporting (CN\u22602, QA\u22654). '
+        'and germline CNV reporting (deletions / duplications vs contig ploidy, somatic oncogenes '
+        'excluded, QA\u2265' + str(FILT_GERMLINE_CNV_MIN_QA) + '). '
         'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
         '<font size="5.5">AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, '
         'BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, '

@@ -826,7 +826,7 @@ def germline_cnv_is_event(row):
         return False
 
 def tsv_to_html_germline_cnv(path):
-    # One row per exon -> group by (CHROM, POS, END). Only panel genes, QA >= 4.
+    # One row per exon -> group by (CHROM, POS, END). Only panel genes, QA >= MIN_QA.
     MIN_QA = int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA','4'))
     _panel_genes = _load_panel(_GERMLINE_PANEL)
     if not path or not os.path.isfile(path):
@@ -882,7 +882,8 @@ def tsv_to_html_germline_cnv(path):
             "<div class='callout-info'>"
             "<strong>No Reportable Germline CNV Events</strong><br>"
             "The GATK germline copy-number variant analysis did not identify any deletion or duplication "
-            "meeting quality threshold in the germline panel genes. "
+            "meeting the quality threshold (QA &ge; " + str(MIN_QA) + ") in the germline panel genes "
+            "(somatic oncogenes excluded). "
             "Raw annotated segments are available for review in "
             "<code>germline/cnv_gatk/annotated/</code>."
             "</div>"
@@ -932,7 +933,7 @@ def tsv_to_html_germline_cnv(path):
             "</tr>\\n"
         )
     note = ("<div style='font-size:.75rem;color:rgba(226,232,240,.6);margin:6px 0 4px;'>"
-            + str(len(filtered)) + " deletion / duplication segment(s) (NP &ge; 5 and QA &ge; 10)."
+            + str(len(filtered)) + " deletion / duplication segment(s) (germline panel genes, somatic oncogenes excluded; QA &ge; " + str(MIN_QA) + ")."
             " Quality: <span class='badge badge-P'>High</span> QS &ge; 30 &nbsp;"
             "<span class='badge badge-LP'>Medium</span> QS 10&ndash;29 &nbsp;"
             "<span class='badge badge-VUS'>Low</span> QS &lt; 10 (manual review recommended)."

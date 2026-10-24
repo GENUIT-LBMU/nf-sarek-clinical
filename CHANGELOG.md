@@ -126,6 +126,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Germline CNV report texts: the HTML note said "NP >= 5 and QA >= 10" and the
+  PDF "105-gene panel" and "CN != 2", while the filter is QA >=
+  `filters.germline_cnv.min_qa` (4), no NP minimum, ALT `<DEL>`/`<DUP>`, panel
+  minus somatic oncogenes. Notes, "no events" boxes and methodology tables now
+  print the threshold actually applied.
 - Germline CNV readers: a non-integer QA (`.`, empty, text) made
   `germline_somatic_correlate.py` crash, and since the reports call it with
   `|| true` the whole germline-somatic section disappeared silently. QA is now

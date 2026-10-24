@@ -15,6 +15,8 @@ import html
 import os
 import csv
 
+_GCNV_MIN_QA = str(int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA', '4')))
+
 # ---------------------------------------------------------------------------
 # CPIC Pharmacogenomics lookup table
 # ---------------------------------------------------------------------------
@@ -252,7 +254,7 @@ def build_methodology_html():
         ['Germline SNVs',     'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
         ['Somatic SNVs',      'GATK Mutect2 v4 (tumor&ndash;normal mode)',        'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA&ndash;III'],
         ['Somatic CNVs',      'ASCAT v3 + CNVkit v0.9 (consensus)',               'GRCh38', 'HOMDEL (CN=0), AMP (CN&ge;5), 2nd-hit LOH; 38-gene somatic CNV panel'],
-        ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;4 Phred; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded'],
+        ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;' + _GCNV_MIN_QA + ' Phred; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded'],
         ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold &ge;5%'],
         ['Somatic Consensus', 'bcftools isec (Mutect2 &cap; Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT preserved'],
         ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'Consensus VCF input; HRD+ threshold: probability &ge;0.45; SBS3/SBS8'],
@@ -274,7 +276,7 @@ def build_methodology_html():
     detail_sections = [
         ('Gene Panels',
          '<b>Germline SNV + CNV panel (105 genes)</b> &mdash; Used for germline SNV filtering '
-         '(HIGH/MODERATE impact; splice-region, synonymous and intronic with SpliceAI &ge;0.2) and germline CNV reporting (deletions / duplications, QA&ge;4). '
+         '(HIGH/MODERATE impact; splice-region, synonymous and intronic with SpliceAI &ge;0.2) and germline CNV reporting (deletions / duplications, somatic oncogenes excluded, QA&ge;' + _GCNV_MIN_QA + '). '
          'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
          '<span style="font-size:0.75em; color:#94a3b8;">'
          'AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, '
