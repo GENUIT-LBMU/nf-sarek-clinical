@@ -116,6 +116,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Germline CNV (`MANE_ANNOTATE_GERMLINE_CNV`): an `exon_annotation.R` failure
+  now fails the task. Before, the error was only logged and the raw segments
+  VCF lines were copied without a header, so every reader saw CN=2 and the
+  reports said "no germline CNV". The task now copies only
+  `<sample>_segments.txt` and checks the columns CHROM, POS, END, CN, QA, gen.
 - `--skip_signatures true` now skips `MUTSIG_SIGPROFILER` (before, it only
   stopped the report from waiting for it, and the process still ran).
 - SigProfiler image `sigprofiler:0.1.8`: SigProfilerMatrixGenerator 1.3.6 ->

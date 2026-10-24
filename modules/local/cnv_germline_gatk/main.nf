@@ -206,24 +206,28 @@ process MANE_ANNOTATE_GERMLINE_CNV {
     mkdir -p vcf_in
     gunzip -c ${segments_vcf_gz} > vcf_in/${sample}_segments.vcf
 
+    # Any R failure fails the task: a missing table must never read as "no CNV"
     Rscript ${projectDir}/bin/exon_annotation.R \\
         --vcf  vcf_in \\
-        --MANE ${mane_txt} || echo "WARNING: R annotation script failed, will use fallback" >&2
+        --MANE ${mane_txt}
 
-    # Normalise output filename: script writes files in --vcf dir
-    # Move/rename to expected output
-    if ls vcf_in/*annotated* 1>/dev/null 2>&1; then
-        cp vcf_in/*annotated* .
+    # exon_annotation.R writes <input>.txt next to each input VCF
+    out=vcf_in/${sample}_segments.txt
+    if [[ ! -f "\$out" ]]; then
+        echo "ERROR: exon_annotation.R did not write \$out" >&2
+        exit 1
     fi
 
-    # Produce a TSV named consistently for downstream report
-    for f in vcf_in/*.txt vcf_in/*.tsv; do
-        [[ -f "\$f" ]] && cp "\$f" ${sample}_segments_annotated.tsv && break
+    # The report readers need these columns; anything else is a broken table
+    header="\$(head -1 "\$out")"
+    for col in CHROM POS END CN QA gen; do
+        if ! printf '%s\\n' "\$header" | tr '\\t' '\\n' | grep -qx "\$col"; then
+            echo "ERROR: \$out lacks column \$col (header: \$header)" >&2
+            exit 1
+        fi
     done
 
-    # Fallback: use segments VCF decompressed as TSV-like if R produced nothing
-    [[ -f ${sample}_segments_annotated.tsv ]] || \\
-        gunzip -c ${segments_vcf_gz} | grep -v '^#' > ${sample}_segments_annotated.tsv || true
+    cp "\$out" ${sample}_segments_annotated.tsv
     """
 
     stub:
