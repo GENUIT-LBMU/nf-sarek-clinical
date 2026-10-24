@@ -2290,7 +2290,7 @@ def build_correlation_section(corr_data, story):
     story.append(Spacer(1, 0.3 * cm))
     story.append(Paragraph(
         '<font size="6" color="#94a3b8">Methodology: ACMG/AMP 2015 classification using ClinVar, '
-        'gnomAD, REVEL, SIFT, PolyPhen2, and SnpEff impact. Second hit detection from somatic SNV '
+        'gnomAD, REVEL, SpliceAI, and SnpEff impact (MANE Select). Second hit detection from somatic SNV '
         '(Mutect2, HIGH/MODERATE) and ASCAT LOH events (cnLOH, HETDEL+LOH, HOMDEL). '
         'Pathway biomarkers: MMR=TMB\u226510 mut/Mb or MSI\u22653.5% + SBS6/15/20/21/26/44; '
         'HRR=HRD prob\u22650.5 + SBS3/SBS8. For decision support only &#8212; '
@@ -3005,7 +3005,8 @@ def build_methodology_section(story):
     story.append(Paragraph('Gene Panels', STYLE_SUB))
     story.append(Paragraph(
         '<b>Germline SNV + CNV panel (105 genes):</b> Used for germline SNV filtering '
-        '(HIGH/MODERATE impact variants) and germline CNV reporting (CN\u22602, QA\u22654). '
+        '(HIGH/MODERATE impact variants; splice-region, synonymous and intronic with SpliceAI >= 0.2) '
+        'and germline CNV reporting (CN\u22602, QA\u22654). '
         'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
         '<font size="5.5">AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, '
         'BRCA2, BRIP1, BUB1B, CASR, CCND1, CCND2, CCND3, CCNE1, CDC73, CDH1, CDK4, CDK6, CDKN1B, '

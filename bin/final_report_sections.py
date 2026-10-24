@@ -274,7 +274,7 @@ def build_methodology_html():
     detail_sections = [
         ('Gene Panels',
          '<b>Germline SNV + CNV panel (105 genes)</b> &mdash; Used for germline SNV filtering '
-         '(HIGH/MODERATE impact) and germline CNV reporting (CN&ne;2, QA&ge;4). '
+         '(HIGH/MODERATE impact; splice-region, synonymous and intronic with SpliceAI &ge;0.2) and germline CNV reporting (CN&ne;2, QA&ge;4). '
          'Sources: ACMG SF v3.2, ESMO guidelines, published WES cancer panels.<br/>'
          '<span style="font-size:0.75em; color:#94a3b8;">'
          'AIP, ALK, APC, AR, ATM, ATR, AXIN2, BAP1, BARD1, BLM, BMPR1A, BRAF, BRCA1, '
