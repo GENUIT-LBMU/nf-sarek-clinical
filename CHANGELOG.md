@@ -135,6 +135,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Reports mixed patients when a run had more than one pair: the germline and
+  somatic tables were attached with `.combine()` (every pair × every table, N²
+  report tasks) and the PDF took the CIViC table from a loose channel in
+  arrival order; seen with two pairs: two PDFs labelled with one pair, one of
+  them with the other's CIViC table, and none for the second pair. Each pair
+  now gets one HTML and one PDF task with its own ASCAT, HRD, somatic, CIViC
+  and (through its normal) germline files, and the reports read those staged
+  files instead of searching the outdir by name prefix. A pair without ASCAT
+  output still gets its reports (NA metrics, warning in the log).
 - Mutational signatures could report a previous run's result: the input VCFs
   were copied to a shared `${workDir}/mutsig_vcfs`, where SigProfiler also wrote
   its `input/`/`output/`, and a `-resume` run reused them (seen: activities of

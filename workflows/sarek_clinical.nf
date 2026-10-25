@@ -379,28 +379,41 @@ workflow SAREK_CLINICAL {
 
     ch_all_done = ch_gate.collect().map { 'ready' }
 
+    // ── REPORT INPUTS: one tuple per pair, every file looked up by its key ───
+    // Pairs come from Mutect2 and ASCAT. Each lookup channel is collected
+    // into a map (key -> file) so a missing file becomes a placeholder and a
+    // normal shared by two tumors is found for both. The germline TSV is
+    // keyed by the normal sample (the part of the pair after "_vs_").
+    def somatic_ran  = !params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures || !params.skip_hrd
+    def germline_ran = !params.skip_germline_snv || !params.skip_pharmaco
+    def by_key = { ch -> ch.toList().map { l -> [l.collectEntries { [(it[0]): it[1]] }] } }
+
+    ch_pairs = ch_mutect2_vcfs.map { pair, _vcf -> pair }
+        .mix(ch_ascat_metrics.map { pair, _met -> pair })
+        .unique()
+
+    ch_lookup = by_key(ch_ascat_metrics)
+        .combine(by_key(ch_hrd_tsv))
+        .combine(by_key(germline_ran ? GERMLINE_POSTPROCESS.out.snv_tsv : Channel.empty()))
+        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.somatic_snv_tsv : Channel.empty()))
+        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.civic_tsv : Channel.empty()))
+
+    ch_report_input = ch_pairs
+        .combine(ch_lookup)
+        .combine(ch_all_done)
+        .map { pair, ascat, hrd, germ, som, civic, _ready ->
+            def normal = pair.contains('_vs_') ? pair.split('_vs_')[1] : ''
+            if (!ascat[pair]) log.warn "${pair}: no ASCAT metrics, the report shows NA for purity, ploidy, LOH, GI and WGD"
+            [pair,
+             ascat[pair]  ?: file('NO_ASCAT'),
+             hrd[pair]    ?: file('NO_HRD'),
+             germ[normal] ?: file('NO_GERMLINE'),
+             som[pair]    ?: file('NO_SOMATIC'),
+             civic[pair]  ?: file('NO_CIVIC')]
+        }
+
     // ── FINAL REPORT ─────────────────────────────────────────────────────────
     if (!params.skip_report) {
-        // Join ascat_metrics with hrd_tsv (already synced with HRD process).
-        // Then combine with ch_all_done to enforce "run last" ordering.
-        // Collect germline/somatic TSVs as proper Nextflow inputs so cache
-        // is invalidated whenever their content changes.
-        ch_germ_tsv   = params.skip_germline_snv ? Channel.value(file('NO_FILE'))
-                                                  : GERMLINE_POSTPROCESS.out.snv_tsv.map { _s, f -> f }
-        ch_som_tsv    = params.skip_somatic_snv  ? Channel.value(file('NO_FILE'))
-                                                  : SOMATIC_POSTPROCESS.out.somatic_snv_tsv.map { _s, f -> f }
-        ch_civic_tsv  = params.skip_somatic_snv  ? Channel.value(file('NO_FILE'))
-                                                  : SOMATIC_POSTPROCESS.out.civic_tsv.map { _s, f -> f }
-
-        ch_report_input = ch_ascat_metrics
-            .join(ch_hrd_tsv, remainder: true)
-            .map { pair, met, hrd -> [pair, met, hrd ?: file('NO_FILE')] }
-            .combine(ch_all_done)
-            .map { pair, met, hrd, _ -> [pair, met, hrd] }
-            .combine(ch_germ_tsv)
-            .combine(ch_som_tsv)
-            .map { pair, met, hrd, gtsv, stsv -> [pair, met, hrd, gtsv, stsv] }
-
         FINAL_REPORT(
             ch_report_input,
             params.sarek_outdir,
@@ -410,18 +423,8 @@ workflow SAREK_CLINICAL {
 
     // ── CLINICAL PDF REPORT ───────────────────────────────────────────────────
     if (!params.skip_pdf_report) {
-        ch_pdf_input = ch_ascat_metrics
-            .join(ch_hrd_tsv, remainder: true)
-            .map { pair, met, hrd -> [pair, met, hrd ?: file('NO_FILE')] }
-            .combine(ch_all_done)
-            .map { pair, met, hrd, _ -> [pair, met, hrd] }
-            .combine(ch_germ_tsv)
-            .combine(ch_som_tsv)
-            .map { pair, met, hrd, gtsv, stsv -> [pair, met, hrd, gtsv, stsv] }
-
         CLINICAL_PDF_REPORT(
-            ch_pdf_input,
-            ch_civic_tsv,
+            ch_report_input,
             params.sarek_outdir,
             params.run_name
         )

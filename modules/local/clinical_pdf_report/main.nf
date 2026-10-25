@@ -19,8 +19,7 @@ process CLINICAL_PDF_REPORT {
     publishDir "${params.outdir}/reporting", mode: params.publish_dir_mode
 
     input:
-    tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv)
-    path civic_tsv
+    tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv), path(civic_tsv)
     val sarek_outdir
     val run_name
 
@@ -34,6 +33,9 @@ process CLINICAL_PDF_REPORT {
 
     script:
     """
+    # Report inputs are staged per pair (placeholders NO_* when absent)
+    staged() { [[ -s "\$1" ]] && echo "\$1" || echo ""; }
+
     # ── Parse pair name: TUMOR_vs_NORMAL ──────────────────────────────────────
     PAIR="${pair}"
     if [[ "\${PAIR}" =~ ^(.+)_vs_(.+)\$ ]]; then
@@ -49,9 +51,9 @@ process CLINICAL_PDF_REPORT {
     RUN="${run_name}"
 
     # ── Locate input files ─────────────────────────────────────────────────────
-    SNV_GERMLINE="\$(find \${OUT_DIR}/germline/snv/extract   -name "\${NORMAL}*.germline_snvs.tsv" 2>/dev/null | head -1 || true)"
-    SNV_SOMATIC="\$(find \${OUT_DIR}/somatic/snv/extract     -name "\${PAIR}*.somatic_snvs.tsv"   2>/dev/null | head -1 || true)"
-    CIVIC_TSV="${civic_tsv}"
+    SNV_GERMLINE="\$(staged "${snv_germline_tsv}")"
+    SNV_SOMATIC="\$(staged "${snv_somatic_tsv}")"
+    CIVIC_TSV="\$(staged "${civic_tsv}")"
     TMB_FILE="\$(find \${OUT_DIR}/somatic/tmb                -name "\${PAIR}*.tmb.tsv"            2>/dev/null | head -1 || true)"
     MSI_FILE="\$(find ${sarek_outdir}/variant_calling/msisensorpro -name "\${PAIR}" -type f       2>/dev/null | head -1 || true)"
     COV_N="\$(find ${sarek_outdir}/reports/mosdepth          -name "\${NORMAL}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"
@@ -63,11 +65,8 @@ process CLINICAL_PDF_REPORT {
     GENE_COV_N="\$(find \${OUT_DIR}/qc/gene_coverage -name "\${NORMAL}*_gene_coverage.tsv" 2>/dev/null | head -1 || true)"
     GENE_COV_T="\$(find \${OUT_DIR}/qc/gene_coverage -name "\${TUMOR}*_gene_coverage.tsv"  2>/dev/null | head -1 || true)"
 
-    # HRD predictions: use Nextflow-staged file; fall back to find if placeholder
-    HRD_FILE="${hrd_predictions}"
-    if [[ "\${HRD_FILE}" == "NO_FILE" || ! -s "\${HRD_FILE}" ]]; then
-        HRD_FILE="\$(find \${OUT_DIR}/somatic/hrd -name "\${PAIR}*_hrd_predictions*" 2>/dev/null | head -1 || true)"
-    fi
+    # HRD predictions: the staged file of this pair
+    HRD_FILE="\$(staged "${hrd_predictions}")"
 
     # ── Metric extraction helpers ───────────────────────────────────────────────
     # tsv_val FILE COLUMN  – extract value from row 2 of a TSV (case-insensitive header match)
@@ -136,7 +135,7 @@ process CLINICAL_PDF_REPORT {
         --tumor-type  "${params.tumor_type ?: ''}"  \\
         --tumor-types "${params.tumor_types ?: ''}" \\
         --tmb         "\${TMB_FILE:-}"     \\
-        --ascat       "${ascat_metrics}"   \\
+        --ascat       "\$(staged "${ascat_metrics}")" \\
         --hrd         "\${HRD_FILE:-}"     \\
         --cnv-somatic        "\${CNV_SOMATIC:-}"    \\
         --cnv-gatk-somatic   "\${CNV_SOM_GATK:-}"  \\

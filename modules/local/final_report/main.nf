@@ -26,7 +26,7 @@ process FINAL_REPORT {
     publishDir "${params.outdir}/reporting", mode: params.publish_dir_mode
 
     input:
-    tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv)
+    tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv), path(civic_tsv)
     val sarek_outdir
     val run_name
 
@@ -42,6 +42,9 @@ process FINAL_REPORT {
 
     script:
     """
+    # Report inputs are staged per pair (placeholders NO_* when absent)
+    staged() { [[ -s "\$1" ]] && echo "\$1" || echo ""; }
+
     # Parse pair name: TUMOR_vs_NORMAL
     PAIR="${pair}"
     if [[ "\${PAIR}" =~ ^(.+)_vs_(.+)\$ ]]; then
@@ -57,9 +60,9 @@ process FINAL_REPORT {
     RUN="${run_name}"
 
     # Collect input paths with fallbacks (|| true prevents pipefail on missing dirs)
-    SNV_GERMLINE="\$(find \${OUT_DIR}/germline/snv/extract -name "\${NORMAL}*.germline_snvs.tsv" 2>/dev/null | head -1 || true)"
-    SNV_SOMATIC="\$(find \${OUT_DIR}/somatic/snv/extract -name "\${PAIR}*.somatic_snvs.tsv" 2>/dev/null | head -1 || true)"
-    CIVIC_TSV="\$(find \${OUT_DIR}/somatic/snv/civic_extract -name "\${PAIR}*.civic.exploded.tsv" 2>/dev/null | head -1 || true)"
+    SNV_GERMLINE="\$(staged "${snv_germline_tsv}")"
+    SNV_SOMATIC="\$(staged "${snv_somatic_tsv}")"
+    CIVIC_TSV="\$(staged "${civic_tsv}")"
     CNV_SOMATIC="\$(find \${OUT_DIR}/somatic/cnv/ascat_cnvkit -name "\${PAIR}*_somatic_cnv_report.tsv" 2>/dev/null | head -1 || true)"
     TMB_FILE="\$(find \${OUT_DIR}/somatic/tmb -name "\${PAIR}*.tmb.tsv" 2>/dev/null | head -1 || true)"
     PHARMACO="\$(find \${OUT_DIR}/germline/pharmaco -name "\${NORMAL}*.pharmaco.tsv" 2>/dev/null | head -1 || true)"
@@ -94,11 +97,8 @@ process FINAL_REPORT {
     COV_N_MEAN="\$(cov_mean "\$COV_N")"
     COV_T_MEAN="\$(cov_mean "\$COV_T")"
 
-    # HRD predictions (passed directly as Nextflow input; fallback to find if NO_FILE)
-    HRD_FILE="${hrd_predictions}"
-    if [[ "\${HRD_FILE}" == "NO_FILE" || ! -s "\${HRD_FILE}" ]]; then
-        HRD_FILE="\$(find \${OUT_DIR}/somatic/hrd -name "\${PAIR}*_hrd_predictions*" 2>/dev/null | head -1 || true)"
-    fi
+    # HRD predictions: the staged file of this pair
+    HRD_FILE="\$(staged "${hrd_predictions}")"
     HRD_PROB="\$(tsv_val "\$HRD_FILE" hrd.prob)"
     # HRD status: custom probability threshold >= 0.45 = HRD+ (overrides prediction column)
     HRD_STATUS=\$(awk -v p="\${HRD_PROB}" 'BEGIN{
