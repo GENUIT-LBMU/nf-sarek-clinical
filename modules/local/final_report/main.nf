@@ -651,6 +651,7 @@ def tsv_to_html_somatic(path, civic_idx):
         ('HGVS_p',       'ANN[*].HGVS_P'),
         ('Effect',       'ANN[*].EFFECT'),
         ('VAF',          None),
+        ('gnomAD',       None),
         ('Call',         None),
         ('CIViC Level',  None),
         ('Disease',      None),
@@ -664,6 +665,7 @@ def tsv_to_html_somatic(path, civic_idx):
         'IIC': 'badge-IIC',
         'IID': 'badge-IIC',
         'III': 'badge-III',
+        'IV':  'badge-IV',
     }
 
     def get_col(row, name):
@@ -682,12 +684,14 @@ def tsv_to_html_somatic(path, civic_idx):
     )
 
     tbody = ""
+    tbody_pop = ""
     for line in lines[1:]:
         row = line.split("\\t")
         records = civic_idx.get((get_col(row, 'CHROM'), get_col(row, 'POS'),
                                  get_col(row, 'REF'), get_col(row, 'ALT')), [])
-        tier, civic = _amp.classify(records, TUMOR_TERMS)
+        tier, civic = _amp.variant_tier(records, TUMOR_TERMS, lambda k: get_col(row, k))
         civic = civic or {}
+        row_start = len(tbody)
         badge_cls = tier_colors.get(tier, 'badge-III')
 
         chrom = get_col(row, 'CHROM')
@@ -743,6 +747,8 @@ def tsv_to_html_somatic(path, civic_idx):
                 tds += hgvs_cells(lambda k: get_col(row, k))[0]
             elif disp_name == 'HGVS_p':
                 tds += hgvs_cells(lambda k: get_col(row, k))[1]
+            elif disp_name == 'gnomAD':
+                tds += "<td>" + html.escape(gnomad_display(lambda k: get_col(row, k))) + "</td>"
             elif disp_name == 'Call':
                 tds += "<td style='text-align:center;'>" + callers_html + "</td>"
             elif disp_name == 'CIViC Level':
@@ -771,17 +777,27 @@ def tsv_to_html_somatic(path, civic_idx):
                           + summary_p + conseq_p + civic_p
                           + "</div>")
             tbody += ("<tr class='ctx-row' data-tier='" + tier + "' style='display:none;'>"
-                      "<td colspan='11'>" + ctx_inner + "</td></tr>\\n")
+                      "<td colspan='12'>" + ctx_inner + "</td></tr>\\n")
         else:
             tbody += ("<tr class='ctx-row' data-tier='" + tier + "' style='display:none;'>"
-                      "<td colspan='11'><em style='color:#888;'>No annotation.</em></td></tr>\\n")
+                      "<td colspan='12'><em style='color:#888;'>No annotation.</em></td></tr>\\n")
+        # AMP Tier IV (common population polymorphism): own table, not a somatic finding
+        if tier == 'IV':
+            tbody_pop += tbody[row_start:]
+            tbody = tbody[:row_start]
 
     tumor_note = ("<p style='font-size:.8rem;'><b>Tumor type for tiering:</b> " + html.escape(TUMOR_LABEL) + "</p>" if TUMOR_LABEL else
                   "<p class='warn'>Tumor type not provided (--tumor_type): CIViC evidence is treated as from another tumor type, so the highest tier is IIC.</p>")
+    pop_html = ""
+    if tbody_pop:
+        pop_html = ("<h3 style='font-size:.95rem;margin-top:18px;'>Tier IV &mdash; population polymorphisms "
+                    "(gnomAD &ge; ${params.filters.somatic_snv.max_pop_af}; probable germline origin, not interpreted as somatic)</h3>"
+                    "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
+                    "<tbody id='tbl-somatic-pop'>" + tbody_pop + "</tbody></table></div>")
     return (
         tumor_note + filter_bar +
         "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
-        "<tbody id='tbl-somatic'>" + tbody + "</tbody></table></div>"
+        "<tbody id='tbl-somatic'>" + tbody + "</tbody></table></div>" + pop_html
     )
 
 # ----
@@ -1181,6 +1197,7 @@ _css = (
     '.badge-IA, .badge-IB { background:#dc2626; color:#fff; }'
     '.badge-IIC { background:#d97706; color:#fff; }'
     '.badge-III { background:#6b7280; color:#fff; }'
+    '.badge-IV { background:#16a34a; color:#fff; }'
     '.filter-bar { display:flex; gap:8px; margin:10px 0; flex-wrap:wrap; }'
     '.filter-btn { padding:4px 14px; border-radius:20px; border:1px solid var(--line); background:rgba(15,23,42,0.7); color:#e5e7eb; cursor:pointer; font-size:.78rem; }'
     '.filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }'

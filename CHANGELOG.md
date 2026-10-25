@@ -135,6 +135,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Somatic population frequency from the local gnomAD v4.1 resource and AMP
+  Tier IV. The somatic Mutect2 VCF goes through `GNOMAD_ANNOTATE` (`--gnomad_tsv`)
+  and the somatic TSV gains `gnomAD_AF`, `gnomAD_AF_source`, `gnomAD_FAF95`,
+  `gnomAD_NHOMALT`, `gnomAD_POP_AF` and `POP_COMMON`. A variant with FAF95 (else AF)
+  >= `filters.somatic_snv.max_pop_af` (0.01) is Tier IV (AMP/ASCO/CAP 2017,
+  MAF >= 1%): listed in a separate table in HTML and PDF and not used as a somatic
+  finding, double hit or second hit. 1128 BRCA2 p.Thr1915Met (gnomAD AF 2.65%, 679
+  homozygotes, VAF 0.125) moves from Tier III to Tier IV; no other variant of 6 test
+  patients reaches 1%. Somatic tables show a gnomAD column. Without `--gnomad_tsv`
+  the run warns and no variant is Tier IV.
+- dbNSFP annotation removed from the somatic branch (`SNPSIFT_DBNSFP_SOMATIC`):
+  no somatic step read its fields; saves 2–4 min per pair. The somatic TSV no
+  longer has `dbNSFP_*` columns and `somatic/snv/dbnsfp/` is no longer published.
 - MANE Select nomenclature everywhere. The somatic Mutect2 VCF is now
   re-annotated by `SNPEFF_MANE` too (IMAX1141 BRAF p.Lys641Glu → p.Lys601Glu;
   8 of 69 somatic HGVS change in 6 test patients: BRAF, CTNNB1, POLD1, ROS1,

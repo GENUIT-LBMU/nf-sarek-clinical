@@ -547,6 +547,16 @@ or per patient with `--tumor_types`, a TSV `id<TAB>terms` where `id` is the
 patient, the tumor sample or the pair. Without either, every disease counts as
 "other tumor type" and the highest tier is IIC (the run prints a warning).
 
+**Tier IV** (AMP/ASCO/CAP 2017: benign / likely benign, MAF ≥ 1% in the general
+population). With `--gnomad_tsv`, the somatic Mutect2 VCF is annotated with the local
+gnomAD v4.1 resource (`GNOMAD_ANNOTATE`, the 60 somatic panel genes are covered); a
+variant with gnomAD FAF95 (else AF) ≥ `filters.somatic_snv.max_pop_af` (0.01) is Tier IV
+whatever its CIViC evidence. Tier IV variants are listed in a separate table as probable
+germline polymorphisms and are not counted as somatic findings, double hits or second
+hits (e.g. 1128 BRCA2 p.Thr1915Met, gnomAD AF 2.7%, called at VAF 0.125). Without
+`--gnomad_tsv` there is no population frequency and no Tier IV (the run warns).
+dbNSFP is used for the germline only.
+
 ### Low-mappability BED — germline CNV flags (required for germline CNV)
 
 GIAB genome stratifications v3.3 (`GRCh38_lowmappabilityall`) restricted to the
@@ -893,7 +903,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 |---------|---------------|-------------|
 | `germline_snv` | `min_dp=5`, `vaf_min_high=0.20`, `vaf_min_moderate=0.20`, `vaf_floor_min_dp=20`, `vaf_max=0.75`, `multi_hit_distance=30`, `multi_hit_vaf=0.40`, `multi_hit_min_gq=20`, `gnomad_rescue_max=50`, `noncoding_splice=true` | Germline SNV depth, low-VAF floor, zygosity (`vaf_max`, not a filter), multi-hit nearby artefacts (low VAF, FILTER != PASS or low GQ), gnomAD API rescue, non-coding splice candidates (SpliceAI >= 0.2) |
 | `germline_cnv` | `min_qa=4`, `lowmap_min_frac=0.5`, `exclude_genes=AR,BRAF,CCND1,…` | Germline CNV quality; low-mappability fraction above which a segment is listed apart; panel genes left out of germline CNV (somatic oncogenes) |
-| `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10` | Somatic SNV / TMB filtering |
+| `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10`, `max_pop_af=0.01` | Somatic SNV / TMB filtering; AMP Tier IV population frequency |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
 | `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, `ps1_score=4`, `pm5_score=2`, `pm1_score=2`, `pm1_sup_score=1`, `bs1_sup_score=-1`, `vcep_specs=true`, REVEL and SpliceAI cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
 | `biomarkers` | `tmb_high=10.0`, `msi_high=3.5`, `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds |

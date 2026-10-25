@@ -48,6 +48,9 @@ workflow SAREK_CLINICAL {
     if (!params.gnomad_tsv && !params.skip_germline_snv) {
         log.warn "--gnomad_tsv not set: germline population frequencies come from dbNSFP (gnomAD v2.1.1 exomes) plus web-API rescue for indels. Build the local resource with scripts/build_gnomad_panel.sh."
     }
+    if (!params.gnomad_tsv && !params.skip_somatic_snv) {
+        log.warn "--gnomad_tsv not set: somatic variants have no population frequency, so common polymorphisms are not set to AMP Tier IV."
+    }
 
     // snpEff MANE database (optional). Empty list => keep sarek's snpEff -canon annotation.
     ch_snpeff_mane   = params.snpeff_mane_data
@@ -293,8 +296,7 @@ workflow SAREK_CLINICAL {
             ch_strelka2_indels,
             ch_cns,
             ch_ascat,
-            ch_dbnsfp,
-            ch_dbnsfp_tbi,
+            ch_gnomad,
             ch_snpsift_jar,
             ch_somatic_snv_panel,
             ch_somatic_cnv_panel,

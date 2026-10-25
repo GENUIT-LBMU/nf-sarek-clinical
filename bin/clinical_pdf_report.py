@@ -27,6 +27,7 @@ from xml.sax.saxutils import escape as xml_escape
 _E = os.environ.get
 FILT_GERMLINE_CNV_MIN_QA = int(_E('FILT_GERMLINE_CNV_MIN_QA', '4'))
 FILT_GERMLINE_CNV_LOWMAP_FRAC = float(_E('FILT_GERMLINE_CNV_LOWMAP_FRAC', '0.5'))
+FILT_SOMATIC_MAX_POP_AF = float(_E('FILT_SOMATIC_MAX_POP_AF', '0.01'))
 BIO_TMB_HIGH       = float(_E('BIO_TMB_HIGH', '10.0'))
 BIO_TMB_BORDERLINE = float(_E('BIO_TMB_BORDERLINE', '6.0'))
 BIO_MSI_HIGH       = float(_E('BIO_MSI_HIGH', '3.5'))
@@ -80,6 +81,7 @@ C_ACMG_VUS = colors.HexColor('#eab308')   # VUS – yellow
 C_AMP_IA_IB  = colors.HexColor('#dc2626')  # Tier IA / IB – dark red
 C_AMP_IIC    = colors.HexColor('#d97706')  # Tier IIC – amber
 C_AMP_III    = colors.HexColor('#6b7280')  # Tier III – gray
+C_AMP_IV     = colors.HexColor('#16a34a')  # Tier IV – green (benign polymorphism)
 
 # HRD status colours
 C_HRD_POS = colors.HexColor('#ef4444')
@@ -468,7 +470,8 @@ TUMOR_LABEL = ''
 
 def load_somatic_variants(somatic_path, civic_path):
     """
-    Read somatic TSV, classify each variant with AMP tiers.
+    Read somatic TSV, classify each variant with AMP tiers (IV = common
+    population polymorphism, see amp_tier.variant_tier).
     Returns list of variant dicts with '_AMP_TIER' and '_CIVIC' keys.
     """
     _, rows = read_tsv(somatic_path)
@@ -478,7 +481,7 @@ def load_somatic_variants(somatic_path, civic_path):
         key = (str(row.get('CHROM', '')), str(row.get('POS', '')),
                str(row.get('REF', '')), str(row.get('ALT', '')))
         records = civic_index.get(key, [])
-        tier, civic_rec = _amp.classify(records, TUMOR_TERMS)
+        tier, civic_rec = _amp.variant_tier(records, TUMOR_TERMS, row.get)
         row['_AMP_TIER'] = tier
         row['_CIVIC'] = civic_rec or {}
         row['_CIVIC_ALL'] = records
@@ -502,6 +505,8 @@ def amp_colour(tier):
         return C_AMP_IA_IB
     if tier in ('IIC', 'IID'):
         return C_AMP_IIC
+    if tier == 'IV':
+        return C_AMP_IV
     return C_AMP_III
 
 
@@ -1043,25 +1048,53 @@ def _somatic_row(v, include_civic=False):
             '<font size="5.5" color="#92400e">M</font>',
             ParagraphStyle('cal1', fontSize=5.5, alignment=TA_CENTER, leading=7))
     tier = v.get('_AMP_TIER', 'III')
+    gnomad = Paragraph(xml_escape(gnomad_display(lambda k: (v.get(k) or '').strip()))
+                       .replace(' / ', '<br/>'), STYLE_CELL)
     if include_civic:
         disease = trunc(civic.get('disease') or '-', 30)
         therapy = trunc(_amp.therapy_cell(civic) or '-', 34)
         evid    = trunc(civic.get('level') or '-', 3)
-        return [gene, hgvsc, hgvsp, effect, vaf_cell, callers_cell, evid, disease, therapy, tier]
-    return [gene, hgvsc, hgvsp, effect, vaf_cell, callers_cell, tier]
+        return [gene, hgvsc, hgvsp, effect, vaf_cell, gnomad, callers_cell, evid, disease, therapy, tier]
+    return [gene, hgvsc, hgvsp, effect, vaf_cell, gnomad, callers_cell, tier]
 
 
-def build_somatic_section(somatic_variants, story, gene_ctx=None):
-    """Append somatic SNV section: CIViC actionable table + other variants table."""
+_OTH_HEADERS = ['Gene', 'HGVS_c', 'HGVS_p', 'Effect', 'VAF', 'gnomAD', 'Call', 'Tier']
+_OTH_WIDTHS  = [50, 115, 100, 90, 36, 50, 28, 30]
+
+
+def _population_table(pop_variants, story):
+    """AMP Tier IV: common population polymorphisms, kept apart from the somatic findings."""
+    if not pop_variants:
+        return
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph(
+        '<b>Tier IV — Population Polymorphisms</b> (gnomAD &ge; '
+        f'{xml_escape(str(FILT_SOMATIC_MAX_POP_AF))}; probable germline origin, '
+        'not interpreted as somatic)',
+        ParagraphStyle('sub_h4', fontSize=8, fontName='Helvetica-Bold',
+                       textColor=C_TEXT, spaceBefore=2, spaceAfter=4)))
+    rows = [_somatic_row(v, include_civic=False) for v in pop_variants]
+    story.append(build_variant_table(
+        _OTH_HEADERS, _OTH_WIDTHS, rows,
+        colour_col_idx=7, colour_fn=lambda v: amp_colour(v.strip()),
+    ))
+    story.append(Spacer(1, 0.15 * cm))
+
+
+def build_somatic_section(somatic_variants, story, gene_ctx=None, pop_variants=None):
+    """Append somatic SNV section: CIViC actionable table + other variants table
+    + Tier IV population polymorphisms (pop_variants)."""
     story.append(PageBreak())
     story.append(Paragraph(T('sect_somatic'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
+    pop_variants = pop_variants or []
 
     if not somatic_variants:
         story.append(Paragraph(
             'No somatic variants were identified in this sample.',
             STYLE_WARN,
         ))
+        _population_table(pop_variants, story)
         return
 
     # Split into CIViC actionable (Tier I/II) vs other (Tier III)
@@ -1092,15 +1125,15 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None):
             ParagraphStyle('sub_h', fontSize=8, fontName='Helvetica-Bold',
                            textColor=C_TEXT, spaceBefore=2, spaceAfter=4)))
 
-        act_headers = ['Gene', 'HGVS_c', 'HGVS_p', 'Effect', 'VAF',
+        act_headers = ['Gene', 'HGVS_c', 'HGVS_p', 'Effect', 'VAF', 'gnomAD',
                         'Call', 'Evid', 'Disease', 'Therapy', 'Tier']
-        act_widths  = [45, 85, 75, 65, 32, 25, 25, 80, 88, 30]
+        act_widths  = [45, 76, 75, 62, 30, 37, 25, 25, 70, 78, 27]
 
         act_rows = [_somatic_row(v, include_civic=True) for v in actionable]
 
         tbl_act = build_variant_table(
             act_headers, act_widths, act_rows,
-            colour_col_idx=9, colour_fn=lambda v: amp_colour(v.strip()),
+            colour_col_idx=10, colour_fn=lambda v: amp_colour(v.strip()),
         )
         story.append(tbl_act)
         story.append(Spacer(1, 0.15 * cm))
@@ -1123,14 +1156,11 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None):
             ParagraphStyle('sub_h2', fontSize=8, fontName='Helvetica-Bold',
                            textColor=C_TEXT, spaceBefore=2, spaceAfter=4)))
 
-        oth_headers = ['Gene', 'HGVS_c', 'HGVS_p', 'Effect', 'VAF', 'Call', 'Tier']
-        oth_widths  = [50, 120, 105, 95, 38, 30, 30]
-
         oth_rows = [_somatic_row(v, include_civic=False) for v in other]
 
         tbl_oth = build_variant_table(
-            oth_headers, oth_widths, oth_rows,
-            colour_col_idx=6, colour_fn=lambda v: amp_colour(v.strip()),
+            _OTH_HEADERS, _OTH_WIDTHS, oth_rows,
+            colour_col_idx=7, colour_fn=lambda v: amp_colour(v.strip()),
         )
         story.append(tbl_oth)
         story.append(Spacer(1, 0.15 * cm))
@@ -1139,9 +1169,12 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None):
     story.append(Paragraph(
         f'<font size="6.5" color="#64748b">'
         f'{len(somatic_variants)} somatic variant(s) total: '
-        f'{len(actionable)} actionable (Tier I/II), {len(other)} Tier III.</font>',
+        f'{len(actionable)} actionable (Tier I/II), {len(other)} Tier III'
+        + (f'; {len(pop_variants)} Tier IV population polymorphism(s) listed apart' if pop_variants else '')
+        + '.</font>',
         styles['Normal'],
     ))
+    _population_table(pop_variants, story)
 
     # ── Gene Annotation Notes ────────────────────────────────────────────────
     if gene_ctx:
@@ -1579,7 +1612,7 @@ def _somatic_variant_genes(path):
     _, rows = read_tsv(path)
     for row in rows:
         gene = (row.get('ANN[*].GENE') or '').strip().upper()
-        if gene:
+        if gene and not _amp.population_common(row.get):   # Tier IV: not somatic
             genes.add(gene)
     return genes
 
@@ -3098,7 +3131,9 @@ def build_methodology_section(story):
         'level A gives Tier IA, B gives IB, C gives IIC and D/E give IID; level A/B evidence '
         'from another tumor type gives IIC. Pan-cancer evidence counts as the tumor type. '
         'Without a tumor type the highest tier is IIC. Tier III: HIGH/MODERATE impact '
-        'variants without tier-defining evidence.',
+        'variants without tier-defining evidence. Tier IV: population polymorphisms (local '
+        f'gnomAD v4.1 FAF95, else AF, >= {FILT_SOMATIC_MAX_POP_AF}), listed apart as probable '
+        'germline variants and not used as somatic findings.',
         STYLE_BODY))
 
     story.append(Paragraph('Germline–Somatic Integration', STYLE_SUB))
@@ -3229,6 +3264,9 @@ def main():
         print(f'[INFO] Somatic: {len(somatic_variants)} variant(s) loaded', file=sys.stderr)
     else:
         print(f'[WARN] Somatic TSV not found or not provided: {args.somatic}', file=sys.stderr)
+    # AMP Tier IV (common population polymorphisms): shown apart, never a somatic finding
+    pop_variants     = [v for v in somatic_variants if v.get('_AMP_TIER') == 'IV']
+    somatic_variants = [v for v in somatic_variants if v.get('_AMP_TIER') != 'IV']
 
     gene_ctx_data = {}
     gene_ctx_path = getattr(args, 'gene_ctx', '') or ''
@@ -3289,7 +3327,7 @@ def main():
     build_germline_section(germline_variants, story)
     build_germline_cnv_section(args.cnv_germline_gatk, story,
                                germline_panel_path=getattr(args, 'germline_panel', '') or '')
-    build_somatic_section(somatic_variants, story, gene_ctx=gene_ctx_data)
+    build_somatic_section(somatic_variants, story, gene_ctx=gene_ctx_data, pop_variants=pop_variants)
     build_mutational_signatures_section(args, story)
     build_somatic_cnv_section(
         getattr(args, 'cnv_somatic', '') or '',

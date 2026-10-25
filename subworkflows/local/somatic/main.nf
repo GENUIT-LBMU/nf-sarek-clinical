@@ -12,9 +12,9 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-include { SNPSIFT_DBNSFP_SOMATIC   } from '../../../modules/local/snpsift_somatic/main'
 include { MUTECT2_SAMPLE_ORDER     } from '../../../modules/local/mutect2_sample_order/main'
 include { SNPEFF_MANE              } from '../../../modules/local/snpeff_mane/main'
+include { GNOMAD_ANNOTATE          } from '../../../modules/local/gnomad_annotate/main'
 include { SNPSIFT_FILTER_SOMATIC   } from '../../../modules/local/snpsift_somatic/main'
 include { CIVIC_ANNOTATE           } from '../../../modules/local/snpsift_somatic/main'
 include { SNPSIFT_EXTRACT_SOMATIC  } from '../../../modules/local/snpsift_somatic/main'
@@ -35,8 +35,7 @@ workflow SOMATIC_POSTPROCESS {
     ch_strelka2_indels  // channel: [ val(pair), path(vcf.gz) ]  Strelka2 somatic indels (may be empty)
     ch_cnvkit_cns       // channel: [ val(pair), val(tumor), val(normal), path(*.call.cns) ]
     ch_ascat            // channel: [ val(pair), path(segments.txt), path(metrics.txt) ]
-    ch_dbnsfp           // path: dbNSFP database (.txt.gz)
-    ch_dbnsfp_tbi       // path: dbNSFP tabix index (.txt.gz.tbi)
+    ch_gnomad           // list: [tsv.gz, tsv.gz.tbi, regions.bed.gz, regions.bed.gz.tbi] or []
     ch_snpsift_jar      // path: SnpSift.jar
     ch_somatic_snv_panel // path: somatic SNV gene panel
     ch_somatic_cnv_panel // path: somatic CNV gene panel (38 genes)
@@ -97,15 +96,20 @@ workflow SOMATIC_POSTPROCESS {
         ch_mutect2_report = SNPEFF_MANE.out.vcf
     }
 
-    SNPSIFT_DBNSFP_SOMATIC(
-        ch_mutect2_report,
-        ch_dbnsfp,
-        ch_dbnsfp_tbi,
-        ch_snpsift_jar
-    )
+    // Population frequency (optional): gnomAD v4.1 local resource -> Tier IV
+    if (ch_gnomad) {
+        GNOMAD_ANNOTATE(
+            ch_mutect2_report,
+            ch_gnomad[0],
+            ch_gnomad[1],
+            ch_gnomad[2],
+            ch_gnomad[3]
+        )
+        ch_mutect2_report = GNOMAD_ANNOTATE.out.vcf
+    }
 
     SNPSIFT_FILTER_SOMATIC(
-        SNPSIFT_DBNSFP_SOMATIC.out.vcf,
+        ch_mutect2_report,
         ch_somatic_snv_panel,
         ch_snpsift_jar,
         params.filters.somatic_snv.min_dp
@@ -120,7 +124,8 @@ workflow SOMATIC_POSTPROCESS {
     SNPSIFT_EXTRACT_SOMATIC(
         SNPSIFT_FILTER_SOMATIC.out.vcf,
         ch_somatic_snv_panel,
-        ch_snpsift_jar
+        ch_snpsift_jar,
+        params.filters.somatic_snv.max_pop_af
     )
 
     // Annotate somatic TSV with consensus caller column

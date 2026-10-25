@@ -222,6 +222,9 @@ def load_somatic_snv_by_gene(path):
             impact = (row.get('ANN[*].IMPACT') or '').strip().upper()
             if not gene or impact not in ('HIGH', 'MODERATE'):
                 continue
+            # Common population polymorphism (AMP Tier IV): not a somatic hit
+            if (row.get('POP_COMMON') or '').strip() == '1':
+                continue
             rec = {
                 'hgvs_c': (row.get('ANN[*].HGVS_C') or '').strip(),
                 'hgvs_p': (row.get('ANN[*].HGVS_P') or '').strip(),

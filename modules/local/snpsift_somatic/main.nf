@@ -2,71 +2,14 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     SOMATIC SNV POSTPROCESSING MODULE
     ===================================
-    Steps:
-      1. dbNSFP annotation (SnpSift dbnsfp)  – same fields as germline
-      2. Somatic gene panel + PASS + impact + DP filter
-      3. CIViC annotation (civicpy annotate-vcf)
-      4. Field extraction to TSV
-      5. CIViC field explode to TSV
+    Steps (input: Mutect2 VCF, MANE re-annotated and with local gnomAD
+    frequencies when configured; dbNSFP is germline-only):
+      1. Somatic gene panel + PASS + impact + DP filter
+      2. CIViC annotation (civicpy annotate-vcf)
+      3. Field extraction to TSV (+ gnomAD_AF / gnomAD_FAF95 / gnomAD_AF_source)
+      4. CIViC field explode to TSV
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
-
-process SNPSIFT_DBNSFP_SOMATIC {
-    tag "$pair"
-    label 'process_medium'
-    label 'snpsift'
-
-    publishDir "${params.outdir}/somatic/snv/dbnsfp", mode: params.publish_dir_mode
-
-    input:
-    tuple val(pair), path(vcf)
-    path dbnsfp
-    path dbnsfp_tbi
-    path snpsift_jar
-
-    output:
-    tuple val(pair), path("${pair}.dbnsfp.vcf.gz"), emit: vcf
-
-    stub:
-    """
-    touch ${pair}.dbnsfp.vcf.gz
-    """
-
-    script:
-    def dbnsfp_fields = [
-        "SIFT_score","SIFT_converted_rankscore","SIFT_pred",
-        "SIFT4G_score","SIFT4G_converted_rankscore","SIFT4G_pred",
-        "Polyphen2_HDIV_score","Polyphen2_HDIV_rankscore","Polyphen2_HDIV_pred",
-        "Polyphen2_HVAR_score","Polyphen2_HVAR_rankscore","Polyphen2_HVAR_pred",
-        "LRT_score","LRT_converted_rankscore","LRT_pred",
-        "MutationTaster_score","MutationTaster_converted_rankscore","MutationTaster_pred",
-        "MutationAssessor_score","MutationAssessor_rankscore","MutationAssessor_pred",
-        "FATHMM_score","FATHMM_converted_rankscore","FATHMM_pred",
-        "REVEL_score","REVEL_rankscore",
-        "MutPred_score","MutPred_rankscore",
-        "PrimateAI_score","PrimateAI_rankscore","PrimateAI_pred",
-        "ClinPred_score","ClinPred_rankscore","ClinPred_pred",
-        "CADD_raw","CADD_raw_rankscore","CADD_phred",
-        "DANN_score","DANN_rankscore",
-        "fathmm-MKL_coding_score","fathmm-MKL_coding_rankscore","fathmm-MKL_coding_pred",
-        "GERP++_NR","GERP++_RS","GERP++_RS_rankscore",
-        "phyloP100way_vertebrate","phyloP100way_vertebrate_rankscore",
-        "phastCons100way_vertebrate","phastCons100way_vertebrate_rankscore",
-        "gnomAD_exomes_AC","gnomAD_exomes_AN","gnomAD_exomes_AF",
-        "gnomAD_genomes_AC","gnomAD_genomes_AN","gnomAD_genomes_AF",
-        "clinvar_id","clinvar_clnsig","clinvar_trait","clinvar_review","clinvar_hgvs",
-        "clinvar_MedGen_id","clinvar_OMIM_id","clinvar_Orphanet_id",
-        "Interpro_domain"
-    ].join(",")
-    """
-    java -jar ${snpsift_jar} dbnsfp \\
-        -f ${dbnsfp_fields} \\
-        -v \\
-        -db ${dbnsfp} \\
-        ${vcf} | gzip -c > ${pair}.dbnsfp.vcf.gz
-    """
-}
-
 
 process SNPSIFT_FILTER_SOMATIC {
     tag "$pair"
@@ -174,6 +117,7 @@ process SNPSIFT_EXTRACT_SOMATIC {
     tuple val(pair), path(vcf)
     path gene_panel
     path snpsift_jar
+    val max_pop_af              // population AF for AMP Tier IV (filters.somatic_snv.max_pop_af)
 
     output:
     tuple val(pair), path("${pair}.somatic_snvs_raw.tsv"), emit: tsv
@@ -185,14 +129,21 @@ process SNPSIFT_EXTRACT_SOMATIC {
 
     script:
     """
-    # MANE Plus Clinical HGVS only when SNPEFF_MANE ran (--snpeff_mane_data);
-    # SnpSift aborts on INFO fields missing from the header
+    # Optional INFO fields (SnpSift aborts on fields missing from the header):
+    # MANE Plus Clinical HGVS (SNPEFF_MANE) and local gnomAD (GNOMAD_ANNOTATE)
     zcat "${vcf}" | grep '^##' > vcf_header.txt || true
     MANE_FIELDS=""
     if grep -q '^##INFO=<ID=MANE_PLUS_CLINICAL,' vcf_header.txt; then
         MANE_FIELDS="MANE_PLUS_CLINICAL"
     fi
+    GNOMAD_FIELDS=""
+    GNOMAD_VERSION=""
+    if grep -q '^##INFO=<ID=GNOMAD_AF,' vcf_header.txt; then
+        GNOMAD_FIELDS="GNOMAD_REGION GNOMAD_FILTER GNOMAD_AF GNOMAD_AC GNOMAD_FAF95 GNOMAD_NHOMALT"
+        GNOMAD_VERSION=\$(sed -n 's/^##gnomAD_resource=<Version=\\([^,]*\\),.*/\\1/p' vcf_header.txt)
+    fi
     rm -f vcf_header.txt
+    export GNOMAD_VERSION
 
     java -jar ${snpsift_jar} extractFields -v -s ";" -e "." "${vcf}" \\
         CHROM POS ID REF ALT QUAL FILTER DP \\
@@ -201,28 +152,19 @@ process SNPSIFT_EXTRACT_SOMATIC {
         "ANN[*].RANK" "ANN[*].HGVS_C" "ANN[*].HGVS_P" \\
         "ANN[*].AA_POS" "ANN[*].AA_LEN" \\
         "GEN[1].GT" "GEN[1].AD" "GEN[1].AF" "GEN[1].DP" \\
-        "dbNSFP_SIFT_pred" "dbNSFP_SIFT4G_pred" \\
-        "dbNSFP_Polyphen2_HDIV_pred" "dbNSFP_Polyphen2_HVAR_pred" \\
-        "dbNSFP_LRT_pred" "dbNSFP_MutationTaster_pred" \\
-        "dbNSFP_MutationAssessor_pred" "dbNSFP_FATHMM_pred" \\
-        "dbNSFP_REVEL_score" "dbNSFP_REVEL_rankscore" \\
-        "dbNSFP_PrimateAI_pred" "dbNSFP_ClinPred_pred" \\
-        "dbNSFP_CADD_phred" \\
-        "dbNSFP_gnomAD_exomes_AF" "dbNSFP_gnomAD_genomes_AF" \\
-        "dbNSFP_clinvar_id" "dbNSFP_clinvar_clnsig" "dbNSFP_clinvar_trait" \\
-        "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
-        "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
-        \${MANE_FIELDS} \\
+        \${MANE_FIELDS} \${GNOMAD_FIELDS} \\
     > extract_all.tsv
 
     # One ANN per row: the first one that meets the filter (panel gene AND
     # HIGH/MODERATE), so gene, impact and HGVS all come from the same
-    # transcript. Other multi-valued fields keep their first value.
+    # transcript. Other multi-valued fields keep their first value, except
+    # GNOMAD_* (one value per ALT allele, all kept for the max below).
     awk -F'\\t' 'BEGIN{OFS="\\t"}
         FNR==NR { sub(/\\r\$/, ""); gsub(/ /, ""); if (\$0 != "" && \$0 !~ /^#/) panel[\$0] = 1; next }
         FNR==1 {
             for (i = 1; i <= NF; i++) {
                 if (index(\$i, "ANN[*].") == 1) ann[i] = 1
+                if (index(\$i, "GNOMAD_") == 1) whole[i] = 1
                 if (\$i == "ANN[*].GENE")   gc = i
                 if (\$i == "ANN[*].IMPACT") ic = i
             }
@@ -238,11 +180,77 @@ process SNPSIFT_EXTRACT_SOMATIC {
                 k = 1
             }
             for (i = 1; i <= NF; i++) {
+                if (i in whole) continue
                 n = split(\$i, a, ";")
                 \$i = ((i in ann) && k <= n) ? a[k] : a[1]
             }
             print
-        }' ${gene_panel} extract_all.tsv > "${pair}.somatic_snvs_raw.tsv"
+        }' ${gene_panel} extract_all.tsv > picked.tsv
+    rm -f extract_all.tsv
+
+    # Population frequency (AMP/ASCO/CAP 2017 Tier IV: MAF >= 1% in the general
+    # population). Same sources as the germline gnomAD_AF / gnomAD_AF_source:
+    #   gnomAD_v<ver>          local gnomAD resource (max over ALT alleles)
+    #   gnomAD_v<ver>_qc_fail  fails QC in gnomAD exomes and genomes (AF still used)
+    #   gnomAD_v<ver>_absent   inside the resource regions, not in gnomAD -> 0
+    #   unknown                outside the regions, or no --gnomad_tsv
+    # gnomAD_POP_AF = FAF95 when available, else AF; POP_COMMON = 1 when
+    # gnomAD_POP_AF >= max_pop_af (${max_pop_af}) -> Tier IV in the reports.
+    python3 - <<'PYEOF'
+import os, sys
+
+def num(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+def nums(x):
+    return [v for v in (num(t) for t in (x or '').replace(';', ',').split(',')) if v is not None]
+
+tag = 'gnomAD_v' + (os.environ.get('GNOMAD_VERSION') or 'unknown')
+max_pop_af = float('${max_pop_af}')
+with open('picked.tsv') as fh:
+    lines = [l.rstrip('\\n') for l in fh if l.strip()]
+hdr = lines[0].split('\\t')
+gi = {k: (hdr.index(k) if k in hdr else -1) for k in
+      ('GNOMAD_REGION', 'GNOMAD_FILTER', 'GNOMAD_AF', 'GNOMAD_FAF95', 'GNOMAD_NHOMALT')}
+def col(row, k):
+    i = gi[k]
+    return row[i].strip() if 0 <= i < len(row) else '.'
+counts = {}
+with open('${pair}.somatic_snvs_raw.tsv', 'w') as out:
+    out.write('\\t'.join(hdr + ['gnomAD_AF', 'gnomAD_AF_source', 'gnomAD_FAF95', 'gnomAD_NHOMALT',
+                               'gnomAD_POP_AF', 'POP_COMMON']) + '\\n')
+    for line in lines[1:]:
+        row = line.split('\\t') + ['.'] * (len(hdr) - len(line.split('\\t')))
+        afs   = col(row, 'GNOMAD_AF').replace(';', ',').split(',')
+        filts = col(row, 'GNOMAD_FILTER').replace(';', ',').split(',')
+        vals  = [(num(a), filts[k] if k < len(filts) else '.') for k, a in enumerate(afs)]
+        vals  = [(a, f) for a, f in vals if a is not None]
+        fafs, homs = nums(col(row, 'GNOMAD_FAF95')), nums(col(row, 'GNOMAD_NHOMALT'))
+        if vals:
+            good = [a for a, f in vals if f != 'BOTH_FILTERED']
+            af, src = (max(good), tag) if good else (max(a for a, _f in vals), tag + '_qc_fail')
+            faf = max(fafs) if fafs else None
+            hom = '%d' % max(homs) if homs else '0'
+        elif gi['GNOMAD_REGION'] >= 0 and col(row, 'GNOMAD_REGION') not in ('', '.'):
+            af, src, faf, hom = 0.0, tag + '_absent', 0.0, '0'
+        else:
+            af, src, faf, hom = None, 'unknown', None, '.'
+        pop = faf if faf is not None else af
+        counts[src] = counts.get(src, 0) + 1
+        out.write('\\t'.join(row[:len(hdr)] + [
+            repr(af) if af is not None else '.', src,
+            repr(faf) if faf is not None else '.', hom,
+            repr(pop) if pop is not None else '.',
+            '1' if pop is not None and pop >= max_pop_af else '0']) + '\\n')
+        if pop is not None and pop >= max_pop_af:
+            sys.stderr.write('[gnomAD] ${pair}: %s:%s population AF %.4g >= %s -> Tier IV\\n'
+                             % (row[0], row[1], pop, max_pop_af))
+sys.stderr.write('[gnomAD] ${pair}: ' + ', '.join(k + '=' + str(v) for k, v in sorted(counts.items())) + '\\n')
+PYEOF
+    rm -f picked.tsv
     """
 }
 

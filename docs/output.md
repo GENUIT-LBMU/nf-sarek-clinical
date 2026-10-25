@@ -20,9 +20,8 @@
 
 | File | Description |
 |------|-------------|
-| `dbnsfp/*.dbnsfp.vcf.gz` | Mutect2 VCF with dbNSFP scores |
-| `filtered/*.filtered.vcf.gz` | PASS + somatic panel (60+ genes) + HIGH/MODERATE + tumor DP ≥ 10 |
-| `extract/*.somatic_snvs.tsv` | Somatic SNV table with VAF, dbNSFP scores |
+| `filtered/*.filtered.vcf.gz` | PASS + somatic panel (60+ genes) + HIGH/MODERATE + tumor DP ≥ 10 (MANE annotation and local gnomAD fields when configured) |
+| `extract/*.somatic_snvs.tsv` | Somatic SNV table: MANE HGVS (+ `MANE_PLUS_CLINICAL`), VAF, callers, local gnomAD (`GNOMAD_*`, `gnomAD_AF`, `gnomAD_AF_source`, `gnomAD_FAF95`, `gnomAD_NHOMALT`, `gnomAD_POP_AF`, `POP_COMMON` = 1 for AMP Tier IV). No dbNSFP columns (dbNSFP is germline-only) |
 | `civic/*.civic.vcf.gz` | VCF annotated with CIViC clinical evidence |
 | `civic_extract/*.civic.exploded.tsv` | CIViC evidence exploded to one row per evidence item |
 

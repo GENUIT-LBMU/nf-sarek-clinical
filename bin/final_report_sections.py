@@ -17,6 +17,7 @@ import csv
 
 _GCNV_MIN_QA = str(int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA', '4')))
 _GCNV_LOWMAP_PCT = str(int(round(float(os.environ.get('FILT_GERMLINE_CNV_LOWMAP_FRAC', '0.5')) * 100)))
+_SOM_MAX_POP_AF = str(float(os.environ.get('FILT_SOMATIC_MAX_POP_AF', '0.01')))
 
 # ---------------------------------------------------------------------------
 # CPIC Pharmacogenomics lookup table
@@ -347,7 +348,9 @@ def build_methodology_html():
          'In the patient&#39;s tumor type (--tumor_type / --tumor_types; pan-cancer evidence included): CIViC level '
          '<b>A &rarr; IA</b>, <b>B &rarr; IB</b>, <b>C &rarr; IIC</b>, <b>D/E &rarr; IID</b>; level A/B from another '
          'tumor type &rarr; <b>IIC</b>. Without a tumor type the highest tier is IIC. '
-         '<b>Tier III</b>: HIGH/MODERATE impact variants without tier-defining evidence.'),
+         '<b>Tier III</b>: HIGH/MODERATE impact variants without tier-defining evidence. '
+         '<b>Tier IV</b>: population polymorphisms (local gnomAD v4.1 FAF95, else AF, &ge; ' + _SOM_MAX_POP_AF + '), '
+         'listed apart as probable germline variants and not used as somatic findings.'),
         ('Germline&ndash;Somatic Integration',
          'The correlation module cross-references P/LP/VUS germline variants in cancer-predisposition genes '
          'with (1) somatic second-hit SNVs/indels in the same gene, '

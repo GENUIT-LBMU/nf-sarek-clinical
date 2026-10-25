@@ -17,6 +17,11 @@ evidence and DOES_NOT_SUPPORT records are listed, never tier-defining.
 Cancer') or is a pan-cancer term. Without a tumor type
 every disease counts as "other", so the highest tier is IIC.
 A CIViC assertion with an AMP category for the tumor type gives that tier.
+
+Tier IV (benign / likely benign): a common population polymorphism, i.e. gnomAD
+FAF95 (else AF) >= filters.somatic_snv.max_pop_af (1%), marked POP_COMMON=1 by
+SNPSIFT_EXTRACT_SOMATIC. It wins over any CIViC evidence and the variant is kept
+apart from the somatic findings (probable germline origin).
 """
 
 import csv
@@ -24,7 +29,7 @@ import os
 import re
 from urllib.parse import unquote
 
-TIER_ORDER = {'IA': 0, 'IB': 1, 'IIC': 2, 'IID': 3, 'III': 4}
+TIER_ORDER = {'IA': 0, 'IB': 1, 'IIC': 2, 'IID': 3, 'III': 4, 'IV': 5}
 
 PAN_CANCER = {'cancer', 'solid tumor', 'solid tumors', 'solid tumors, advanced',
               'advanced solid tumor', 'pan-cancer'}
@@ -138,6 +143,18 @@ def classify(records, terms):
         if tier and TIER_ORDER[tier] < TIER_ORDER[best]:
             best, best_rec = tier, rec
     return best, best_rec
+
+
+def population_common(get_field):
+    """True for a common polymorphism (POP_COMMON=1): AMP Tier IV."""
+    return (get_field('POP_COMMON') or '').strip() == '1'
+
+
+def variant_tier(records, terms, get_field):
+    """(tier, defining_record_or_None): IV for common polymorphisms, else classify()."""
+    if population_common(get_field):
+        return 'IV', None
+    return classify(records, terms)
 
 
 def significance_label(sig):
