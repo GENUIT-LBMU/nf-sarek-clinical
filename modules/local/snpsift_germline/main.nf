@@ -158,7 +158,7 @@ process SNPSIFT_EXTRACT_GERMLINE {
     input:
     tuple val(sample), path(vcf)
     path snpsift_jar
-    path acmg_shared    // bin/acmg_shared.py — staged for in-heredoc Python import
+    path acmg_shared    // bin/acmg_shared.py + bin/gene_sets.py — staged for in-heredoc Python import
     path protein_index  // ClinVar protein index (PS1 / PM5), or [] (no PS1 / PM5)
 
     output:

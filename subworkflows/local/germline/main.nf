@@ -110,7 +110,7 @@ workflow GERMLINE_POSTPROCESS {
     SNPSIFT_EXTRACT_GERMLINE(
         ch_candidates,
         ch_snpsift_jar,
-        file("${projectDir}/bin/acmg_shared.py"),
+        [file("${projectDir}/bin/acmg_shared.py"), file("${projectDir}/bin/gene_sets.py")],
         ch_protein_index
     )
 

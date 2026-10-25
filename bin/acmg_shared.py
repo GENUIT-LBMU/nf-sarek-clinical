@@ -885,17 +885,8 @@ def acmg_class(get_field):
 # =============================================================================
 # Gene pathway sets (for germline-somatic pathway classification)
 # =============================================================================
-MMR_GENES = frozenset({
-    'MLH1', 'MSH2', 'MSH6', 'PMS2', 'EPCAM', 'MSH3', 'MLH3', 'PMS1',
-})
-
-HRR_GENES = frozenset({
-    'BRCA1', 'BRCA2', 'PALB2', 'RAD51C', 'RAD51D', 'ATM', 'CHEK2',
-    'BARD1', 'BRIP1', 'NBN', 'RAD50', 'MRE11', 'FANCA', 'FANCC',
-    'FANCD2', 'FANCE', 'FANCF', 'FANCG', 'FANCL', 'FANCM',
-    'CDK12', 'ABRAXAS1', 'ABRAXAS2',
-    'SLX4', 'RBBP8', 'RTEL1',
-})
+# Generated from assets/gene_panels/genes.tsv (scripts/build_gene_lists.py)
+from gene_sets import MMR_GENES, HRR_GENES  # noqa: E402,F401
 
 
 # =============================================================================

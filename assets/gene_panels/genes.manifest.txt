@@ -1,0 +1,12 @@
+resource:   gene table of nf-sarek-clinical (assets/gene_panels/genes.tsv)
+genes:      543 (germline 105, second_hit 86, somatic_core 60, tso500 523, somatic_cnv 38, mmr 8, hrr 26)
+tso500:     Illumina TruSight Oncology 500 DNA content, data sheet M-GL-00173 v9.0, Table 3
+            https://www.illumina.com/content/dam/illumina/gcs/assembled-assets/marketing-literature/trusight-oncology-500-data-sheet-m-gl-00173/trusight-oncology-500-and-ht-data-sheet-m-gl-00173.pdf
+            md5 3a52a0fc9124c482ad6b49172edc4899; 523 symbols, footnote letters removed (BRCA1a, BRCA2a, TERTb)
+hgnc:       hgnc_complete_set.txt (md5 cfb3e2337755e56baa4fa648a96765b2, latest date_modified 2026-10-15): previous symbols -> approved
+typos:      data-sheet spellings checked against TLCR 2024-1071 supplementary table (TSO500, 523 genes):
+            TCS1->TSC1 TCS2->TSC2 IL17R->IL7R IERCC1->ERCC1 GRP124->ADGRA2 (GPR124) RMB10->RBM10
+            SH2DIA->SH2D1A PDCD1G2->PDCD1LG2
+renamed:    BRCA1a->BRCA1 BRCA2a->BRCA2 C11orf30->EMSY FAM123B->AMER1 FAM175A->ABRAXAS1 FAM46C->TENT5C GRP124->ADGRA2 H3F3A->H3-3A H3F3B->H3-3B H3F3C->H3-5 HIST1H1C->H1-2 HIST1H2BD->H2BC5 HIST1H3A->H3C1 HIST1H3B->H3C2 HIST1H3C->H3C3 HIST1H3D->H3C4 HIST1H3E->H3C6 HIST1H3F->H3C7 HIST1H3G->H3C8 HIST1H3H->H3C10 HIST1H3I->H3C11 HIST1H3J->H3C12 HIST2H3A->H3C15 HIST2H3C->H3C14 HIST2H3D->H3C13 HIST3H3->H3-4 IERCC1->ERCC1 IL17R->IL7R MLL->KMT2A MRE11A->MRE11 MYCL1->MYCL PAK7->PAK5 PARK2->PRKN PDCD1G2->PDCD1LG2 RFWD2->COP1 RMB10->RBM10 SH2DIA->SH2D1A TCEB1->ELOC TCS1->TSC1 TCS2->TSC2 TERTb->TERT WISP3->CCN6
+second_hit: germline=1 except activating / risk-allele / non-tumor genes: ALK CCND1 CCND2 CCND3 CCNE1 CDK4
+            CFTR CTRC EGFR HOXB13 KIT MDM2 MDM4 MET MITF MYC PDGFRA RET SPINK1
