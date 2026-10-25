@@ -135,6 +135,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Somatic consensus dropped every Mutect2 MNP (and the matching Strelka2 SNVs):
+  Mutect2 writes adjacent substitutions as one record (CC>TT), Strelka2 as
+  separate SNVs, and the exact-allele `bcftools isec` never matched them. Both
+  callers are now atomized (`bcftools norm -a --atom-overlaps .`) before the
+  intersection; +3 to +14 consensus variants per patient, none lost. TMB and
+  signatures count each base of the MNP, as Strelka2 does.
 - CIViC annotation was empty in every run since 2026-01-09: civicpy 5.2.0 could
   not unpickle the nightly cache (`Can't get attribute 'ClingenCode'`) and the
   task copied the unannotated VCF, so every somatic variant read as Tier III.

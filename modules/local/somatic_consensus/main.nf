@@ -12,7 +12,8 @@
     Steps:
       1. Filter PASS from Strelka2 SNVs + indels, merge into one VCF
       2. Filter PASS from Mutect2
-      3. Normalize both VCFs (bcftools norm — left-align indels)
+      3. Normalize both VCFs (bcftools norm — left-align indels, split
+         multi-allelics, atomize MNPs so Mutect2 MNPs match Strelka2 SNVs)
       4. Intersect: keep variants called by both callers (bcftools isec -n=2 -w1)
       5. Emit consensus VCF + caller statistics TSV
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -53,11 +54,15 @@ process SOMATIC_CONSENSUS {
     bcftools view -f PASS,haplotype ${mutect2_vcf} -Oz -o mutect2_pass.vcf.gz
     tabix -p vcf mutect2_pass.vcf.gz
 
-    # ── 3. Normalize both (left-align indels, split multi-allelic) ─────────
-    bcftools norm -m-both -f ${fasta} mutect2_pass.vcf.gz -Oz -o mutect2_norm.vcf.gz
+    # ── 3. Normalize both (left-align indels, split multi-allelic, atomize) ─
+    # Mutect2 reports adjacent substitutions as one MNP (CC>TT), Strelka2 as
+    # separate SNVs: without -a the exact-allele intersection never matches.
+    bcftools norm -m-both -f ${fasta} mutect2_pass.vcf.gz \
+        | bcftools norm -a --atom-overlaps . -f ${fasta} -Oz -o mutect2_norm.vcf.gz
     tabix -p vcf mutect2_norm.vcf.gz
 
-    bcftools norm -m-both -f ${fasta} strelka_merged.vcf.gz -Oz -o strelka_norm.vcf.gz
+    bcftools norm -m-both -f ${fasta} strelka_merged.vcf.gz \
+        | bcftools norm -a --atom-overlaps . -f ${fasta} -Oz -o strelka_norm.vcf.gz
     tabix -p vcf strelka_norm.vcf.gz
 
     # ── 4. Intersection: variants in BOTH callers ──────────────────────────
