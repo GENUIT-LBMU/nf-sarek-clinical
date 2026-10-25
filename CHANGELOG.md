@@ -135,6 +135,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- AMP tier: one implementation (`bin/amp_tier.py`) for the HTML table, the PDF
+  table and the PDF findings card, which disagreed (level A resistance was IA in
+  HTML and IIA in PDF; HTML also produced "IID"/"IV"). Only accepted CIViC
+  evidence with direction SUPPORTS sets the tier — DOES_NOT_SUPPORT records were
+  counted as support, and submitted evidence weighed like accepted. The tier now
+  depends on the tumor type (new `--tumor_type` / `--tumor_types`): level A/B in
+  the patient's tumor type or pan-cancer → IA/IB, C → IIC, D/E → IID; A/B from
+  another tumor type → IIC. Without a tumor type the highest tier is IIC.
+  Evidence is shown grouped by significance with level, disease, evidence
+  against and the number of submitted records; `%2C` in disease names decoded.
 - Four latent somatic bugs, no effect on the current runs:
   - consensus used `bcftools isec -n=N` ("exactly N"): with
     `min_callers = 1` it kept only the Mutect2-private calls. Now `-n+N`, and

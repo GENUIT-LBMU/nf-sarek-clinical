@@ -78,7 +78,6 @@ C_ACMG_VUS = colors.HexColor('#eab308')   # VUS – yellow
 
 # AMP tier colours
 C_AMP_IA_IB  = colors.HexColor('#dc2626')  # Tier IA / IB – dark red
-C_AMP_IIA_IIB = colors.HexColor('#ea580c') # Tier IIA / IIB – orange
 C_AMP_IIC    = colors.HexColor('#d97706')  # Tier IIC – amber
 C_AMP_III    = colors.HexColor('#6b7280')  # Tier III – gray
 
@@ -152,6 +151,9 @@ _TR = {
     'find_civic':   {'en': 'CIViC Actionable Variants', 'es': 'Variantes Accionables CIViC'},
     'civic_resist': {'en': 'Resistance',                'es': 'Resistencia'},
     'civic_sensit': {'en': 'Sensitivity/Response',      'es': 'Sensibilidad/Respuesta'},
+    'civic_not_support': {'en': 'Evidence against', 'es': 'Evidencia en contra'},
+    'civic_submitted':   {'en': '{n} submitted (unreviewed) record(s) not used for the tier',
+                          'es': '{n} registro(s) submitted (sin revisar) no usados para el tier'},
     # Low-coverage warning
     'low_cov_title': {'en': 'Low Tumor Sequencing Depth',
                       'es': 'Baja Profundidad de Secuenciación Tumoral'},
@@ -447,63 +449,11 @@ def load_germline_variants(path):
 # ---------------------------------------------------------------------------
 # AMP tier classification
 # ---------------------------------------------------------------------------
-def load_civic_map(civic_path):
-    """
-    Build lookup: (CHROM, POS, REF, ALT) -> list[dict] of CIViC records.
-    """
-    _, rows = read_tsv(civic_path)
-    civic_map = {}
-    for row in rows:
-        key = (
-            str(row.get('CHROM', '')),
-            str(row.get('POS', '')),
-            str(row.get('REF', '')),
-            str(row.get('ALT', '')),
-        )
-        civic_map.setdefault(key, []).append(row)
-    return civic_map
+import amp_tier as _amp
 
-
-def classify_amp(row, civic_map):
-    """
-    Classify a somatic variant into AMP tier using CIViC evidence.
-    Returns (tier_str, civic_record_or_None).
-    """
-    key = (
-        str(row.get('CHROM', '')),
-        str(row.get('POS', '')),
-        str(row.get('REF', '')),
-        str(row.get('ALT', '')),
-    )
-    impact = str(row.get('ANN[*].IMPACT', '') or '').upper()
-    civic_records = civic_map.get(key, [])
-
-    if civic_records:
-        # Pick best record by CIViC evidence level (A > B > C > D)
-        level_order = {'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4}
-        def record_sort_key(r):
-            lvl = str(r.get('CIViC Evidence Level', 'Z') or 'Z').upper()
-            return level_order.get(lvl, 99)
-        civic_records_sorted = sorted(civic_records, key=record_sort_key)
-        best = civic_records_sorted[0]
-        lvl = str(best.get('CIViC Evidence Level', '') or '').upper()
-        sig = str(best.get('CIViC Entity Significance', '') or '').upper()
-
-        if lvl == 'A':
-            if 'SENSITIVITYRESPONSE' in sig or sig == 'SENSITIVITY/RESPONSE':
-                return 'IA', best
-            return 'IIA', best
-        if lvl == 'B':
-            if 'SENSITIVITYRESPONSE' in sig or sig == 'SENSITIVITY/RESPONSE' or 'RESISTANCE' in sig:
-                return 'IB', best
-            return 'IIB', best
-        if lvl in ('C', 'D'):
-            return 'IIC', best
-
-    # No CIViC match – use impact
-    if impact in ('HIGH', 'MODERATE'):
-        return 'III', None
-    return 'III', None
+# Tumor-type disease terms for this report (set in main from --tumor-type/--tumor-types)
+TUMOR_TERMS = set()
+TUMOR_LABEL = ''
 
 
 def load_somatic_variants(somatic_path, civic_path):
@@ -512,12 +462,16 @@ def load_somatic_variants(somatic_path, civic_path):
     Returns list of variant dicts with '_AMP_TIER' and '_CIVIC' keys.
     """
     _, rows = read_tsv(somatic_path)
-    civic_map = load_civic_map(civic_path) if (civic_path and os.path.isfile(civic_path or '')) else {}
+    civic_index = _amp.load_civic(civic_path)
     results = []
     for row in rows:
-        tier, civic_rec = classify_amp(row, civic_map)
+        key = (str(row.get('CHROM', '')), str(row.get('POS', '')),
+               str(row.get('REF', '')), str(row.get('ALT', '')))
+        records = civic_index.get(key, [])
+        tier, civic_rec = _amp.classify(records, TUMOR_TERMS)
         row['_AMP_TIER'] = tier
         row['_CIVIC'] = civic_rec or {}
+        row['_CIVIC_ALL'] = records
         results.append(row)
     return results
 
@@ -536,9 +490,7 @@ def acmg_colour(cls):
 def amp_colour(tier):
     if tier in ('IA', 'IB'):
         return C_AMP_IA_IB
-    if tier in ('IIA', 'IIB'):
-        return C_AMP_IIA_IIB
-    if tier == 'IIC':
+    if tier in ('IIC', 'IID'):
         return C_AMP_IIC
     return C_AMP_III
 
@@ -1084,9 +1036,9 @@ def _somatic_row(v, include_civic=False):
             ParagraphStyle('cal1', fontSize=5.5, alignment=TA_CENTER, leading=7))
     tier = v.get('_AMP_TIER', 'III')
     if include_civic:
-        disease = trunc(civic.get('CIViC Entity Disease', '-'), 30)
-        therapy = trunc(civic.get('CIViC Entity Therapies', '-'), 30)
-        evid    = trunc(civic.get('CIViC Evidence Level', '-'), 3)
+        disease = trunc(civic.get('disease') or '-', 30)
+        therapy = trunc(_amp.therapy_cell(civic) or '-', 34)
+        evid    = trunc(civic.get('level') or '-', 3)
         return [gene, hgvsc, hgvsp, effect, vaf_cell, callers_cell, evid, disease, therapy, tier]
     return [gene, hgvsc, hgvsp, effect, vaf_cell, callers_cell, tier]
 
@@ -1105,7 +1057,7 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None):
         return
 
     # Split into CIViC actionable (Tier I/II) vs other (Tier III)
-    _TIER_ORDER = {'IA': 0, 'IB': 1, 'IIA': 2, 'IIB': 3, 'IIC': 4, 'III': 5}
+    _TIER_ORDER = _amp.TIER_ORDER
     actionable = [v for v in somatic_variants if v.get('_AMP_TIER', 'III') not in ('III',)]
     other      = [v for v in somatic_variants if v.get('_AMP_TIER', 'III') == 'III']
     actionable.sort(key=lambda v: _TIER_ORDER.get(v.get('_AMP_TIER', 'III'), 5))
@@ -1118,12 +1070,17 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None):
         '&nbsp; <font color="#92400e">M</font> = Mutect2 only '
         '&nbsp;&nbsp; <font color="#b91c1c">\u26a0 low</font> = VAF &lt; 5%',
         _legend_style))
+    story.append(Paragraph(
+        (f'<b>Tumor type for tiering:</b> {xml_escape(TUMOR_LABEL)}' if TUMOR_LABEL else
+         '<b>Tumor type not provided</b> (--tumor_type): all CIViC evidence is treated as '
+         'from another tumor type, so the highest possible tier is IIC.'),
+        _legend_style))
     story.append(Spacer(1, 0.2 * cm))
 
     # ── Table 1: CIViC Actionable Variants (Tier I/II) ─────────────────────
     if actionable:
         story.append(Paragraph(
-            '<b>Clinically Actionable Variants</b> (CIViC Level A\u2013D, AMP Tier I\u2013II)',
+            '<b>Clinically Actionable Variants</b> (AMP Tier I\u2013II, accepted CIViC evidence)',
             ParagraphStyle('sub_h', fontSize=8, fontName='Helvetica-Bold',
                            textColor=C_TEXT, spaceBefore=2, spaceAfter=4)))
 
@@ -1146,7 +1103,7 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None):
             styles['Normal']))
     else:
         story.append(Paragraph(
-            '<b>Clinically Actionable Variants:</b> None identified (no CIViC Level A\u2013D matches).',
+            '<b>Clinically Actionable Variants:</b> None identified (no accepted CIViC evidence reaching Tier I\u2013II).',
             ParagraphStyle('no_act', fontSize=7.5, textColor=colors.HexColor('#64748b'),
                            spaceBefore=2, spaceAfter=4)))
 
@@ -2605,59 +2562,30 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
                 f' &nbsp; chr{r["chrom"]} — confirmed by {r["tools"]}')
         findings.append((T('find_cnv'), colors.HexColor('#ea580c'), lines))
 
-    # ── Finding 5: CIViC Actionable Variants (Level A or B, SUPPORTS) ────────
-    civic_path = getattr(args, 'civic', '') or ''
-    if civic_path and os.path.isfile(civic_path):
-        import csv as _csv_civ
-        civic_findings = {}  # (gene, var_name) -> {'level': X, 'resist': set, 'sensit': set}
-        with open(civic_path) as _cf:
-            # Fix header: first column may contain literal \t (bug in CIVIC_EXTRACT)
-            raw_header = _cf.readline().rstrip('\n')
-            # Expand literal \t in the first column so DictReader keys are correct
-            real_header = raw_header.replace('\\t', '\t')
-            cols = real_header.split('\t')
-            reader = _csv_civ.DictReader(_cf, fieldnames=cols, delimiter='\t')
-            for cr in reader:
-                lvl = str(cr.get('CIViC Evidence Level', '') or '').strip().upper()
-                if lvl not in ('A', 'B'):
-                    continue
-                direction = str(cr.get('CIViC Entity Direction', '') or '').strip().upper()
-                if direction != 'SUPPORTS':
-                    continue
-                sig = str(cr.get('CIViC Entity Significance', '') or '').strip().upper()
-                if 'SENSITIVITY' not in sig and 'RESISTANCE' not in sig:
-                    continue
-                gene     = str(cr.get('SYMBOL', '') or '').strip()
-                var_name = str(cr.get('CIViC Variant Name', '') or '').strip()
-                if not gene or not var_name:
-                    continue
-                therapy  = str(cr.get('CIViC Entity Therapies', '') or '—').strip()
-                key = (gene, var_name)
-                if key not in civic_findings:
-                    civic_findings[key] = {'level': lvl, 'resist': set(), 'sensit': set()}
-                # Keep highest level (A > B)
-                if lvl < civic_findings[key]['level']:
-                    civic_findings[key]['level'] = lvl
-                if 'RESISTANCE' in sig:
-                    civic_findings[key]['resist'].add(therapy[:40])
-                else:
-                    civic_findings[key]['sensit'].add(therapy[:40])
-
-        civ_lines = []
-        for (gene, var_name), data in sorted(civic_findings.items()):
-            lvl = data['level']
-            if data['resist']:
-                ts = ', '.join(sorted(data['resist'])[:3])
-                civ_lines.append(
-                    f'<b>{gene} {var_name}</b> [Level {lvl}] '
-                    f'— <font color="#ef4444"><b>{T("civic_resist")}:</b></font> {ts}')
-            if data['sensit']:
-                ts = ', '.join(sorted(data['sensit'])[:3])
-                civ_lines.append(
-                    f'<b>{gene} {var_name}</b> [Level {lvl}] '
-                    f'— <font color="#16a34a"><b>{T("civic_sensit")}:</b></font> {ts}')
-        if civ_lines:
-            findings.append((T('find_civic'), colors.HexColor('#0f766e'), civ_lines))
+    # ── Finding 5: CIViC Actionable Variants (AMP Tier I/II, amp_tier.py) ────
+    civ_lines = []
+    tiered = [v for v in somatic_variants if v.get('_AMP_TIER', 'III') != 'III']
+    tiered.sort(key=lambda v: _amp.TIER_ORDER.get(v.get('_AMP_TIER', 'III'), 9))
+    for v in tiered:
+        gene = xml_escape(v.get('ANN[*].GENE', '') or '')
+        hp = xml_escape((v.get('ANN[*].HGVS_P', '') or v.get('ANN[*].HGVS_C', '') or '')[:30])
+        civ_lines.append(f'<b>{gene} {hp}</b> [Tier {v["_AMP_TIER"]}]')
+        summ = _amp.evidence_summary(v.get('_CIVIC_ALL', []), TUMOR_TERMS)
+        for label, items in summ['groups']:
+            colour = '#ef4444' if label == 'Resistance' else '#16a34a' if label.startswith('Sensitivity') else '#334155'
+            more = f' (+{len(items) - 3})' if len(items) > 3 else ''
+            civ_lines.append(
+                f'&nbsp;&nbsp;<font color="{colour}"><b>{xml_escape(label)}:</b></font> '
+                f'{xml_escape("; ".join(items[:3]))}{more}')
+        if summ['not_supporting']:
+            civ_lines.append(
+                f'&nbsp;&nbsp;<font color="#64748b"><b>{T("civic_not_support")}:</b> '
+                f'{xml_escape("; ".join(summ["not_supporting"][:2]))}</font>')
+        if summ['n_submitted']:
+            civ_lines.append(
+                f'&nbsp;&nbsp;<font color="#64748b">{T("civic_submitted").format(n=summ["n_submitted"])}</font>')
+    if civ_lines:
+        findings.append((T('find_civic'), colors.HexColor('#0f766e'), civ_lines))
 
     # ── Render findings as styled cards ──────────────────────────────────────
     _card_title_s = ParagraphStyle(
@@ -3151,11 +3079,13 @@ def build_methodology_section(story):
 
     story.append(Paragraph('Somatic Variant Interpretation (AMP/ASCO/CAP Tiers)', STYLE_SUB))
     story.append(Paragraph(
-        'Somatic variants are tiered per AMP/ASCO/CAP 2017 guidelines using CIViC database '
-        'evidence levels (A–E). Tier IA/IB: FDA-approved or guideline-supported therapeutic '
-        'implications. Tier IIA/IIB: Clinical trials or emerging evidence. '
-        'Tier IIC: Biologically plausible evidence. Tier III: variants of unknown significance '
-        '(HIGH/MODERATE impact without CIViC annotation).',
+        'Somatic variants are tiered per AMP/ASCO/CAP 2017 from CIViC evidence. Only accepted '
+        'evidence whose direction supports the claim sets the tier; submitted evidence and '
+        'evidence against are listed but never raise it. In the patient\'s tumor type, CIViC '
+        'level A gives Tier IA, B gives IB, C gives IIC and D/E give IID; level A/B evidence '
+        'from another tumor type gives IIC. Pan-cancer evidence counts as the tumor type. '
+        'Without a tumor type the highest tier is IIC. Tier III: HIGH/MODERATE impact '
+        'variants without tier-defining evidence.',
         STYLE_BODY))
 
     story.append(Paragraph('Germline–Somatic Integration', STYLE_SUB))
@@ -3194,6 +3124,8 @@ def parse_args():
     p.add_argument('--germline',   default='',     help='Germline SNV TSV')
     p.add_argument('--somatic',    default='',     help='Somatic SNV TSV')
     p.add_argument('--civic',      default='',     help='CIViC exploded TSV')
+    p.add_argument('--tumor-type', default='',     help="Run-wide tumor type: CIViC disease terms joined by '|'")
+    p.add_argument('--tumor-types', default='',    help='TSV id<TAB>terms (patient, tumor or pair), overrides --tumor-type')
     p.add_argument('--tmb',        default='',     help='TMB TSV')
     p.add_argument('--ascat',      default='',     help='ASCAT metrics TSV')
     p.add_argument('--hrd',        default='',     help='HRD predictions TSV')
@@ -3271,6 +3203,12 @@ def main():
               file=sys.stderr)
     else:
         print(f'[WARN] Germline TSV not found or not provided: {args.germline}', file=sys.stderr)
+
+    global TUMOR_TERMS, TUMOR_LABEL
+    TUMOR_TERMS, TUMOR_LABEL = _amp.tumor_terms_for(
+        [args.patient, args.tumor, args.pair], args.tumor_type, args.tumor_types)
+    print(f'[INFO] Tumor type for AMP tiering: {TUMOR_LABEL or "not provided (max tier IIC)"}',
+          file=sys.stderr)
 
     somatic_variants = []
     if args.somatic and os.path.isfile(args.somatic):

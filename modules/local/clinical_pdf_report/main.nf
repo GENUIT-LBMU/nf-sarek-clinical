@@ -133,6 +133,8 @@ process CLINICAL_PDF_REPORT {
         --germline    "\${SNV_GERMLINE:-}" \\
         --somatic     "\${SNV_SOMATIC:-}"  \\
         --civic       "\${CIVIC_TSV:-}"    \\
+        --tumor-type  "${params.tumor_type ?: ''}"  \\
+        --tumor-types "${params.tumor_types ?: ''}" \\
         --tmb         "\${TMB_FILE:-}"     \\
         --ascat       "${ascat_metrics}"   \\
         --hrd         "\${HRD_FILE:-}"     \\

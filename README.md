@@ -526,8 +526,26 @@ docker run --rm -u $(id -u):$(id -g) -v $PWD:$PWD -v /data/refs:/data/refs -w $P
 ```
 
 Then set `civic_cache: /data/refs/civic/civicpy_cache_<YYYYMMDD>.pkl`. Evidence with
-status `accepted` and `submitted` (not yet reviewed by CIViC curators) is used;
+status `accepted` and `submitted` (not yet reviewed by CIViC curators) is annotated;
 `rejected` is not. CIViC data are CC0.
+
+**AMP tier** (`bin/amp_tier.py`, the same for HTML, PDF and the findings card).
+Only accepted evidence whose direction is `SUPPORTS` sets the tier; submitted
+evidence and evidence against are listed but never raise it.
+
+| CIViC level | Patient's tumor type (or pan-cancer) | Other tumor type |
+|---|---|---|
+| A | IA | IIC |
+| B | IB | IIC |
+| C | IIC | — |
+| D, E | IID | — |
+
+The tumor type is given as CIViC disease names joined by `|` (a name also covers
+its subtypes: `Breast Cancer` matches `HER2 Positive Breast Cancer`), for the whole run
+(`--tumor_type "Colorectal Cancer|Colon Cancer|Rectum Cancer|Colorectal Adenocarcinoma"`)
+or per patient with `--tumor_types`, a TSV `id<TAB>terms` where `id` is the
+patient, the tumor sample or the pair. Without either, every disease counts as
+"other tumor type" and the highest tier is IIC (the run prints a warning).
 
 ### Low-mappability BED — germline CNV flags (required for germline CNV)
 
@@ -805,6 +823,8 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 |-----------|---------|-------------|
 | `--skip_germline_cnv` | `false` | Skip GATK germline gCNV |
 | `--civic_cache` | — | Frozen civicpy cache (`scripts/build_civic_cache.sh`); required for somatic postprocessing |
+| `--tumor_type` | — | Tumor type for AMP tiering: CIViC disease names joined by `|` (whole run) |
+| `--tumor_types` | — | TSV `id<TAB>terms` per patient / tumor / pair; overrides `--tumor_type` |
 | `--gcnv_lowmap_bed` | — | Low-mappability BED for germline CNV (`scripts/build_lowmap_panel.sh`); required unless `--skip_germline_cnv` |
 | `--cram_fasta` | — | FASTA (+ `.fai`, `.dict`) Sarek wrote the CRAMs with; needed only when a sample has CRAM and no BAM (BAM is used when present); used by germline and somatic GATK CNV |
 | `--skip_somatic_cnv` | `false` | Skip ASCAT + CNVkit interpretation |

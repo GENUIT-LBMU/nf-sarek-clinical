@@ -466,62 +466,11 @@ from final_report_acmg import acmg_criteria_list, acmg_class, _BENIGN_CRIT
 from acmg_shared import clinvar_display, gnomad_display
 
 # ----
-# CIViC / AMP tier
+# CIViC / AMP tier (bin/amp_tier.py, shared with the PDF report)
 # ----
-def load_civic_index(path):
-    # Returns dict: (chrom, pos, ref, alt) -> {'level': best_level, 'disease': ..., 'therapy': ..., 'significance': ...}
-    index = {}
-    if not path or not os.path.isfile(path):
-        return index
-    level_order = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5}
-    with open(path) as fh:
-        reader = csv.DictReader(fh, delimiter='\t')
-        for r in reader:
-            key = (r.get('CHROM',''), r.get('POS',''), r.get('REF',''), r.get('ALT',''))
-            lv = r.get('CIViC Evidence Level', '').strip().upper()
-            if not lv: continue
-            existing = index.get(key)
-            if existing is None or level_order.get(lv, 9) < level_order.get(existing['level'], 9):
-                index[key] = {
-                    'level':      lv,
-                    'disease':    r.get('CIViC Entity Disease', ''),
-                    'therapy':    r.get('CIViC Entity Therapies', ''),
-                    'significance': r.get('CIViC Entity Significance', ''),
-                    'amp_cat':    r.get('CIViC Assertion AMP Category', ''),
-                }
-    return index
-
-def amp_tier(row, hdr, civic_index):
-    # Returns tier string: 'IA', 'IB', 'IIA', 'IIB', 'IIC', 'III', 'IV'
-    def col(name):
-        i = hdr.get(name, -1)
-        return row[i].strip() if i >= 0 and i < len(row) else '.'
-
-    key   = (col('CHROM'), col('POS'), col('REF'), col('ALT'))
-    civic = civic_index.get(key)
-    impact = col('ANN[*].IMPACT').upper()
-
-    if civic:
-        lv  = civic['level']
-        sig = civic['significance'].upper()
-        is_sens = 'SENSITIVITY' in sig or 'RESPONSE' in sig
-        is_res  = 'RESISTANCE' in sig
-        if lv == 'A':
-            return 'IA' if (is_sens or is_res) else 'IIA'
-        if lv == 'B':
-            return 'IB' if (is_sens or is_res) else 'IIB'
-        if lv in ('C', 'D'):
-            return 'IIC'
-        return 'IID'
-
-    if impact in ('HIGH', 'MODERATE'):
-        return 'III'
-    return 'IV'
-
-# ----
-# Load CIViC index once
-# ----
-civic_index = load_civic_index(files['CIViC annotation'])
+import amp_tier as _amp
+TUMOR_TERMS, TUMOR_LABEL = _amp.tumor_terms_for([patient_id, tumor, pair], "${params.tumor_type ?: ''}", "${params.tumor_types ?: ''}")
+civic_index = _amp.load_civic(files['CIViC annotation'])
 
 # ----
 import sys as _sys3; _sys3.path.insert(0, '${projectDir}/bin')
@@ -701,12 +650,9 @@ def tsv_to_html_somatic(path, civic_idx):
     tier_colors = {
         'IA':  'badge-IA',
         'IB':  'badge-IB',
-        'IIA': 'badge-IIA',
-        'IIB': 'badge-IIB',
         'IIC': 'badge-IIC',
         'IID': 'badge-IIC',
         'III': 'badge-III',
-        'IV':  'badge-IV',
     }
 
     def get_col(row, name):
@@ -727,18 +673,26 @@ def tsv_to_html_somatic(path, civic_idx):
     tbody = ""
     for line in lines[1:]:
         row = line.split("\\t")
-        tier = amp_tier(row, hdr, civic_idx)
-        badge_cls = tier_colors.get(tier, 'badge-IV')
+        records = civic_idx.get((get_col(row, 'CHROM'), get_col(row, 'POS'),
+                                 get_col(row, 'REF'), get_col(row, 'ALT')), [])
+        tier, civic = _amp.classify(records, TUMOR_TERMS)
+        civic = civic or {}
+        badge_cls = tier_colors.get(tier, 'badge-III')
 
         chrom = get_col(row, 'CHROM')
         pos   = get_col(row, 'POS')
         locus = chrom + ':' + pos if chrom and pos else (chrom or pos or '.')
 
-        key   = (chrom, pos, get_col(row, 'REF'), get_col(row, 'ALT'))
-        civic = civic_idx.get(key, {})
         civic_level   = civic.get('level', '')
         civic_disease = civic.get('disease', '')
-        civic_therapy = civic.get('therapy', '')
+        civic_therapy = _amp.therapy_cell(civic)
+        summ = _amp.evidence_summary(records, TUMOR_TERMS)
+        civic_p = ''.join("<p class='ctx-p'><strong>" + html.escape(lbl) + ":</strong> " + html.escape('; '.join(it)) + "</p>"
+                          for lbl, it in summ['groups'])
+        if summ['not_supporting']:
+            civic_p += "<p class='ctx-p'><strong>Evidence against:</strong> " + html.escape('; '.join(summ['not_supporting'])) + "</p>"
+        if summ['n_submitted']:
+            civic_p += "<p class='ctx-p' style='color:#888;'>" + str(summ['n_submitted']) + " submitted (unreviewed) CIViC record(s) not used for the tier.</p>"
 
         gene_name = get_col(row, 'ANN[*].GENE')
         impact_val = get_col(row, 'ANN[*].IMPACT')
@@ -791,7 +745,7 @@ def tsv_to_html_somatic(path, civic_idx):
         tbody += "<tr data-tier='" + tier + "'>" + tds + "</tr>\\n"
 
         # Hidden context row
-        if ctx_role or ctx_summary:
+        if ctx_role or ctx_summary or civic_p:
             role_badge = "<span class='badge badge-role'>" + html.escape(ctx_role or 'Unknown') + "</span>"
             path_badge = "<span class='badge badge-path'>" + html.escape(ctx_pathway) + "</span>" if ctx_pathway else ""
             tier_badge = ("<span class='badge badge-cgc'>CGC Tier " + html.escape(ctx_tier) + "</span>") if ctx_tier else ""
@@ -799,7 +753,7 @@ def tsv_to_html_somatic(path, civic_idx):
             conseq_p   = ("<p class='ctx-p'><strong>Tumor consequence:</strong> " + html.escape(conseq_text) + "</p>") if conseq_text else ""
             ctx_inner  = ("<div class='ctx-box'>"
                           "<div class='ctx-badges'>" + role_badge + path_badge + tier_badge + "</div>"
-                          + summary_p + conseq_p
+                          + summary_p + conseq_p + civic_p
                           + "</div>")
             tbody += ("<tr class='ctx-row' data-tier='" + tier + "' style='display:none;'>"
                       "<td colspan='11'>" + ctx_inner + "</td></tr>\\n")
@@ -807,8 +761,10 @@ def tsv_to_html_somatic(path, civic_idx):
             tbody += ("<tr class='ctx-row' data-tier='" + tier + "' style='display:none;'>"
                       "<td colspan='11'><em style='color:#888;'>No annotation.</em></td></tr>\\n")
 
+    tumor_note = ("<p style='font-size:.8rem;'><b>Tumor type for tiering:</b> " + html.escape(TUMOR_LABEL) + "</p>" if TUMOR_LABEL else
+                  "<p class='warn'>Tumor type not provided (--tumor_type): CIViC evidence is treated as from another tumor type, so the highest tier is IIC.</p>")
     return (
-        filter_bar +
+        tumor_note + filter_bar +
         "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
         "<tbody id='tbl-somatic'>" + tbody + "</tbody></table></div>"
     )
@@ -1207,10 +1163,8 @@ _css = (
     '.badge-LB { background:#3b82f6; color:#fff; }'
     '.badge-B { background:#22c55e; color:#fff; }'
     '.badge-IA, .badge-IB { background:#dc2626; color:#fff; }'
-    '.badge-IIA, .badge-IIB { background:#ea580c; color:#fff; }'
     '.badge-IIC { background:#d97706; color:#fff; }'
     '.badge-III { background:#6b7280; color:#fff; }'
-    '.badge-IV { background:#374151; color:#888; }'
     '.filter-bar { display:flex; gap:8px; margin:10px 0; flex-wrap:wrap; }'
     '.filter-btn { padding:4px 14px; border-radius:20px; border:1px solid var(--line); background:rgba(15,23,42,0.7); color:#e5e7eb; cursor:pointer; font-size:.78rem; }'
     '.filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }'
@@ -1271,7 +1225,7 @@ _js = (
     "    var tier = tr.getAttribute('data-tier');"
     "    var visible = false;"
     "    if (show === 'all') visible = true;"
-    "    else if (show === 'ti-tii') visible = ['IA','IB','IIA','IIB','IIC'].indexOf(tier) >= 0;"
+    "    else if (show === 'ti-tii') visible = ['IA','IB','IIC','IID'].indexOf(tier) >= 0;"
     "    else if (show === 'ti') visible = ['IA','IB'].indexOf(tier) >= 0;"
     "    tr.style.display = visible ? '' : 'none';"
     "    // Always collapse ctx-row when filter changes"

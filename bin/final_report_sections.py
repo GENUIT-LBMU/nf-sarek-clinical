@@ -342,11 +342,12 @@ def build_methodology_html():
          'specifications (CSpec registry; PM1 hotspot counts from cancerhotspots.org v2); ClinVar P/LP with &ge;2 stars is never removed by BA1. '
          'Point thresholds: P &ge;10, LP 6&ndash;9, VUS 0&ndash;5, LB &minus;1 to &minus;6, B &le;&minus;7.'),
         ('Somatic Variant Interpretation (AMP/ASCO/CAP Tiers)',
-         'Somatic variants are tiered per AMP/ASCO/CAP 2017 guidelines using CIViC database evidence (A&ndash;E). '
-         '<b>Tier IA/IB</b>: FDA-approved or clinical-guideline therapeutic implications. '
-         '<b>Tier IIA/IIB</b>: Clinical trials or emerging evidence. '
-         '<b>Tier IIC</b>: Biologically plausible (case reports, preclinical). '
-         '<b>Tier III</b>: Variants of unknown significance (HIGH/MODERATE impact without CIViC).'),
+         'Somatic variants are tiered per AMP/ASCO/CAP 2017 from CIViC evidence. Only accepted evidence whose '
+         'direction supports the claim sets the tier; submitted evidence and evidence against are listed but never raise it. '
+         'In the patient&#39;s tumor type (--tumor_type / --tumor_types; pan-cancer evidence included): CIViC level '
+         '<b>A &rarr; IA</b>, <b>B &rarr; IB</b>, <b>C &rarr; IIC</b>, <b>D/E &rarr; IID</b>; level A/B from another '
+         'tumor type &rarr; <b>IIC</b>. Without a tumor type the highest tier is IIC. '
+         '<b>Tier III</b>: HIGH/MODERATE impact variants without tier-defining evidence.'),
         ('Germline&ndash;Somatic Integration',
          'The correlation module cross-references P/LP/VUS germline variants in cancer-predisposition genes '
          'with (1) somatic second-hit SNVs/indels in the same gene, '
