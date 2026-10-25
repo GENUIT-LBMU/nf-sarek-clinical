@@ -193,3 +193,34 @@ def evidence_summary(records, terms):
             items.append(item)
     order = sorted(groups.items(), key=lambda kv: kv[0])
     return {'groups': order, 'not_supporting': not_supporting, 'n_submitted': n_submitted}
+
+
+# TERT promoter hotspots (GRCh38). They are upstream_gene_variant (MODIFIER), so
+# the impact filter never reports them; the reports say when the capture does not
+# reach them, so that "not detected" is not read as negative.
+TERT_PROMOTER_HOTSPOTS = [
+    ('chr5', 1295113, 'C228T', 'c.-124C>T'),
+    ('chr5', 1295135, 'C250T', 'c.-146C>T'),
+]
+
+
+def bed_covers(bed_path, chrom, pos):
+    """True if the 1-based position lies in a BED interval; None when the BED is missing."""
+    if not bed_path or not os.path.isfile(bed_path):
+        return None
+    with open(bed_path) as fh:
+        for line in fh:
+            f = line.split('\t')
+            if len(f) >= 3 and f[0] == chrom and f[1].isdigit() and int(f[1]) < pos <= int(f[2]):
+                return True
+    return False
+
+
+def tert_promoter_note(bed_path):
+    """Report sentence when the TERT promoter hotspots are outside the capture, else ''."""
+    cov = [bed_covers(bed_path, c, p) for c, p, _n, _h in TERT_PROMOTER_HOTSPOTS]
+    if any(x is None for x in cov) or all(cov):
+        return ''
+    names = ' / '.join(n for n in (h[2] for h in TERT_PROMOTER_HOTSPOTS))
+    return (f'TERT promoter ({names}): not assessable — outside the capture regions of this assay '
+            f'({os.path.basename(bed_path)}).')

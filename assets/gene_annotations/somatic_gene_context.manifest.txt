@@ -1,0 +1,11 @@
+resource:   somatic gene context (assets/gene_annotations/somatic_gene_context.tsv), 526 genes
+curated:    60 core somatic panel genes (ROLE, CGC_TIER, PATHWAY, GENE_SUMMARY; SOURCE=curated), unchanged
+added:      466 TSO500 genes outside the core (scripts/build_gene_context.py, 2026-10-25)
+role:       CancerMine collated, Zenodo 10.5281/zenodo.23597453 (concept 10.5281/zenodo.1156241),
+            published 2026-10-23, licence CC0, cancermine_collated.tsv md5 66a6dab8e7d83595363f667bdc1167a0
+            rule: TSG / Oncogene when >= 5x the other's citations and >= 20 together, else empty
+            (119 of 466 set; on the 60 curated genes: 21 equal, 39 empty, 0 opposite)
+summary:    CIViC gene description (CC0) from civicpy_cache_20261024.pkl (md5 eab4325d2ba6f9ec1e74545367ab7e1e),
+            else NCBI Gene RefSeq summary (E-utilities esummary, 2026-10-25)
+hgnc:       hgnc_complete_set.txt md5 cfb3e2337755e56baa4fa648a96765b2 (HGNC id -> approved symbol, Entrez id)
+not used:   COSMIC CGC and OncoKB (commercial use needs a licence); CGC_TIER and PATHWAY empty for added genes

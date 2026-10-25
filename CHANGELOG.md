@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- One gene table, `assets/gene_panels/genes.tsv` (543 genes; manifest of sources),
+  from which `scripts/build_gene_lists.py` writes every panel file and
+  `bin/gene_sets.py` (MMR / HRR); `--check` flags stale files. Includes the
+  Illumina TruSight Oncology 500 DNA content (523 genes, data sheet M-GL-00173
+  v9.0, symbols updated to HGNC; 9 data-sheet typos fixed against an independent
+  list).
+- Somatic SNV second-hit track (`--second_hit_panel`): germline genes outside the
+  core somatic panel (49) where a somatic loss-of-function completes biallelic
+  inactivation. Only the germline–somatic correlation and the findings cards read
+  it; before, 64 of 105 germline genes (RAD51C/D, MUTYH, MSH3, CDKN2A, VHL, …) could
+  never get a somatic SNV second hit.
+- Pan-tumor somatic SNV track (`--tso500_panel`): TSO500 genes outside the core
+  (466). Tier I/II join the actionable variants and findings (marked TSO500),
+  Tier III go to a separate table (collapsed in HTML), Tier IV to the population
+  polymorphisms. Tracks reuse the same processes (`conf/modules.config`,
+  `task.ext.suffix`). 1128: 88 TSO500 VUS; IMAX1141: 15.
+- Gene context for the TSO500 genes (`scripts/build_gene_context.py`): ROLE from
+  CancerMine (CC0) only when one-sided (>= 5x, >= 20 citations; 0 opposite roles on
+  the 60 curated genes), summary from CIViC (CC0) or NCBI Gene.
+- TERT promoter (C228T / C250T): "not assessable" note in HTML and PDF when the
+  hotspots lie outside `--panel_bed` (Agilent S07604514 stops ~120 bp short).
 - Germline CNV low-mappability flag (`--gcnv_lowmap_bed`, built by
   `scripts/build_lowmap_panel.sh` from GIAB stratifications v3.3
   `GRCh38_lowmappabilityall`, panel MANE exons ±1 kb). The annotated TSV gains

@@ -818,6 +818,8 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 |-----------|---------|-------------|
 | `--germline_panel` | `assets/gene_panels/germline_cancer_predisposition.txt` | Gene list for germline SNV/CNV filter (one symbol per line) |
 | `--somatic_snv_panel` | `assets/gene_panels/somatic_snv_panel.txt` | Gene list for somatic SNV filter |
+| `--second_hit_panel` | `assets/gene_panels/somatic_track_second_hit.txt` | Second-hit germline genes outside the core: somatic SNVs for the germline–somatic correlation only (`null` = off) |
+| `--tso500_panel` | `assets/gene_panels/somatic_track_tso500.txt` | TSO500 genes outside the core: pan-tumor somatic SNV track (`null` = off) |
 | `--panel_bed` | — | WES capture BED for TMB calculation (mut/Mb) |
 | `--gnomad_tsv` | — | Local gnomAD panel resource (`scripts/build_gnomad_panel.sh`); path or https URL. Recommended |
 | `--gnomad_regions` | `<gnomad_tsv>_regions.bed.gz` | Regions BED of that resource (only needed if renamed) |
@@ -1044,7 +1046,46 @@ The somatic SNV report table includes a **Callers** column indicating whether ea
 
 ## Gene panels
 
-Built-in panels bundled in `assets/gene_panels/`. To use a custom panel: `--germline_panel /path/to/my_panel.txt` (one HGNC symbol per line).
+Every gene list comes from one table, `assets/gene_panels/genes.tsv` (543 genes, one
+row per gene; sources in `genes.manifest.txt`):
+
+| Column | Genes | Generated file / use |
+|---|---|---|
+| `germline` | 105 | `germline_cancer_predisposition.txt`: germline SNV / CNV, LOH second hits |
+| `second_hit` | 86 | germline genes where a somatic loss-of-function event completes biallelic inactivation; outside the core: `somatic_track_second_hit.txt` (49) |
+| `somatic_core` | 60 | `somatic_snv_panel.txt`: somatic SNV report |
+| `tso500` | 523 | `somatic_tso500_panel.txt` (Illumina TruSight Oncology 500 DNA content); outside the core: `somatic_track_tso500.txt` (466) |
+| `somatic_cnv` | 38 | `somatic_38_oncogenes.txt`: somatic CNV report |
+| `mmr`, `hrr` | 8, 26 | `bin/gene_sets.py` (`MMR_GENES`, `HRR_GENES`): correlation and findings |
+
+Edit `genes.tsv`, then run `python3 scripts/build_gene_lists.py` (`--check` reports
+stale files). Custom lists can still be passed: `--germline_panel`, `--somatic_snv_panel`,
+`--second_hit_panel`, `--tso500_panel` (one HGNC symbol per line; `null` disables a track).
+
+**Somatic SNV tracks.** The same chain (panel + PASS + impact + DP, MANE, gnomAD / Tier IV,
+CIViC, AMP) runs per track; files carry the track suffix
+(`<pair>.second_hit.somatic_snvs.tsv`, `<pair>.tso500.somatic_snvs.tsv`):
+
+- **core** (60 genes): somatic SNV tables of HTML and PDF, as before.
+- **second hit** (germline genes outside the core): only the germline–somatic
+  correlation and the findings cards read it, for genes with a germline P/LP variant;
+  it is never shown in the somatic tables. Activating, risk-allele and non-tumor germline
+  genes are excluded (ALK, CCND1-3, CCNE1, CDK4, CFTR, CTRC, EGFR, HOXB13, KIT, MDM2,
+  MDM4, MET, MITF, MYC, PDGFRA, RET, SPINK1).
+- **pan-tumor TSO500** (genes outside the core): Tier I/II join the actionable variants
+  and the findings (marked TSO500), Tier III go to a separate "Pan-tumor (TSO500)" table
+  (collapsed in HTML), Tier IV to the population polymorphisms. RYBP and TERC have no
+  MANE Select transcript in MANE v1.2 (the snpEff database), so they are not annotated.
+  TERT promoter hotspots (C228T chr5:1295113, C250T chr5:1295135) are
+  `upstream_gene_variant` (MODIFIER) and are not called by the impact filter; when they
+  lie outside `--panel_bed` (Agilent S07604514 ends ~120 bp before them, depth 0–2) the
+  HTML and PDF say "TERT promoter: not assessable", so absence is not read as negative.
+
+Gene context for the TSO500 genes (`assets/gene_annotations/somatic_gene_context.tsv`,
+`scripts/build_gene_context.py`): ROLE from CancerMine (CC0) only when the literature is
+one-sided (>= 5x citations, >= 20), GENE_SUMMARY from the CIViC gene description (CC0) or
+the NCBI Gene RefSeq summary; the 60 core genes keep their curated text. COSMIC CGC and
+OncoKB are not used (commercial use needs a licence).
 
 ### Germline SNV + CNV panel (105 genes)
 

@@ -26,7 +26,8 @@ process FINAL_REPORT {
     publishDir "${params.outdir}/reporting", mode: params.publish_dir_mode
 
     input:
-    tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv), path(civic_tsv)
+    tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv), path(civic_tsv),
+          path(snv_second_hit_tsv), path(snv_tso500_tsv), path(civic_tso500_tsv)
     val sarek_outdir
     val run_name
 
@@ -63,6 +64,9 @@ process FINAL_REPORT {
     SNV_GERMLINE="\$(staged "${snv_germline_tsv}")"
     SNV_SOMATIC="\$(staged "${snv_somatic_tsv}")"
     CIVIC_TSV="\$(staged "${civic_tsv}")"
+    SNV_SECOND_HIT="\$(staged "${snv_second_hit_tsv}")"   # second-hit track: correlation only
+    SNV_TSO500="\$(staged "${snv_tso500_tsv}")"           # pan-tumor track (TSO500 outside the core)
+    CIVIC_TSO500="\$(staged "${civic_tso500_tsv}")"
     CNV_SOMATIC="\$(find \${OUT_DIR}/somatic/cnv/ascat_cnvkit -name "\${PAIR}*_somatic_cnv_report.tsv" 2>/dev/null | head -1 || true)"
     TMB_FILE="\$(find \${OUT_DIR}/somatic/tmb -name "\${PAIR}*.tmb.tsv" 2>/dev/null | head -1 || true)"
     PHARMACO="\$(find \${OUT_DIR}/germline/pharmaco -name "\${NORMAL}*.pharmaco.tsv" 2>/dev/null | head -1 || true)"
@@ -147,6 +151,7 @@ process FINAL_REPORT {
     python3 ${projectDir}/bin/germline_somatic_correlate.py \
         --germline      "\${SNV_GERMLINE}" \
         --somatic       "\${SNV_SOMATIC}" \
+        --somatic-second-hit "\${SNV_SECOND_HIT}" \
         --cnv           "\${CNV_SOMATIC}" \
         --cnv-germline  "\${CNV_GERM_GATK}" \
         --germline-panel "${projectDir}/assets/gene_panels/germline_cancer_predisposition.txt" \
@@ -448,6 +453,8 @@ def build_unified_cnv_html(ascat_cnvkit_path, gatk_somatic_path):
 files = {
     "Germline SNVs":       "\${SNV_GERMLINE}",
     "Somatic SNVs":        "\${SNV_SOMATIC}",
+    "Somatic SNVs (TSO500)": "\${SNV_TSO500}",
+    "CIViC annotation (TSO500)": "\${CIVIC_TSO500}",
     "CIViC annotation":    "\${CIVIC_TSV}",
     "Somatic CNVs":        "\${CNV_SOMATIC}",
     "TMB":                 "\${TMB_FILE}",
@@ -478,6 +485,7 @@ def hgvs_cells(get_field):
 import amp_tier as _amp
 TUMOR_TERMS, TUMOR_LABEL = _amp.tumor_terms_for([patient_id, tumor, pair], "${params.tumor_type ?: ''}", "${params.tumor_types ?: ''}")
 civic_index = _amp.load_civic(files['CIViC annotation'])
+civic_index.update(_amp.load_civic(files['CIViC annotation (TSO500)']))   # pan-tumor track (other genes)
 
 # ----
 import sys as _sys3; _sys3.path.insert(0, '${projectDir}/bin')
@@ -633,16 +641,25 @@ def tsv_to_html_germline(path):
 # ----
 # Somatic SNV table with AMP tier classification
 # ----
-def tsv_to_html_somatic(path, civic_idx):
+def tsv_to_html_somatic(path, civic_idx, tso500_path=''):
+    # Core panel rows, then the pan-tumor TSO500 track (genes outside the core):
+    # its Tier I/II join the main table, Tier III go to their own table
     if not path or not os.path.isfile(path):
         return "<p class='warn'>File not found: " + html.escape(path or "N/A") + "</p>"
-    with open(path) as fh:
-        lines = [l.rstrip("\\n") for l in fh if l.strip()]
-    if not lines:
+    def read_rows(p):
+        if not p or not os.path.isfile(p):
+            return []
+        with open(p) as fh:
+            ls = [l.rstrip("\\n") for l in fh if l.strip()]
+        if not ls:
+            return []
+        h = {c: i for i, c in enumerate(ls[0].split("\\t"))}
+        return [(h, l.split("\\t")) for l in ls[1:]]
+    all_rows = ([('core', r) for r in read_rows(path)] +
+                [('tso500', r) for r in read_rows(tso500_path)])
+    if not all_rows and not open(path).read().strip():
         return "<p class='warn'>Empty file</p>"
-
-    raw_header = lines[0].split("\\t")
-    hdr = {c: i for i, c in enumerate(raw_header)}
+    hdr = {}
 
     disp_cols = [
         ('Locus',        None),
@@ -685,8 +702,8 @@ def tsv_to_html_somatic(path, civic_idx):
 
     tbody = ""
     tbody_pop = ""
-    for line in lines[1:]:
-        row = line.split("\\t")
+    tbody_tso = ""
+    for track, (hdr, row) in all_rows:
         records = civic_idx.get((get_col(row, 'CHROM'), get_col(row, 'POS'),
                                  get_col(row, 'REF'), get_col(row, 'ALT')), [])
         tier, civic = _amp.variant_tier(records, TUMOR_TERMS, lambda k: get_col(row, k))
@@ -718,7 +735,7 @@ def tsv_to_html_somatic(path, civic_idx):
         ctx_pathway = ctx.get('pathway', '')
         ctx_summary = ctx.get('summary', '')
         conseq_text = gene_consequence(ctx_role, impact_val, effect_val) if ctx_role else ''
-        row_id = "ctx-" + str(id(line))
+        row_id = "ctx-" + str(id(row))
 
         vaf_raw = get_col(row, 'GEN[1].AF')
         try:
@@ -747,6 +764,9 @@ def tsv_to_html_somatic(path, civic_idx):
                 tds += hgvs_cells(lambda k: get_col(row, k))[0]
             elif disp_name == 'HGVS_p':
                 tds += hgvs_cells(lambda k: get_col(row, k))[1]
+            elif disp_name == 'Gene' and track == 'tso500':
+                tds += ("<td>" + html.escape(get_col(row, raw_col)) +
+                        "<br><span class='tx'>TSO500</span></td>")
             elif disp_name == 'gnomAD':
                 tds += "<td>" + html.escape(gnomad_display(lambda k: get_col(row, k))) + "</td>"
             elif disp_name == 'Call':
@@ -785,6 +805,9 @@ def tsv_to_html_somatic(path, civic_idx):
         if tier == 'IV':
             tbody_pop += tbody[row_start:]
             tbody = tbody[:row_start]
+        elif track == 'tso500' and tier == 'III':
+            tbody_tso += tbody[row_start:]
+            tbody = tbody[:row_start]
 
     tumor_note = ("<p style='font-size:.8rem;'><b>Tumor type for tiering:</b> " + html.escape(TUMOR_LABEL) + "</p>" if TUMOR_LABEL else
                   "<p class='warn'>Tumor type not provided (--tumor_type): CIViC evidence is treated as from another tumor type, so the highest tier is IIC.</p>")
@@ -794,10 +817,20 @@ def tsv_to_html_somatic(path, civic_idx):
                     "(gnomAD &ge; ${params.filters.somatic_snv.max_pop_af}; probable germline origin, not interpreted as somatic)</h3>"
                     "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
                     "<tbody id='tbl-somatic-pop'>" + tbody_pop + "</tbody></table></div>")
+    tert_note = _amp.tert_promoter_note("${params.panel_bed ?: ''}")
+    tert_html = ("<p class='warn' style='margin-top:14px;'>" + html.escape(tert_note) + "</p>") if tert_note else ""
+    tso_html = ""
+    if tbody_tso:
+        n_tso = tbody_tso.count("<tr data-tier=")
+        tso_html = ("<details style='margin-top:18px;'><summary style='cursor:pointer;font-size:.95rem;font-weight:600;'>"
+                    "Pan-tumor (TSO500) &mdash; " + str(n_tso) + " variant(s) of uncertain significance "
+                    "(AMP Tier III, TruSight Oncology 500 genes outside the core panel)</summary>"
+                    "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
+                    "<tbody id='tbl-somatic-tso500'>" + tbody_tso + "</tbody></table></div></details>")
     return (
         tumor_note + filter_bar +
         "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
-        "<tbody id='tbl-somatic'>" + tbody + "</tbody></table></div>" + pop_html
+        "<tbody id='tbl-somatic'>" + tbody + "</tbody></table></div>" + pop_html + tso_html + tert_html
     )
 
 # ----
@@ -1090,10 +1123,10 @@ sections = ""
 sections += "<section><h2>Germline SNVs</h2>" + tsv_to_html_germline(files['Germline SNVs']) + "</section>\\n"
 
 # Somatic SNVs — specialized table with AMP tier
-sections += "<section><h2>Somatic SNVs</h2>" + tsv_to_html_somatic(files['Somatic SNVs'], civic_index) + "</section>\\n"
+sections += "<section><h2>Somatic SNVs</h2>" + tsv_to_html_somatic(files['Somatic SNVs'], civic_index, files['Somatic SNVs (TSO500)']) + "</section>\\n"
 
 # Remaining generic sections (skip gene coverage and handled tables)
-generic_skip = {'Germline SNVs', 'Somatic SNVs', 'CIViC annotation',
+generic_skip = {'Germline SNVs', 'Somatic SNVs', 'CIViC annotation', 'Somatic SNVs (TSO500)', 'CIViC annotation (TSO500)',
                 'Somatic CNVs', 'Pharmacogenomics',
                 'Gene Coverage (N)', 'Gene Coverage (T)'}
 for title, path in files.items():

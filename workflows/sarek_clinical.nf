@@ -106,6 +106,8 @@ workflow SAREK_CLINICAL {
     ch_germline_panel    = file(params.germline_panel)
     ch_somatic_cnv_panel = file(params.somatic_cnv_panel)
     ch_somatic_snv_panel = file(params.somatic_snv_panel)
+    ch_second_hit_panel  = params.second_hit_panel ? file(params.second_hit_panel, checkIfExists: true) : []
+    ch_tso500_panel      = params.tso500_panel     ? file(params.tso500_panel,     checkIfExists: true) : []
     ch_pharmaco_variants = file(params.pharmaco_variants)
 
     sarek_out = file(params.sarek_outdir)
@@ -299,6 +301,8 @@ workflow SAREK_CLINICAL {
             ch_gnomad,
             ch_snpsift_jar,
             ch_somatic_snv_panel,
+            ch_second_hit_panel,
+            ch_tso500_panel,
             ch_somatic_cnv_panel,
             ch_germline_panel,
             ch_gene_coords,
@@ -404,11 +408,14 @@ workflow SAREK_CLINICAL {
         .combine(by_key(germline_ran ? GERMLINE_POSTPROCESS.out.snv_tsv : Channel.empty()))
         .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.somatic_snv_tsv : Channel.empty()))
         .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.civic_tsv : Channel.empty()))
+        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.second_hit_tsv : Channel.empty()))
+        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.tso500_tsv : Channel.empty()))
+        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.tso500_civic_tsv : Channel.empty()))
 
     ch_report_input = ch_pairs
         .combine(ch_lookup)
         .combine(ch_all_done)
-        .map { pair, ascat, hrd, germ, som, civic, _ready ->
+        .map { pair, ascat, hrd, germ, som, civic, som2, tso, tso_civic, _ready ->
             def normal = pair.contains('_vs_') ? pair.split('_vs_')[1] : ''
             if (!ascat[pair]) log.warn "${pair}: no ASCAT metrics, the report shows NA for purity, ploidy, LOH, GI and WGD"
             [pair,
@@ -416,7 +423,10 @@ workflow SAREK_CLINICAL {
              hrd[pair]    ?: file('NO_HRD'),
              germ[normal] ?: file('NO_GERMLINE'),
              som[pair]    ?: file('NO_SOMATIC'),
-             civic[pair]  ?: file('NO_CIVIC')]
+             civic[pair]  ?: file('NO_CIVIC'),
+             som2[pair]   ?: file('NO_SECOND_HIT'),
+             tso[pair]    ?: file('NO_TSO500'),
+             tso_civic[pair] ?: file('NO_TSO500_CIVIC')]
         }
 
     // ── FINAL REPORT ─────────────────────────────────────────────────────────

@@ -523,6 +523,9 @@ def run_correlation(args):
     germ_variants       = germ_snv_variants + germ_cnv_variants
 
     somatic_snv_by_gene = load_somatic_snv_by_gene(args.somatic)
+    # Second-hit track: germline genes outside the core somatic panel (no gene overlap)
+    for _g, _recs in load_somatic_snv_by_gene(args.somatic_second_hit).items():
+        somatic_snv_by_gene.setdefault(_g, []).extend(_recs)
     somatic_cnv_by_gene = load_somatic_cnv_by_gene(args.cnv)
     detected_sigs       = load_detected_signatures(args.sig, args.tumor)
     detected_id_sigs    = load_detected_id_signatures(
@@ -880,6 +883,7 @@ def parse_args():
     ap = argparse.ArgumentParser(description='Germline-Somatic Correlation Analysis')
     ap.add_argument('--germline',  default='',  help='Germline SNV TSV (filtered, classified)')
     ap.add_argument('--somatic',   default='',  help='Somatic SNV TSV')
+    ap.add_argument('--somatic-second-hit', default='', help='Somatic SNV TSV of the second-hit track (germline genes outside the core panel)')
     ap.add_argument('--cnv',           default='', help='Somatic CNV report TSV (parse_somatic_cnv.py output)')
     ap.add_argument('--cnv-germline',  default='', help='GATK gCNV germline annotated TSV (segments_annotated.tsv)')
     ap.add_argument('--sig',       default='',  help='SBS96 assignment activities TXT')

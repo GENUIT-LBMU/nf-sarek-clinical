@@ -4,6 +4,9 @@
     ===================================
     Steps (input: Mutect2 VCF, MANE re-annotated and with local gnomAD
     frequencies when configured; dbNSFP is germline-only):
+    The same processes run per gene track (core panel, second-hit genes,
+    TSO500 extension) under aliases; task.ext.suffix (conf/modules.config)
+    names the files of each track (e.g. <pair>.second_hit.somatic_snvs.tsv).
       1. Somatic gene panel + PASS + impact + DP filter
       2. CIViC annotation (civicpy annotate-vcf)
       3. Field extraction to TSV (+ gnomAD_AF / gnomAD_FAF95 / gnomAD_AF_source)
@@ -25,11 +28,11 @@ process SNPSIFT_FILTER_SOMATIC {
     val min_dp
 
     output:
-    tuple val(pair), path("${pair}.filtered.vcf.gz"), emit: vcf
+    tuple val(pair), path("${pair}*.filtered.vcf.gz"), emit: vcf
 
     stub:
     """
-    touch ${pair}.filtered.vcf.gz
+    touch ${pair}${task.ext.suffix ?: ''}.filtered.vcf.gz
     """
 
     script:
@@ -56,7 +59,7 @@ with open("filter_expr.txt", "w") as fh:
 PYEOF
 
     java -jar ${snpsift_jar} filter "\$(cat filter_expr.txt)" ${vcf} \\
-        | gzip -c > ${pair}.filtered.vcf.gz
+        | gzip -c > ${pair}${task.ext.suffix ?: ''}.filtered.vcf.gz
     """
 }
 
@@ -74,11 +77,11 @@ process CIVIC_ANNOTATE {
     path civic_cache    // dated civicpy cache (scripts/build_civic_cache.sh)
 
     output:
-    tuple val(pair), path("${pair}.civic.vcf.gz"), emit: vcf
+    tuple val(pair), path("${pair}*.civic.vcf.gz"), emit: vcf
 
     stub:
     """
-    touch ${pair}.civic.vcf.gz
+    touch ${pair}${task.ext.suffix ?: ''}.civic.vcf.gz
     """
 
     script:
@@ -94,12 +97,12 @@ process CIVIC_ANNOTATE {
 
     civicpy annotate-vcf \\
         --input-vcf  ${vcf} \\
-        --output-vcf ${pair}.civic.vcf.gz \\
+        --output-vcf ${pair}${task.ext.suffix ?: ''}.civic.vcf.gz \\
         --reference  ${genome_build} \\
         -i accepted -i submitted
 
-    if ! bcftools view -h ${pair}.civic.vcf.gz | grep -q '^##INFO=<ID=CIVIC,'; then
-        echo "ERROR: civicpy wrote no CIVIC INFO header in ${pair}.civic.vcf.gz" >&2
+    if ! bcftools view -h ${pair}${task.ext.suffix ?: ''}.civic.vcf.gz | grep -q '^##INFO=<ID=CIVIC,'; then
+        echo "ERROR: civicpy wrote no CIVIC INFO header in ${pair}${task.ext.suffix ?: ''}.civic.vcf.gz" >&2
         exit 1
     fi
     """
@@ -120,11 +123,11 @@ process SNPSIFT_EXTRACT_SOMATIC {
     val max_pop_af              // population AF for AMP Tier IV (filters.somatic_snv.max_pop_af)
 
     output:
-    tuple val(pair), path("${pair}.somatic_snvs_raw.tsv"), emit: tsv
+    tuple val(pair), path("${pair}*.somatic_snvs_raw.tsv"), emit: tsv
 
     stub:
     """
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\n" > ${pair}.somatic_snvs_raw.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\n" > ${pair}${task.ext.suffix ?: ''}.somatic_snvs_raw.tsv
     """
 
     script:
@@ -219,7 +222,7 @@ def col(row, k):
     i = gi[k]
     return row[i].strip() if 0 <= i < len(row) else '.'
 counts = {}
-with open('${pair}.somatic_snvs_raw.tsv', 'w') as out:
+with open('${pair}${task.ext.suffix ?: ''}.somatic_snvs_raw.tsv', 'w') as out:
     out.write('\\t'.join(hdr + ['gnomAD_AF', 'gnomAD_AF_source', 'gnomAD_FAF95', 'gnomAD_NHOMALT',
                                'gnomAD_POP_AF', 'POP_COMMON']) + '\\n')
     for line in lines[1:]:
@@ -266,11 +269,11 @@ process ANNOTATE_CONSENSUS {
     tuple val(pair), path(tsv), path(consensus_vcf)
 
     output:
-    tuple val(pair), path("${pair}.somatic_snvs.tsv"), emit: tsv
+    tuple val(pair), path("${pair}*.somatic_snvs.tsv"), emit: tsv
 
     stub:
     """
-    cp ${tsv} ${pair}.somatic_snvs.tsv
+    cp ${tsv} ${pair}${task.ext.suffix ?: ''}.somatic_snvs.tsv
     """
 
     script:
@@ -304,7 +307,7 @@ process ANNOTATE_CONSENSUS {
         else
             print \$0, "Mutect2"
     }
-    ' "${tsv}" > "${pair}.somatic_snvs.tsv"
+    ' "${tsv}" > "${pair}${task.ext.suffix ?: ''}.somatic_snvs.tsv"
     """
 }
 
@@ -320,11 +323,11 @@ process CIVIC_EXTRACT {
     tuple val(pair), path(vcf)
 
     output:
-    tuple val(pair), path("${pair}.civic.exploded.tsv"), emit: tsv
+    tuple val(pair), path("${pair}*.civic.exploded.tsv"), emit: tsv
 
     stub:
     """
-    printf "CHROM\\tPOS\\tREF\\tALT\\tCIViC Variant Name\\tCIViC Entity Disease\\n" > ${pair}.civic.exploded.tsv
+    printf "CHROM\\tPOS\\tREF\\tALT\\tCIViC Variant Name\\tCIViC Entity Disease\\n" > ${pair}${task.ext.suffix ?: ''}.civic.exploded.tsv
     """
 
     script:
@@ -340,7 +343,7 @@ process CIVIC_EXTRACT {
         exit 1
     fi
     nfields=\$(printf '%s\\n' "\$fmt" | awk -F'|' '{print NF}')
-    { printf 'CHROM\\tPOS\\tREF\\tALT\\t'; printf '%s\\n' "\$fmt" | tr '|' '\\t'; } > ${pair}.civic.exploded.tsv
+    { printf 'CHROM\\tPOS\\tREF\\tALT\\t'; printf '%s\\n' "\$fmt" | tr '|' '\\t'; } > ${pair}${task.ext.suffix ?: ''}.civic.exploded.tsv
 
     bcftools query -f '%CHROM\\t%POS\\t%REF\\t%ALT\\t%INFO/CIVIC\\n' \\
         -i 'INFO/CIVIC!=""' ${vcf} \\
@@ -356,6 +359,6 @@ process CIVIC_EXTRACT {
             for (k=1; k<=n; k++) line = line OFS F[k];
             print line;
         }
-    }' >> ${pair}.civic.exploded.tsv
+    }' >> ${pair}${task.ext.suffix ?: ''}.civic.exploded.tsv
     """
 }

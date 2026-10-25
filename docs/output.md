@@ -22,6 +22,9 @@
 |------|-------------|
 | `filtered/*.filtered.vcf.gz` | PASS + somatic panel (60+ genes) + HIGH/MODERATE + tumor DP ≥ 10 (MANE annotation and local gnomAD fields when configured) |
 | `extract/*.somatic_snvs.tsv` | Somatic SNV table: MANE HGVS (+ `MANE_PLUS_CLINICAL`), VAF, callers, local gnomAD (`GNOMAD_*`, `gnomAD_AF`, `gnomAD_AF_source`, `gnomAD_FAF95`, `gnomAD_NHOMALT`, `gnomAD_POP_AF`, `POP_COMMON` = 1 for AMP Tier IV). No dbNSFP columns (dbNSFP is germline-only) |
+| `extract/*.second_hit.somatic_snvs.tsv` | Second-hit track: somatic SNVs in germline second-hit genes outside the core (correlation only) |
+| `extract/*.tso500.somatic_snvs.tsv` | Pan-tumor track: somatic SNVs in TSO500 genes outside the core (same columns) |
+| `filtered/*.{second_hit,tso500}.filtered.vcf.gz`, `civic/*.tso500.civic.vcf.gz`, `civic_extract/*.tso500.civic.exploded.tsv` | Same steps for the tracks |
 | `civic/*.civic.vcf.gz` | VCF annotated with CIViC clinical evidence |
 | `civic_extract/*.civic.exploded.tsv` | CIViC evidence exploded to one row per evidence item |
 

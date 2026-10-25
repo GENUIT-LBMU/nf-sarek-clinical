@@ -20,6 +20,15 @@ include { CIVIC_ANNOTATE           } from '../../../modules/local/snpsift_somati
 include { SNPSIFT_EXTRACT_SOMATIC  } from '../../../modules/local/snpsift_somatic/main'
 include { ANNOTATE_CONSENSUS       } from '../../../modules/local/snpsift_somatic/main'
 include { CIVIC_EXTRACT            } from '../../../modules/local/snpsift_somatic/main'
+// Same processes per gene track (file suffix from conf/modules.config)
+include { SNPSIFT_FILTER_SOMATIC  as SNPSIFT_FILTER_SECOND_HIT     } from '../../../modules/local/snpsift_somatic/main'
+include { SNPSIFT_EXTRACT_SOMATIC as SNPSIFT_EXTRACT_SECOND_HIT    } from '../../../modules/local/snpsift_somatic/main'
+include { ANNOTATE_CONSENSUS      as ANNOTATE_CONSENSUS_SECOND_HIT } from '../../../modules/local/snpsift_somatic/main'
+include { SNPSIFT_FILTER_SOMATIC  as SNPSIFT_FILTER_TSO500         } from '../../../modules/local/snpsift_somatic/main'
+include { CIVIC_ANNOTATE          as CIVIC_ANNOTATE_TSO500         } from '../../../modules/local/snpsift_somatic/main'
+include { SNPSIFT_EXTRACT_SOMATIC as SNPSIFT_EXTRACT_TSO500        } from '../../../modules/local/snpsift_somatic/main'
+include { ANNOTATE_CONSENSUS      as ANNOTATE_CONSENSUS_TSO500     } from '../../../modules/local/snpsift_somatic/main'
+include { CIVIC_EXTRACT           as CIVIC_EXTRACT_TSO500          } from '../../../modules/local/snpsift_somatic/main'
 include { SOMATIC_CONSENSUS        } from '../../../modules/local/somatic_consensus/main'
 include { SOMATIC_CNV_INTERPRET    } from '../../../modules/local/somatic_cnv_interpret/main'
 include { TMB_FILTER               } from '../../../modules/local/tmb/main'
@@ -38,6 +47,8 @@ workflow SOMATIC_POSTPROCESS {
     ch_gnomad           // list: [tsv.gz, tsv.gz.tbi, regions.bed.gz, regions.bed.gz.tbi] or []
     ch_snpsift_jar      // path: SnpSift.jar
     ch_somatic_snv_panel // path: somatic SNV gene panel
+    ch_second_hit_panel // path: second-hit genes outside the core panel, or [] (no second-hit track)
+    ch_tso500_panel     // path: TSO500 genes outside the core panel, or [] (no pan-tumor track)
     ch_somatic_cnv_panel // path: somatic CNV gene panel (38 genes)
     ch_germline_panel   // path: germline gene panel (105 genes, for LOH)
     ch_gene_coords_bed  // path: WES gene coordinates BED
@@ -143,6 +154,40 @@ workflow SOMATIC_POSTPROCESS {
         CIVIC_ANNOTATE.out.vcf
     )
 
+    // ── Second-hit track: germline genes outside the core panel ─────────────
+    // Somatic SNVs for the germline-somatic correlation only (not reported in
+    // the somatic SNV table); same filter, MANE, gnomAD / Tier IV as the core.
+    ch_second_hit_tsv = Channel.empty()
+    if (ch_second_hit_panel) {
+        SNPSIFT_FILTER_SECOND_HIT(ch_mutect2_report, ch_second_hit_panel, ch_snpsift_jar,
+                                  params.filters.somatic_snv.min_dp)
+        SNPSIFT_EXTRACT_SECOND_HIT(SNPSIFT_FILTER_SECOND_HIT.out.vcf, ch_second_hit_panel, ch_snpsift_jar,
+                                   params.filters.somatic_snv.max_pop_af)
+        ANNOTATE_CONSENSUS_SECOND_HIT(
+            SNPSIFT_EXTRACT_SECOND_HIT.out.tsv
+                .join(SOMATIC_CONSENSUS.out.vcf, by: 0, remainder: true)
+                .map { pair, tsv, consensus_vcf -> [pair, tsv, consensus_vcf ?: file('NO_FILE')] })
+        ch_second_hit_tsv = ANNOTATE_CONSENSUS_SECOND_HIT.out.tsv
+    }
+
+    // ── Pan-tumor track: TSO500 genes outside the core panel ────────────────
+    ch_tso500_tsv   = Channel.empty()
+    ch_tso500_civic = Channel.empty()
+    if (ch_tso500_panel) {
+        SNPSIFT_FILTER_TSO500(ch_mutect2_report, ch_tso500_panel, ch_snpsift_jar,
+                              params.filters.somatic_snv.min_dp)
+        CIVIC_ANNOTATE_TSO500(SNPSIFT_FILTER_TSO500.out.vcf, params.genome_build, ch_civic_cache)
+        SNPSIFT_EXTRACT_TSO500(SNPSIFT_FILTER_TSO500.out.vcf, ch_tso500_panel, ch_snpsift_jar,
+                               params.filters.somatic_snv.max_pop_af)
+        ANNOTATE_CONSENSUS_TSO500(
+            SNPSIFT_EXTRACT_TSO500.out.tsv
+                .join(SOMATIC_CONSENSUS.out.vcf, by: 0, remainder: true)
+                .map { pair, tsv, consensus_vcf -> [pair, tsv, consensus_vcf ?: file('NO_FILE')] })
+        CIVIC_EXTRACT_TSO500(CIVIC_ANNOTATE_TSO500.out.vcf)
+        ch_tso500_tsv   = ANNOTATE_CONSENSUS_TSO500.out.tsv
+        ch_tso500_civic = CIVIC_EXTRACT_TSO500.out.tsv
+    }
+
     // ── Somatic CNV (ASCAT + CNVkit) ─────────────────────────────────────────
     ch_cnv_joined = ch_cnvkit_cns.join(
         ch_ascat.map { pair, seg, met -> [pair, seg, met] },
@@ -210,6 +255,9 @@ workflow SOMATIC_POSTPROCESS {
     emit:
     somatic_snv_tsv   = ANNOTATE_CONSENSUS.out.tsv
     civic_tsv         = CIVIC_EXTRACT.out.tsv
+    second_hit_tsv    = ch_second_hit_tsv     // [pair, tsv]: correlation only
+    tso500_tsv        = ch_tso500_tsv         // [pair, tsv]: pan-tumor track
+    tso500_civic_tsv  = ch_tso500_civic       // [pair, tsv]
     cnv_tsv           = SOMATIC_CNV_INTERPRET.out.tsv
     cnv_txt           = SOMATIC_CNV_INTERPRET.out.txt
     tmb_tsv           = TMB_CALCULATE.out.tsv

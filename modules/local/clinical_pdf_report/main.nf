@@ -19,7 +19,8 @@ process CLINICAL_PDF_REPORT {
     publishDir "${params.outdir}/reporting", mode: params.publish_dir_mode
 
     input:
-    tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv), path(civic_tsv)
+    tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv), path(civic_tsv),
+          path(snv_second_hit_tsv), path(snv_tso500_tsv), path(civic_tso500_tsv)
     val sarek_outdir
     val run_name
 
@@ -54,6 +55,9 @@ process CLINICAL_PDF_REPORT {
     SNV_GERMLINE="\$(staged "${snv_germline_tsv}")"
     SNV_SOMATIC="\$(staged "${snv_somatic_tsv}")"
     CIVIC_TSV="\$(staged "${civic_tsv}")"
+    SNV_SECOND_HIT="\$(staged "${snv_second_hit_tsv}")"   # second-hit track: correlation only
+    SNV_TSO500="\$(staged "${snv_tso500_tsv}")"           # pan-tumor track (TSO500 outside the core)
+    CIVIC_TSO500="\$(staged "${civic_tso500_tsv}")"
     TMB_FILE="\$(find \${OUT_DIR}/somatic/tmb                -name "\${PAIR}*.tmb.tsv"            2>/dev/null | head -1 || true)"
     MSI_FILE="\$(find ${sarek_outdir}/variant_calling/msisensorpro -name "\${PAIR}" -type f       2>/dev/null | head -1 || true)"
     COV_N="\$(find ${sarek_outdir}/reports/mosdepth          -name "\${NORMAL}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"
@@ -110,6 +114,7 @@ process CLINICAL_PDF_REPORT {
     python3 ${projectDir}/bin/germline_somatic_correlate.py \\
         --germline      "\${SNV_GERMLINE:-}"   \\
         --somatic       "\${SNV_SOMATIC:-}"    \\
+        --somatic-second-hit "\${SNV_SECOND_HIT:-}" \\
         --cnv           "\${CNV_SOMATIC:-}"    \\
         --cnv-germline  "\${CNV_GERM_GATK:-}" \\
         --germline-panel "${projectDir}/assets/gene_panels/germline_cancer_predisposition.txt" \\
@@ -132,6 +137,10 @@ process CLINICAL_PDF_REPORT {
         --germline    "\${SNV_GERMLINE:-}" \\
         --somatic     "\${SNV_SOMATIC:-}"  \\
         --civic       "\${CIVIC_TSV:-}"    \\
+        --somatic-second-hit "\${SNV_SECOND_HIT:-}" \\
+        --somatic-tso500     "\${SNV_TSO500:-}"     \\
+        --civic-tso500       "\${CIVIC_TSO500:-}"   \\
+        --capture-bed        "${params.panel_bed ?: ''}" \\
         --tumor-type  "${params.tumor_type ?: ''}"  \\
         --tumor-types "${params.tumor_types ?: ''}" \\
         --tmb         "\${TMB_FILE:-}"     \\

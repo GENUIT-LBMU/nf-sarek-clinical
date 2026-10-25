@@ -28,6 +28,7 @@ _E = os.environ.get
 FILT_GERMLINE_CNV_MIN_QA = int(_E('FILT_GERMLINE_CNV_MIN_QA', '4'))
 FILT_GERMLINE_CNV_LOWMAP_FRAC = float(_E('FILT_GERMLINE_CNV_LOWMAP_FRAC', '0.5'))
 FILT_SOMATIC_MAX_POP_AF = float(_E('FILT_SOMATIC_MAX_POP_AF', '0.01'))
+CAPTURE_BED = ''   # --capture-bed, set in main()
 BIO_TMB_HIGH       = float(_E('BIO_TMB_HIGH', '10.0'))
 BIO_TMB_BORDERLINE = float(_E('BIO_TMB_BORDERLINE', '6.0'))
 BIO_MSI_HIGH       = float(_E('BIO_MSI_HIGH', '3.5'))
@@ -1019,6 +1020,8 @@ def _somatic_row(v, include_civic=False):
     """Extract display fields from a somatic variant dict."""
     civic = v.get('_CIVIC') or {}
     gene   = trunc(v.get('ANN[*].GENE', '-'), 20)
+    if v.get('_TRACK') == 'TSO500':   # pan-tumor track gene (outside the core panel)
+        gene = Paragraph(f'{xml_escape(gene)}<br/><font size="5" color="#64748b">TSO500</font>', STYLE_CELL)
     hgvsc, hgvsp = _hgvs_cells(v, 32, 28)
     effect = trunc(v.get('ANN[*].EFFECT', '-'), 22)
     af_raw = v.get('GEN[1].AF', v.get('GEN[1].AD', '-'))
@@ -1081,9 +1084,38 @@ def _population_table(pop_variants, story):
     story.append(Spacer(1, 0.15 * cm))
 
 
-def build_somatic_section(somatic_variants, story, gene_ctx=None, pop_variants=None):
+def _tso500_vus_table(tso500_vus, story):
+    """Pan-tumor TSO500 track, Tier III: genes outside the core panel."""
+    if not tso500_vus:
+        return
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(Paragraph(
+        '<b>Pan-tumor (TSO500) — Variants of Uncertain Significance</b> '
+        '(AMP Tier III in TruSight Oncology 500 genes outside the core somatic panel)',
+        ParagraphStyle('sub_h5', fontSize=8, fontName='Helvetica-Bold',
+                       textColor=C_TEXT, spaceBefore=2, spaceAfter=4)))
+    rows = [_somatic_row(v, include_civic=False) for v in tso500_vus]
+    story.append(build_variant_table(
+        _OTH_HEADERS, _OTH_WIDTHS, rows,
+        colour_col_idx=7, colour_fn=lambda v: amp_colour(v.strip()),
+    ))
+    story.append(Spacer(1, 0.15 * cm))
+    story.append(Paragraph(
+        f'<font size="6" color="#64748b">{len(tso500_vus)} TSO500 variant(s) of uncertain '
+        'significance; not used for the clinical findings.</font>', styles['Normal']))
+
+
+def _tert_note(story):
+    note = _amp.tert_promoter_note(CAPTURE_BED)
+    if note:
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(Paragraph(f'<font size="7" color="#b45309"><b>{xml_escape(note)}</b></font>', styles['Normal']))
+
+
+def build_somatic_section(somatic_variants, story, gene_ctx=None, pop_variants=None, tso500_vus=None):
     """Append somatic SNV section: CIViC actionable table + other variants table
-    + Tier IV population polymorphisms (pop_variants)."""
+    + Tier IV population polymorphisms (pop_variants) + pan-tumor TSO500 Tier III
+    (tso500_vus). somatic_variants may hold TSO500 Tier I/II (v['_TRACK'])."""
     story.append(PageBreak())
     story.append(Paragraph(T('sect_somatic'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
@@ -1095,6 +1127,8 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None, pop_variants=N
             STYLE_WARN,
         ))
         _population_table(pop_variants, story)
+        _tso500_vus_table(tso500_vus, story)
+        _tert_note(story)
         return
 
     # Split into CIViC actionable (Tier I/II) vs other (Tier III)
@@ -1109,7 +1143,8 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None, pop_variants=N
     story.append(Paragraph(
         '<b>Callers:</b> <font color="#166534">M+S</font> = Mutect2 + Strelka2 (consensus) '
         '&nbsp; <font color="#92400e">M</font> = Mutect2 only '
-        '&nbsp;&nbsp; <font color="#b91c1c">\u26a0 low</font> = VAF &lt; 5%',
+        '&nbsp;&nbsp; <font color="#b91c1c">\u26a0 low</font> = VAF &lt; 5%'
+        '&nbsp;&nbsp; <b>TSO500</b> under the gene = pan-tumor gene outside the core panel',
         _legend_style))
     story.append(Paragraph(
         (f'<b>Tumor type for tiering:</b> {xml_escape(TUMOR_LABEL)}' if TUMOR_LABEL else
@@ -1127,7 +1162,7 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None, pop_variants=N
 
         act_headers = ['Gene', 'HGVS_c', 'HGVS_p', 'Effect', 'VAF', 'gnomAD',
                         'Call', 'Evid', 'Disease', 'Therapy', 'Tier']
-        act_widths  = [45, 76, 75, 62, 30, 37, 25, 25, 70, 78, 27]
+        act_widths  = [45, 73, 75, 62, 30, 40, 25, 25, 70, 78, 27]
 
         act_rows = [_somatic_row(v, include_civic=True) for v in actionable]
 
@@ -1175,6 +1210,8 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None, pop_variants=N
         styles['Normal'],
     ))
     _population_table(pop_variants, story)
+    _tso500_vus_table(tso500_vus, story)
+    _tert_note(story)
 
     # ── Gene Annotation Notes ────────────────────────────────────────────────
     if gene_ctx:
@@ -2412,8 +2449,9 @@ from acmg_shared import HRR_GENES as _HRR_GENES, MMR_GENES as _MMR_GENES
 
 
 def build_major_findings_section(args, metrics, germline_variants, somatic_variants,
-                                  corr_data, story):
-    """Append Major Clinical Findings section."""
+                                  corr_data, story, second_hit_variants=None):
+    """Append Major Clinical Findings section. second_hit_variants (second-hit
+    track) only add somatic hits in genes with a germline P/LP variant."""
     story.append(PageBreak())
     story.append(Paragraph(T('sect_major_finds'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
@@ -2447,6 +2485,10 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
     for v in somatic_variants:
         g = (v.get('ANN[*].GENE') or '').strip().upper()
         if g:
+            som_by_gene.setdefault(g, []).append(v)
+    for v in second_hit_variants or []:
+        g = (v.get('ANN[*].GENE') or '').strip().upper()
+        if g and g in germ_plp:
             som_by_gene.setdefault(g, []).append(v)
 
     # CNV data for second hits
@@ -3172,6 +3214,10 @@ def parse_args():
     p.add_argument('--germline',   default='',     help='Germline SNV TSV')
     p.add_argument('--somatic',    default='',     help='Somatic SNV TSV')
     p.add_argument('--civic',      default='',     help='CIViC exploded TSV')
+    p.add_argument('--somatic-second-hit', default='', help='Somatic SNV TSV, second-hit track (germline-somatic findings only)')
+    p.add_argument('--somatic-tso500',     default='', help='Somatic SNV TSV, pan-tumor TSO500 track (genes outside the core panel)')
+    p.add_argument('--civic-tso500',       default='', help='CIViC exploded TSV of the TSO500 track')
+    p.add_argument('--capture-bed',        default='', help='Capture BED (panel_bed): TERT promoter assessability note')
     p.add_argument('--tumor-type', default='',     help="Run-wide tumor type: CIViC disease terms joined by '|'")
     p.add_argument('--tumor-types', default='',    help='TSV id<TAB>terms (patient, tumor or pair), overrides --tumor-type')
     p.add_argument('--tmb',        default='',     help='TMB TSV')
@@ -3252,7 +3298,8 @@ def main():
     else:
         print(f'[WARN] Germline TSV not found or not provided: {args.germline}', file=sys.stderr)
 
-    global TUMOR_TERMS, TUMOR_LABEL
+    global TUMOR_TERMS, TUMOR_LABEL, CAPTURE_BED
+    CAPTURE_BED = args.capture_bed
     TUMOR_TERMS, TUMOR_LABEL = _amp.tumor_terms_for(
         [args.patient, args.tumor, args.pair], args.tumor_type, args.tumor_types)
     print(f'[INFO] Tumor type for AMP tiering: {TUMOR_LABEL or "not provided (max tier IIC)"}',
@@ -3264,9 +3311,26 @@ def main():
         print(f'[INFO] Somatic: {len(somatic_variants)} variant(s) loaded', file=sys.stderr)
     else:
         print(f'[WARN] Somatic TSV not found or not provided: {args.somatic}', file=sys.stderr)
+    # Pan-tumor TSO500 track (genes outside the core panel): Tier I/II join the
+    # actionable findings, Tier III go to their own section, Tier IV to the
+    # population polymorphisms
+    tso500_variants = []
+    if args.somatic_tso500 and os.path.isfile(args.somatic_tso500):
+        tso500_variants = load_somatic_variants(args.somatic_tso500, args.civic_tso500)
+        for v in tso500_variants:
+            v['_TRACK'] = 'TSO500'
+        print(f'[INFO] Somatic TSO500 track: {len(tso500_variants)} variant(s) loaded', file=sys.stderr)
+    somatic_variants = somatic_variants + [v for v in tso500_variants if v.get('_AMP_TIER') not in ('III', 'IV')]
+    tso500_vus       = [v for v in tso500_variants if v.get('_AMP_TIER') == 'III']
     # AMP Tier IV (common population polymorphisms): shown apart, never a somatic finding
-    pop_variants     = [v for v in somatic_variants if v.get('_AMP_TIER') == 'IV']
+    pop_variants     = [v for v in somatic_variants + tso500_variants if v.get('_AMP_TIER') == 'IV']
     somatic_variants = [v for v in somatic_variants if v.get('_AMP_TIER') != 'IV']
+    # Second-hit track: germline genes outside the core panel, for the
+    # germline-somatic findings only (never in the somatic SNV tables)
+    second_hit_variants = []
+    if args.somatic_second_hit and os.path.isfile(args.somatic_second_hit):
+        _, second_hit_variants = read_tsv(args.somatic_second_hit)
+        second_hit_variants = [v for v in second_hit_variants if not _amp.population_common(v.get)]
 
     gene_ctx_data = {}
     gene_ctx_path = getattr(args, 'gene_ctx', '') or ''
@@ -3321,13 +3385,14 @@ def main():
     # Cover page is always page 1 (no leading PageBreak).
     build_cover_page(args, metrics, story)
     build_major_findings_section(args, metrics, germline_variants, somatic_variants,
-                                  corr_data, story)
+                                  corr_data, story, second_hit_variants=second_hit_variants)
     build_secondary_biomarkers(metrics, story)
     build_quality_metrics_page(metrics, story)
     build_germline_section(germline_variants, story)
     build_germline_cnv_section(args.cnv_germline_gatk, story,
                                germline_panel_path=getattr(args, 'germline_panel', '') or '')
-    build_somatic_section(somatic_variants, story, gene_ctx=gene_ctx_data, pop_variants=pop_variants)
+    build_somatic_section(somatic_variants, story, gene_ctx=gene_ctx_data, pop_variants=pop_variants,
+                          tso500_vus=tso500_vus)
     build_mutational_signatures_section(args, story)
     build_somatic_cnv_section(
         getattr(args, 'cnv_somatic', '') or '',
