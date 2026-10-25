@@ -164,7 +164,6 @@ workflow SAREK_CLINICAL {
         .map { pair, met, seg -> [pair, seg ?: file('NO_FILE'), met ?: file('NO_FILE')] }
 
     // Tumor sample names (for mutsig tumor column detection)
-    ch_tumor_samples = ch_cns.map { pair, tumor, normal, cns -> [pair, tumor] }
 
     // mosdepth regions BED per sample
     ch_mosdepth = Channel.fromPath(
@@ -291,7 +290,6 @@ workflow SAREK_CLINICAL {
             ch_germline_panel,
             ch_gene_coords,
             ch_panel_bed,
-            ch_tumor_samples,
             consensus_fasta,
             consensus_fasta_fai,
             file(params.civic_cache)

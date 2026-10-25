@@ -13,6 +13,7 @@
 */
 
 include { SNPSIFT_DBNSFP_SOMATIC   } from '../../../modules/local/snpsift_somatic/main'
+include { MUTECT2_SAMPLE_ORDER     } from '../../../modules/local/mutect2_sample_order/main'
 include { SNPSIFT_FILTER_SOMATIC   } from '../../../modules/local/snpsift_somatic/main'
 include { CIVIC_ANNOTATE           } from '../../../modules/local/snpsift_somatic/main'
 include { SNPSIFT_EXTRACT_SOMATIC  } from '../../../modules/local/snpsift_somatic/main'
@@ -41,17 +42,20 @@ workflow SOMATIC_POSTPROCESS {
     ch_germline_panel   // path: germline gene panel (105 genes, for LOH)
     ch_gene_coords_bed  // path: WES gene coordinates BED
     ch_panel_bed        // path: WES capture BED (for TMB)
-    ch_tumor_samples    // channel: [ val(pair), val(tumor_sample) ] for mutsig tumor column
     ch_fasta            // path: reference FASTA (for bcftools norm)
     ch_fasta_fai        // path: reference FASTA index
     ch_civic_cache      // path: dated civicpy cache (--civic_cache)
 
     main:
 
+    // ── Sample order: GEN[0] = normal, GEN[1] = tumor for every step below ──
+    MUTECT2_SAMPLE_ORDER(ch_mutect2_vcfs)
+    ch_mutect2_nt = MUTECT2_SAMPLE_ORDER.out.vcf
+
     // ── Consensus VCF (Mutect2 ∩ Strelka2) ─────────────────────────────────
     // Join Mutect2 + Strelka2 SNVs + Strelka2 indels per pair.
     // If Strelka2 is not available (empty channels), fall back to Mutect2 only.
-    ch_consensus_input = ch_mutect2_vcfs
+    ch_consensus_input = ch_mutect2_nt
         .join(ch_strelka2_snvs, by: 0, remainder: true)
         .join(ch_strelka2_indels, by: 0, remainder: true)
 
@@ -79,7 +83,7 @@ workflow SOMATIC_POSTPROCESS {
 
     // ── Somatic SNV (clinical report — always from Mutect2, full annotations) ──
     SNPSIFT_DBNSFP_SOMATIC(
-        ch_mutect2_vcfs,
+        ch_mutect2_nt,
         ch_dbnsfp,
         ch_dbnsfp_tbi,
         ch_snpsift_jar
@@ -150,11 +154,8 @@ workflow SOMATIC_POSTPROCESS {
     )
 
     // ── Mutational Signatures (from consensus VCF when available) ───────────
-    ch_mutsig_input = ch_biomarker_vcfs.join(ch_tumor_samples, by: 0)
-        .map { pair, vcf, tumor_sample -> [pair, tumor_sample, vcf] }
-
     MUTSIG_FILTER(
-        ch_mutsig_input,
+        ch_biomarker_vcfs,
         params.filters.somatic_snv.min_alt_reads
     )
 

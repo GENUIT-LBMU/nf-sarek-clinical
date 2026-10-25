@@ -969,6 +969,7 @@ Strelka2 SNVs + Indels (PASS) ──┘
 
 **How it works:**
 
+0. The Mutect2 VCF is rewritten with its samples as normal,tumor (`MUTECT2_SAMPLE_ORDER`, from the `##normal_sample` / `##tumor_sample` header lines; the run stops if they are missing), so every somatic step reads the tumor as `GEN[1]`
 1. Both VCFs are filtered for PASS variants (Mutect2: FILTER exactly `PASS` or exactly `haplotype`, i.e. phased with a filtered neighbour but passing its own filters)
 2. Indels are left-aligned, multi-allelic sites split and MNPs atomized into SNVs (`bcftools norm -m-both`, then `-a --atom-overlaps .`), so a Mutect2 MNP such as `CC>TT` matches the two SNVs Strelka2 reports
 3. Only variants called by **both** callers are kept (`bcftools isec -n=2`)

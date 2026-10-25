@@ -19,7 +19,7 @@ process MUTSIG_FILTER {
     publishDir "${params.outdir}/somatic/signatures/filtered_vcfs", mode: params.publish_dir_mode
 
     input:
-    tuple val(pair), val(tumor_sample), path(vcf)
+    tuple val(pair), path(vcf)
     val alt_min
 
     output:
@@ -32,9 +32,12 @@ process MUTSIG_FILTER {
 
     script:
     """
-    # Dynamically resolve tumor sample name from VCF header
-    # (Mutect2 T/N VCFs list: normal first, tumor last)
-    TUMOR_IN_VCF=\$(bcftools query -l ${vcf} | grep -i '_T' | head -1 || bcftools query -l ${vcf} | tail -1)
+    # Tumor sample from the Mutect2 header line (kept by the consensus, isec -w1)
+    TUMOR_IN_VCF=\$(bcftools view -h ${vcf} | sed -n 's/^##tumor_sample=//p' | head -1)
+    if [ -z "\${TUMOR_IN_VCF}" ]; then
+        echo "ERROR: ${vcf} has no ##tumor_sample header line" >&2
+        exit 1
+    fi
 
     # FILTER exactly PASS or exactly haplotype, same rule as TMB and the SNV table
     bcftools view -i 'FILTER="PASS" || FILTER="haplotype"' -s \${TUMOR_IN_VCF} ${vcf} \\

@@ -135,6 +135,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Somatic steps read the tumor at a fixed VCF position (`GEN[1]` in TMB and the
+  SNV table, a `grep '_T'` on sample names in signatures). Mutect2 writes its
+  samples in alphabetical order, so a tumor named before its normal would have
+  had TMB and VAF taken from the normal. New `MUTECT2_SAMPLE_ORDER` step
+  rewrites each Mutect2 VCF as normal,tumor from its `##normal_sample` /
+  `##tumor_sample` header lines (error if missing), and signatures take the
+  tumor from `##tumor_sample`. Signatures no longer need CNVkit output: the
+  tumor name used to come from the CNVkit files, and a pair without them was
+  dropped silently.
 - Somatic consensus and the signature/HRD input kept Mutect2 records whose
   FILTER merely contained `haplotype` (`bcftools view -f PASS,haplotype`), so
   `haplotype;orientation`, `clustered_events;haplotype`, `weak_evidence`…
