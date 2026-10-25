@@ -969,7 +969,7 @@ Strelka2 SNVs + Indels (PASS) ──┘
 
 **How it works:**
 
-1. Both VCFs are filtered for PASS variants
+1. Both VCFs are filtered for PASS variants (Mutect2: FILTER exactly `PASS` or exactly `haplotype`, i.e. phased with a filtered neighbour but passing its own filters)
 2. Indels are left-aligned, multi-allelic sites split and MNPs atomized into SNVs (`bcftools norm -m-both`, then `-a --atom-overlaps .`), so a Mutect2 MNP such as `CC>TT` matches the two SNVs Strelka2 reports
 3. Only variants called by **both** callers are kept (`bcftools isec -n=2`)
 4. The consensus VCF preserves Mutect2 FORMAT fields (DP, AD, AF) and snpEff annotations (`-w1`)

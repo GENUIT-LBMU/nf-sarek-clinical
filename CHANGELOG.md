@@ -135,6 +135,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Somatic consensus and the signature/HRD input kept Mutect2 records whose
+  FILTER merely contained `haplotype` (`bcftools view -f PASS,haplotype`), so
+  `haplotype;orientation`, `clustered_events;haplotype`, `weak_evidence`…
+  got through. Both now keep FILTER exactly `PASS` or exactly `haplotype`, the
+  rule TMB and the somatic SNV table already used: 23–91 artefact records
+  fewer per patient in the consensus.
 - Somatic consensus dropped every Mutect2 MNP (and the matching Strelka2 SNVs):
   Mutect2 writes adjacent substitutions as one record (CC>TT), Strelka2 as
   separate SNVs, and the exact-allele `bcftools isec` never matched them. Both

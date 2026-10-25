@@ -36,7 +36,8 @@ process MUTSIG_FILTER {
     # (Mutect2 T/N VCFs list: normal first, tumor last)
     TUMOR_IN_VCF=\$(bcftools query -l ${vcf} | grep -i '_T' | head -1 || bcftools query -l ${vcf} | tail -1)
 
-    bcftools view -f PASS,haplotype -s \${TUMOR_IN_VCF} ${vcf} \\
+    # FILTER exactly PASS or exactly haplotype, same rule as TMB and the SNV table
+    bcftools view -i 'FILTER="PASS" || FILTER="haplotype"' -s \${TUMOR_IN_VCF} ${vcf} \\
         | bcftools filter -i "FORMAT/AD[0:1] >= ${alt_min}" \\
         -Oz -o ${pair}.sigfilter.vcf.gz
 
