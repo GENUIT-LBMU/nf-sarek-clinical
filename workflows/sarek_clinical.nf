@@ -276,6 +276,9 @@ workflow SAREK_CLINICAL {
         // CIViC annotation runs inside SOMATIC_POSTPROCESS with a frozen cache (no network)
         if (!params.civic_cache) error("--civic_cache is required for somatic postprocessing (build it with scripts/build_civic_cache.sh)")
         if (!file(params.civic_cache).exists()) error("--civic_cache not found: ${params.civic_cache}")
+        def min_callers = params.filters.consensus.min_callers
+        if (!(min_callers in [1, 2]))
+            error("filters.consensus.min_callers must be 1 (all Mutect2 PASS) or 2 (Mutect2 and Strelka2), got ${min_callers}")
         SOMATIC_POSTPROCESS(
             ch_mutect2_vcfs,
             ch_strelka2_snvs,

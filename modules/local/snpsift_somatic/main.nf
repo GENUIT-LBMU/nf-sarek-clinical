@@ -172,6 +172,7 @@ process SNPSIFT_EXTRACT_SOMATIC {
 
     input:
     tuple val(pair), path(vcf)
+    path gene_panel
     path snpsift_jar
 
     output:
@@ -202,8 +203,36 @@ process SNPSIFT_EXTRACT_SOMATIC {
         "dbNSFP_clinvar_id" "dbNSFP_clinvar_clnsig" "dbNSFP_clinvar_trait" \\
         "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
         "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
-    | awk -F'\\t' 'BEGIN{OFS="\\t"} NR==1{print; next} {for(i=1;i<=NF;i++){n=split(\$i,a,";"); \$i=a[1]}; print}' \\
-    > "${pair}.somatic_snvs_raw.tsv"
+    > extract_all.tsv
+
+    # One ANN per row: the first one that meets the filter (panel gene AND
+    # HIGH/MODERATE), so gene, impact and HGVS all come from the same
+    # transcript. Other multi-valued fields keep their first value.
+    awk -F'\\t' 'BEGIN{OFS="\\t"}
+        FNR==NR { sub(/\\r\$/, ""); gsub(/ /, ""); if (\$0 != "" && \$0 !~ /^#/) panel[\$0] = 1; next }
+        FNR==1 {
+            for (i = 1; i <= NF; i++) {
+                if (index(\$i, "ANN[*].") == 1) ann[i] = 1
+                if (\$i == "ANN[*].GENE")   gc = i
+                if (\$i == "ANN[*].IMPACT") ic = i
+            }
+            print; next
+        }
+        {
+            ng = split(\$gc, g, ";"); split(\$ic, im, ";")
+            k = 0
+            for (j = 1; j <= ng; j++)
+                if ((g[j] in panel) && (im[j] == "HIGH" || im[j] == "MODERATE")) { k = j; break }
+            if (k == 0) {
+                print "WARNING: " \$1 ":" \$2 " has no ANN with a panel gene and HIGH/MODERATE impact; keeping the first" > "/dev/stderr"
+                k = 1
+            }
+            for (i = 1; i <= NF; i++) {
+                n = split(\$i, a, ";")
+                \$i = ((i in ann) && k <= n) ? a[k] : a[1]
+            }
+            print
+        }' ${gene_panel} extract_all.tsv > "${pair}.somatic_snvs_raw.tsv"
     """
 }
 

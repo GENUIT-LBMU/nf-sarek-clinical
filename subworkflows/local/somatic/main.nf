@@ -104,6 +104,7 @@ workflow SOMATIC_POSTPROCESS {
 
     SNPSIFT_EXTRACT_SOMATIC(
         SNPSIFT_FILTER_SOMATIC.out.vcf,
+        ch_somatic_snv_panel,
         ch_snpsift_jar
     )
 

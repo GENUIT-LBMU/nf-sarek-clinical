@@ -135,6 +135,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Four latent somatic bugs, no effect on the current runs:
+  - consensus used `bcftools isec -n=N` ("exactly N"): with
+    `min_callers = 1` it kept only the Mutect2-private calls. Now `-n+N`, and
+    any value other than 1 or 2 stops the run;
+  - the CNV gene BED was read with its first interval as column names (lost);
+    a header is now detected from non-numeric start/end, and a headerless
+    file is no longer rejected;
+  - the HTML report took the SBS96 activities as ID signatures whenever the
+    output path or run name contained "ID" (`-path "*ID*"`); HTML, PDF and the
+    plot step now match the `<run>_SBS96|_DBS|_ID/Assignment_Solution` directory;
+  - the somatic SNV table took the first snpEff ANN for gene, impact and HGVS,
+    not the one that met the panel/impact filter. Each row now uses the first
+    ANN with a panel gene and HIGH/MODERATE impact.
 - Somatic steps read the tumor at a fixed VCF position (`GEN[1]` in TMB and the
   SNV table, a `grep '_T'` on sample names in signatures). Mutect2 writes its
   samples in alphabetical order, so a tumor named before its normal would have

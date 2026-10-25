@@ -153,14 +153,14 @@ print("SigProfilerAssignment done →", assign_dir)
 PYEOF
 
     # Resolve sample name from the Activities.txt (first non-header data row, col 0)
-    SBS96_ACT="\$(find assignment -name "Assignment_Solution_Activities.txt" -path "*SBS96*" 2>/dev/null | head -1)"
+    SBS96_ACT="\$(find assignment -name "Assignment_Solution_Activities.txt" -path "*_SBS96/Assignment_Solution/*" 2>/dev/null | head -1)"
     if [ -n "\${SBS96_ACT}" ]; then
         SAMPLE_NAME="\$(awk 'NR==2{print \$1; exit}' "\${SBS96_ACT}")"
     else
         SAMPLE_NAME="${run_name}"
     fi
 
-    SBS96_DIR="\$(find assignment -mindepth 1 -maxdepth 1 -type d -name "*SBS96*" 2>/dev/null | head -1 || true)"
+    SBS96_DIR="\$(find assignment -mindepth 1 -maxdepth 1 -type d -name "*_SBS96" 2>/dev/null | head -1 || true)"
     ID_DIR="\$(find assignment -mindepth 1 -maxdepth 1 -type d -name "*_ID" 2>/dev/null | head -1 || true)"
 
     MATRIX_OUT="\$([ -d matrix_profiles/output ] && echo "matrix_profiles/output" || echo "")"

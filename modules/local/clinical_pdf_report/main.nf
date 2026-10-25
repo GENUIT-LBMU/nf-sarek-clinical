@@ -105,8 +105,8 @@ process CLINICAL_PDF_REPORT {
     COV_T_MEAN="\$(cov_mean "\$COV_T")"
 
     # ── Correlation pre-computation (produces JSON consumed by PDF script) ─────
-    SIG_SBS96="\$(find \${OUT_DIR}/somatic/signatures/assignment -name "Assignment_Solution_Activities.txt" -path "*SBS96*" 2>/dev/null | head -1 || true)"
-    SIG_ID="\$(find \${OUT_DIR}/somatic/signatures/assignment    -name "Assignment_Solution_Activities.txt" -path "*_ID*"   2>/dev/null | head -1 || true)"
+    SIG_SBS96="\$(find \${OUT_DIR}/somatic/signatures/assignment -name "Assignment_Solution_Activities.txt" -path "*_SBS96/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
+    SIG_ID="\$(find \${OUT_DIR}/somatic/signatures/assignment    -name "Assignment_Solution_Activities.txt" -path "*_ID/Assignment_Solution/*"   2>/dev/null | head -1 || true)"
 
     python3 ${projectDir}/bin/germline_somatic_correlate.py \\
         --germline      "\${SNV_GERMLINE:-}"   \\

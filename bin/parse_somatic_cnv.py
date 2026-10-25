@@ -97,13 +97,23 @@ def read_gene_coords(path: str) -> dict[str, pd.DataFrame] | None:
     if not path or not os.path.isfile(path):
         return None
 
+    # A plain BED has no header: if the first data line has numeric start/end,
+    # it is an interval, not column names (header=0 would drop it).
+    first = None
+    with open(path) as fh:
+        for line in fh:
+            if line.strip() and not line.startswith("#"):
+                first = line.rstrip("\n").split("\t")
+                break
+    if first is None:
+        return None
+    has_header = not (len(first) > 2 and first[1].isdigit() and first[2].isdigit())
+
     try:
-        df = pd.read_csv(path, sep="\t", comment="#")
+        df = pd.read_csv(path, sep="\t", comment="#",
+                         header=0 if has_header else None)
     except Exception:
-        try:
-            df = pd.read_csv(path, sep="\t", header=None, comment="#")
-        except Exception:
-            return None
+        return None
 
     cols = list(df.columns)
     low = {str(c).lower(): c for c in cols}
@@ -116,7 +126,7 @@ def read_gene_coords(path: str) -> dict[str, pd.DataFrame] | None:
     gene  = (low.get("gene") or low.get("name") or low.get("symbol")
              or cols[3] if len(cols) > 3 else None)
 
-    if not all([chrom, start, end, gene]):
+    if any(c is None for c in (chrom, start, end, gene)):
         return None
 
     sub = df[[chrom, start, end, gene]].copy()
