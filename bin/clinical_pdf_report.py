@@ -1344,8 +1344,8 @@ def build_signature_plots_pdf(act_path, sig_type, story):
             return False
 
     # ── Derive the matrix_profiles/output/plots/ directory ──────────────────
-    # act_dir: .../somatic/signatures/assignment/<proj>_SBS96/Assignment_Solution/Activities/
-    # sig_root: .../somatic/signatures/
+    # act_dir: .../somatic/signatures/<pair>/assignment/<pair>_SBS96/Assignment_Solution/Activities/
+    # sig_root: .../somatic/signatures/<pair>/
     sig_root = os.path.normpath(os.path.join(act_dir, '..', '..', '..', '..'))
     mg_plots_dir = os.path.join(sig_root, 'matrix_profiles', 'output', 'plots')
 
@@ -1479,7 +1479,12 @@ def build_mutational_signatures_section(args, story):
         _, rows = read_tsv(act_path)
         if not rows:
             return []
-        row = rows[0]  # single sample per run
+        # One SigProfiler task per pair: pick this pair's row, never another sample's
+        match = [r for r in rows if (r.get('Samples') or '') == args.pair]
+        if not match:
+            print(f'[WARN] {args.pair} not found in {act_path}', file=sys.stderr)
+            return []
+        row = match[0]
         detected = []
         for col, val in row.items():
             if not col or col.lower() in ('samples', 'sample', ''):

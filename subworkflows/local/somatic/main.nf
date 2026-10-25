@@ -160,21 +160,10 @@ workflow SOMATIC_POSTPROCESS {
         params.filters.somatic_snv.min_alt_reads
     )
 
-    ch_vcf_dir = MUTSIG_FILTER.out.vcf
-        .map { pair, vcf -> vcf }
-        .collect()
-        .map { vcfs ->
-            def dir = file("${workDir}/mutsig_vcfs")
-            dir.mkdirs()
-            vcfs.each { it.copyTo(dir) }
-            dir
-        }
-
     ch_signatures = Channel.empty()
     if (!params.skip_signatures) {
         MUTSIG_SIGPROFILER(
-            params.run_name,
-            ch_vcf_dir,
+            MUTSIG_FILTER.out.vcf,
             params.genome_build
         )
         ch_signatures = MUTSIG_SIGPROFILER.out.assignment

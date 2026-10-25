@@ -135,6 +135,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Mutational signatures could report a previous run's result: the input VCFs
+  were copied to a shared `${workDir}/mutsig_vcfs`, where SigProfiler also wrote
+  its `input/`/`output/`, and a `-resume` run reused them (seen: activities of
+  the previous run and a published SBS96 matrix of 6372 mutations for a VCF of
+  3192). With several pairs in a run, the PDF took the first sample's row and
+  the plots were drawn for the first sample only. SigProfiler now runs once per
+  pair with its VCF staged in the task; outputs go to
+  `somatic/signatures/<pair>/`, and every reader picks its pair by exact name.
 - AMP tier: one implementation (`bin/amp_tier.py`) for the HTML table, the PDF
   table and the PDF findings card, which disagreed (level A resistance was IA in
   HTML and IIA in PDF; HTML also produced "IID"/"IV"). Only accepted CIViC

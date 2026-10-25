@@ -54,33 +54,36 @@ process MUTSIG_FILTER {
 
 
 process MUTSIG_SIGPROFILER {
-    tag "$run_name"
+    // One task per pair: the VCF is staged inside the task (SigProfiler writes
+    // input/ and output/ next to it), so nothing survives between runs and the
+    // cache follows the VCF content.
+    tag "$pair"
     label 'process_high'
     label 'sigprofiler'
 
-    publishDir "${params.outdir}/somatic/signatures", mode: params.publish_dir_mode
+    publishDir "${params.outdir}/somatic/signatures/${pair}", mode: params.publish_dir_mode
 
     input:
-    val run_name
-    path vcf_dir    // directory containing all *.sigfilter.vcf files
+    tuple val(pair), path(vcf, stageAs: 'mutsig_vcfs/*')
     val genome_build
 
     output:
-    path "matrix_profiles/", emit: profiles
-    path "assignment/",       emit: assignment
+    tuple val(pair), path("matrix_profiles/"), emit: profiles
+    tuple val(pair), path("assignment/"),      emit: assignment
 
     stub:
     """
     mkdir -p matrix_profiles assignment
-    touch matrix_profiles/${run_name}_SBS96.txt
-    touch assignment/${run_name}_SBS96_Activities.txt
+    touch matrix_profiles/${pair}_SBS96.txt
+    touch assignment/${pair}_SBS96_Activities.txt
     """
 
     script:
     """
     mkdir -p matrix_profiles assignment
+    export MPLCONFIGDIR="\${PWD}/.mplconfig"
 
-    python3 - "${vcf_dir}" assignment matrix_profiles "${genome_build}" "${run_name}" <<'PYEOF'
+    python3 - mutsig_vcfs assignment matrix_profiles "${genome_build}" "${pair}" <<'PYEOF'
 import os, shutil, sys
 from SigProfilerAssignment import Analyzer as Analyze
 from SigProfilerMatrixGenerator.scripts import SigProfilerMatrixGeneratorFunc as matGen
@@ -157,7 +160,7 @@ PYEOF
     if [ -n "\${SBS96_ACT}" ]; then
         SAMPLE_NAME="\$(awk 'NR==2{print \$1; exit}' "\${SBS96_ACT}")"
     else
-        SAMPLE_NAME="${run_name}"
+        SAMPLE_NAME="${pair}"
     fi
 
     SBS96_DIR="\$(find assignment -mindepth 1 -maxdepth 1 -type d -name "*_SBS96" 2>/dev/null | head -1 || true)"

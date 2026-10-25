@@ -64,10 +64,12 @@
 | Directory | Description |
 |-----------|-------------|
 | `filtered_vcfs/` | PASS-filtered VCFs per sample (SigProfiler input) |
-| `matrix_profiles/output/<RUN>_MG/` | SBS/DBS/ID mutational profiles and plots per sample |
-| `assignment/<RUN>_SBS96/` | COSMIC v3.4 SBS decomposition + activities + plots |
-| `assignment/<RUN>_DBS/` | COSMIC DBS decomposition |
-| `assignment/<RUN>_ID/` | COSMIC INDEL decomposition |
+| `<PAIR>/matrix_profiles/output/` | SBS/DBS/ID mutational profiles and plots for the pair |
+| `<PAIR>/assignment/<PAIR>_SBS96/` | COSMIC v3.4 SBS decomposition + activities + plots |
+| `<PAIR>/assignment/<PAIR>_DBS/` | COSMIC DBS decomposition |
+| `<PAIR>/assignment/<PAIR>_ID/` | COSMIC INDEL decomposition |
+
+SigProfiler runs once per tumor/normal pair, with its input VCF staged inside the task.
 
 ## `results/qc/gene_coverage/`
 

@@ -385,7 +385,7 @@ def load_detected_signatures(sig_sbs96_path, tumor_name):
     header = rows[0]
     for data_row in rows[1:]:
         sample = data_row[0] if data_row else ''
-        if sample == tumor_name or tumor_name in sample:
+        if sample == tumor_name or sample.startswith(tumor_name + '_vs_'):
             for i, col in enumerate(header[1:], 1):
                 if i < len(data_row):
                     try:

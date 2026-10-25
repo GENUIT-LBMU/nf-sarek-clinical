@@ -70,9 +70,9 @@ process FINAL_REPORT {
     COV_T="\$(find ${sarek_outdir}/reports/mosdepth -name "\${TUMOR}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"
 
     # Mutational signature activity files
-    SIG_SBS96="\$(find \${OUT_DIR}/somatic/signatures/assignment -name "Assignment_Solution_Activities.txt" -path "*_SBS96/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
-    SIG_DBS="\$(find \${OUT_DIR}/somatic/signatures/assignment -name "Assignment_Solution_Activities.txt" -path "*_DBS/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
-    SIG_ID="\$(find \${OUT_DIR}/somatic/signatures/assignment -name "Assignment_Solution_Activities.txt" -path "*_ID/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
+    SIG_SBS96="\$(find \${OUT_DIR}/somatic/signatures/\${PAIR}/assignment -name "Assignment_Solution_Activities.txt" -path "*_SBS96/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
+    SIG_DBS="\$(find \${OUT_DIR}/somatic/signatures/\${PAIR}/assignment -name "Assignment_Solution_Activities.txt" -path "*_DBS/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
+    SIG_ID="\$(find \${OUT_DIR}/somatic/signatures/\${PAIR}/assignment -name "Assignment_Solution_Activities.txt" -path "*_ID/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
 
     # GATK CNV files
     CNV_GERM_GATK="\$(find \${OUT_DIR}/germline/cnv_gatk/annotated -name "\${NORMAL}_segments_annotated.tsv" 2>/dev/null | head -1 || true)"
@@ -843,7 +843,7 @@ def sig_to_html(path, sample_name):
     sample_row = None
     for line in lines[1:]:
         parts = line.split("\\t")
-        if parts[0] == sample_name or sample_name in parts[0]:
+        if parts[0] == sample_name:
             sample_row = parts
             break
     if sample_row is None:

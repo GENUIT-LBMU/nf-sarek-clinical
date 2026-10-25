@@ -858,8 +858,10 @@ clinical_results/
 │   ├── cnv_gatk/annotated/  *_annotated.tsv
 │   ├── tmb/                 *.tmb.tsv (from consensus VCF)
 │   ├── signatures/
-│   │   ├── matrix_profiles/output/   SBS96/, DBS/, ID/ matrices
-│   │   └── assignment/               COSMIC v3.4 activities (from consensus VCF)
+│   │   ├── filtered_vcfs/            SigProfiler input VCFs
+│   │   └── <pair>/                   one SigProfiler run per tumor/normal pair
+│   │       ├── matrix_profiles/output/   SBS96/, DBS/, ID/ matrices
+│   │       └── assignment/               COSMIC v3.4 activities (from consensus VCF)
 │   └── hrd/                 *_hrd_predictions.tsv (from consensus VCF)
 ├── qc/gene_coverage/        *_gene_coverage.tsv
 └── reporting/
