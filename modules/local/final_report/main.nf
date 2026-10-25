@@ -463,7 +463,14 @@ files = {
 import sys as _sys
 _sys.path.insert(0, '${projectDir}/bin')
 from final_report_acmg import acmg_criteria_list, acmg_class, _BENIGN_CRIT
-from acmg_shared import clinvar_display, gnomad_display
+from acmg_shared import clinvar_display, gnomad_display, hgvs_display
+
+# HGVS_c / HGVS_p cells: transcript under HGVS_c, MANE Plus Clinical HGVS under HGVS_p
+def hgvs_cells(get_field):
+    hc, tx, hp, plus = hgvs_display(get_field)
+    sub = lambda t: "<br><span class='tx'>" + html.escape(t) + "</span>"
+    return ("<td>" + html.escape(hc) + (sub(tx) if tx else "") + "</td>",
+            "<td>" + html.escape(hp) + "".join(sub(p) for p in plus) + "</td>")
 
 # ----
 # CIViC / AMP tier (bin/amp_tier.py, shared with the PDF report)
@@ -593,6 +600,10 @@ def tsv_to_html_germline(path):
                 tds += "<td>" + "".join(crit_badge(c) for c in criteria) + "</td>"
             elif disp_name == 'DP':
                 tds += "<td>" + html.escape(str(dp_val)) + "</td>"
+            elif disp_name == 'HGVS_c':
+                tds += hgvs_cells(lambda k: get_col(row, k))[0]
+            elif disp_name == 'HGVS_p':
+                tds += hgvs_cells(lambda k: get_col(row, k))[1]
             elif disp_name == 'ClinVar':
                 tds += "<td>" + html.escape(clinvar_display(lambda k: get_col(row, k))) + "</td>"
             elif disp_name == 'REVEL':
@@ -728,6 +739,10 @@ def tsv_to_html_somatic(path, civic_idx):
                     tds += "<td style='color:#b91c1c;font-weight:bold;'>" + html.escape(vaf_str) + " &#9888;</td>"
                 else:
                     tds += "<td>" + html.escape(vaf_str) + "</td>"
+            elif disp_name == 'HGVS_c':
+                tds += hgvs_cells(lambda k: get_col(row, k))[0]
+            elif disp_name == 'HGVS_p':
+                tds += hgvs_cells(lambda k: get_col(row, k))[1]
             elif disp_name == 'Call':
                 tds += "<td style='text-align:center;'>" + callers_html + "</td>"
             elif disp_name == 'CIViC Level':
@@ -1162,6 +1177,7 @@ _css = (
     '.badge-VUS { background:#eab308; color:#111; }'
     '.badge-LB { background:#3b82f6; color:#fff; }'
     '.badge-B { background:#22c55e; color:#fff; }'
+    '.tx { font-size:.68rem; color:#94a3b8; white-space:nowrap; }'
     '.badge-IA, .badge-IB { background:#dc2626; color:#fff; }'
     '.badge-IIC { background:#d97706; color:#fff; }'
     '.badge-III { background:#6b7280; color:#fff; }'

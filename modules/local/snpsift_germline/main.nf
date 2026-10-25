@@ -209,6 +209,11 @@ process SNPSIFT_EXTRACT_GERMLINE {
     if grep -q '^##INFO=<ID=SpliceAI,' vcf_header.txt; then
         SPLICEAI_FIELDS="SpliceAI"
     fi
+    # MANE Plus Clinical HGVS (SNPEFF_MANE, --snpeff_mane_data)
+    MANE_FIELDS=""
+    if grep -q '^##INFO=<ID=MANE_PLUS_CLINICAL,' vcf_header.txt; then
+        MANE_FIELDS="MANE_PLUS_CLINICAL"
+    fi
     rm -f vcf_header.txt
     export GNOMAD_VERSION CLINVAR_VERSION REVEL_VERSION
 
@@ -234,7 +239,7 @@ process SNPSIFT_EXTRACT_GERMLINE {
         "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
         "dbNSFP_clinvar_MedGen_id" "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
         "dbNSFP_Interpro_domain" \\
-        \${GNOMAD_FIELDS} \${CLINVAR_FIELDS} \${REVEL_FIELDS} \${SPLICEAI_FIELDS} \\
+        \${GNOMAD_FIELDS} \${CLINVAR_FIELDS} \${REVEL_FIELDS} \${SPLICEAI_FIELDS} \${MANE_FIELDS} \\
         > "${sample}.germline_snvs_raw.tsv"
 
     # ── Step 1: Normalize multi-annotation fields (keep first value before ;) ──────

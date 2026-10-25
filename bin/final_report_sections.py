@@ -252,8 +252,8 @@ def build_methodology_html():
         "</style>"
     )
     overview_rows = [
-        ['Germline SNVs',     'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
-        ['Somatic SNVs',      'GATK Mutect2 v4 (tumor&ndash;normal mode)',        'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA&ndash;III'],
+        ['Germline SNVs',     'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); ACMG/AMP 2015 classification'],
+        ['Somatic SNVs',      'GATK Mutect2 v4 (tumor&ndash;normal mode)',        'GRCh38', 'FilterMutectCalls PASS; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); CIViC annotation; AMP/ASCO/CAP Tier IA&ndash;III'],
         ['Somatic CNVs',      'ASCAT v3 + CNVkit v0.9 (consensus)',               'GRCh38', 'HOMDEL (CN=0), AMP (CN&ge;5), 2nd-hit LOH; 38-gene somatic CNV panel'],
         ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;' + _GCNV_MIN_QA + ' Phred; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded; GIAB low-mappability segments shown apart'],
         ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold &ge;5%'],

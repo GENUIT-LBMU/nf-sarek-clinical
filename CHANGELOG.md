@@ -135,6 +135,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- MANE Select nomenclature everywhere. The somatic Mutect2 VCF is now
+  re-annotated by `SNPEFF_MANE` too (IMAX1141 BRAF p.Lys641Glu → p.Lys601Glu;
+  8 of 69 somatic HGVS change in 6 test patients: BRAF, CTNNB1, POLD1, ROS1,
+  CHEK2). The MANE database also holds MANE Plus Clinical transcripts and snpEff
+  listed them first for BRAF, FGFR2, KRAS, MUTYH and SMARCA4, so germline HGVS and
+  the ClinVar protein index (PS1 / PM5) used them (BRAF V640, MUTYH G396D; the
+  MUTYH p.Gln338His above is NM_001128425.2, MANE Select is p.Gln310His).
+  `SNPEFF_MANE` lists them after MANE Select (`--mane_plus_clinical`,
+  `assets/mane/mane_v1.2_plus_clinical.txt`) and keeps their HGVS in
+  `INFO/MANE_PLUS_CLINICAL`; `scripts/build_clinvar_protein_index.py` takes
+  `--mane-plus-clinical` (rebuilt index: 247 rows of BRAF, FGFR2, GNAS and MUTYH
+  renumbered, one CDKN2A p14ARF-only row dropped). HTML and PDF variant tables
+  show the transcript under HGVS_c and the MANE Plus Clinical HGVS under HGVS_p
+  when it differs.
 - Reports mixed patients when a run had more than one pair: the germline and
   somatic tables were attached with `.combine()` (every pair × every table, N²
   report tasks) and the PDF took the CIViC table from a loose channel in

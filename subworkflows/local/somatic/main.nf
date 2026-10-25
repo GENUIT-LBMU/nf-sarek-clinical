@@ -14,6 +14,7 @@
 
 include { SNPSIFT_DBNSFP_SOMATIC   } from '../../../modules/local/snpsift_somatic/main'
 include { MUTECT2_SAMPLE_ORDER     } from '../../../modules/local/mutect2_sample_order/main'
+include { SNPEFF_MANE              } from '../../../modules/local/snpeff_mane/main'
 include { SNPSIFT_FILTER_SOMATIC   } from '../../../modules/local/snpsift_somatic/main'
 include { CIVIC_ANNOTATE           } from '../../../modules/local/snpsift_somatic/main'
 include { SNPSIFT_EXTRACT_SOMATIC  } from '../../../modules/local/snpsift_somatic/main'
@@ -45,6 +46,7 @@ workflow SOMATIC_POSTPROCESS {
     ch_fasta            // path: reference FASTA (for bcftools norm)
     ch_fasta_fai        // path: reference FASTA index
     ch_civic_cache      // path: dated civicpy cache (--civic_cache)
+    ch_snpeff_mane      // list: [snpEff data dir, database name, MANE Plus Clinical list] or []
 
     main:
 
@@ -82,8 +84,21 @@ workflow SOMATIC_POSTPROCESS {
     ch_biomarker_vcfs = SOMATIC_CONSENSUS.out.vcf.mix(ch_no_strelka)
 
     // ── Somatic SNV (clinical report — always from Mutect2, full annotations) ──
+    // MANE Select re-annotation (optional) for the report HGVS; consensus, TMB
+    // and signatures keep the sarek annotation
+    ch_mutect2_report = ch_mutect2_nt
+    if (ch_snpeff_mane) {
+        SNPEFF_MANE(
+            ch_mutect2_nt,
+            ch_snpeff_mane[0],
+            ch_snpeff_mane[1],
+            ch_snpeff_mane[2]
+        )
+        ch_mutect2_report = SNPEFF_MANE.out.vcf
+    }
+
     SNPSIFT_DBNSFP_SOMATIC(
-        ch_mutect2_nt,
+        ch_mutect2_report,
         ch_dbnsfp,
         ch_dbnsfp_tbi,
         ch_snpsift_jar

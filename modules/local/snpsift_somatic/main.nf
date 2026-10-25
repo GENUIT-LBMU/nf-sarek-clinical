@@ -185,6 +185,15 @@ process SNPSIFT_EXTRACT_SOMATIC {
 
     script:
     """
+    # MANE Plus Clinical HGVS only when SNPEFF_MANE ran (--snpeff_mane_data);
+    # SnpSift aborts on INFO fields missing from the header
+    zcat "${vcf}" | grep '^##' > vcf_header.txt || true
+    MANE_FIELDS=""
+    if grep -q '^##INFO=<ID=MANE_PLUS_CLINICAL,' vcf_header.txt; then
+        MANE_FIELDS="MANE_PLUS_CLINICAL"
+    fi
+    rm -f vcf_header.txt
+
     java -jar ${snpsift_jar} extractFields -v -s ";" -e "." "${vcf}" \\
         CHROM POS ID REF ALT QUAL FILTER DP \\
         "ANN[*].ALLELE" "ANN[*].EFFECT" "ANN[*].IMPACT" "ANN[*].GENE" \\
@@ -203,6 +212,7 @@ process SNPSIFT_EXTRACT_SOMATIC {
         "dbNSFP_clinvar_id" "dbNSFP_clinvar_clnsig" "dbNSFP_clinvar_trait" \\
         "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
         "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
+        \${MANE_FIELDS} \\
     > extract_all.tsv
 
     # One ANN per row: the first one that meets the filter (panel gene AND

@@ -415,7 +415,17 @@ from acmg_shared import (
     clinvar_display,
     gnomad_display,
     getter_for_dict,
+    hgvs_display,
 )
+
+
+def _hgvs_cells(v, n_c=60, n_p=60):
+    """HGVS_c / HGVS_p cells: transcript under HGVS_c, MANE Plus Clinical HGVS under HGVS_p."""
+    hc, tx, hp, plus = hgvs_display(lambda k: (v.get(k) or '').strip())
+    sub = lambda t: f'<br/><font size="5.5" color="#64748b">{xml_escape(t)}</font>'
+    cell_c = xml_escape(trunc(hc, n_c)) + (sub(tx) if tx else '')
+    cell_p = xml_escape(trunc(hp, n_p)) + ''.join(sub(trunc(x, 40)) for x in plus)
+    return Paragraph(cell_c, STYLE_CELL), Paragraph(cell_p, STYLE_CELL)
 
 
 def classify_acmg_with_criteria(row):
@@ -937,8 +947,7 @@ def build_germline_section(germline_variants, story):
     data_rows = []
     for v in germline_variants:
         gene   = v.get('ANN[*].GENE', '-').strip() or '-'
-        hgvsc  = v.get('ANN[*].HGVS_C', '-').strip() or '-'
-        hgvsp  = v.get('ANN[*].HGVS_P', '-').strip() or '-'
+        hgvsc, hgvsp = _hgvs_cells(v)
         impact = trunc(v.get('ANN[*].IMPACT', '-'), 12)
         # DP and VAF
         dp_raw = v.get('GEN[0].DP', '')
@@ -1005,8 +1014,7 @@ def _somatic_row(v, include_civic=False):
     """Extract display fields from a somatic variant dict."""
     civic = v.get('_CIVIC') or {}
     gene   = trunc(v.get('ANN[*].GENE', '-'), 20)
-    hgvsc  = trunc(v.get('ANN[*].HGVS_C', '-'), 32)
-    hgvsp  = trunc(v.get('ANN[*].HGVS_P', '-'), 28)
+    hgvsc, hgvsp = _hgvs_cells(v, 32, 28)
     effect = trunc(v.get('ANN[*].EFFECT', '-'), 22)
     af_raw = v.get('GEN[1].AF', v.get('GEN[1].AD', '-'))
     try:
@@ -2956,8 +2964,8 @@ def build_methodology_section(story):
     story.append(Paragraph('Bioinformatics Pipeline Overview', STYLE_SUB))
     overview_headers = ['Report Section', 'Variant Caller / Tool', 'Genome Build', 'Key Parameters / Thresholds']
     overview_data = [
-        ['Germline SNVs',      'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpSift extract + SnpEff annotation; ACMG/AMP 2015 classification'],
-        ['Somatic SNVs',       'GATK Mutect2 v4 (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpSift + CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
+        ['Germline SNVs',      'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); ACMG/AMP 2015 classification'],
+        ['Somatic SNVs',       'GATK Mutect2 v4 (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
         ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
         ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=' + str(FILT_GERMLINE_CNV_MIN_QA) + ' Phred quality; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded; GIAB low-mappability segments shown apart'],
         ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold >=5%'],

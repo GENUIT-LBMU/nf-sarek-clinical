@@ -51,13 +51,17 @@ workflow SAREK_CLINICAL {
 
     // snpEff MANE database (optional). Empty list => keep sarek's snpEff -canon annotation.
     ch_snpeff_mane   = params.snpeff_mane_data
-        ? [ file(params.snpeff_mane_data, checkIfExists: true), params.snpeff_mane_db ]
+        ? [ file(params.snpeff_mane_data, checkIfExists: true), params.snpeff_mane_db,
+            file(params.mane_plus_clinical, checkIfExists: true) ]
         : []
     if (params.snpeff_mane_data && !file("${params.snpeff_mane_data}/${params.snpeff_mane_db}/snpEffectPredictor.bin").exists()) {
         error("--snpeff_mane_data: ${params.snpeff_mane_data}/${params.snpeff_mane_db}/snpEffectPredictor.bin not found")
     }
-    if (!params.snpeff_mane_data && !params.skip_germline_snv) {
-        log.warn "--snpeff_mane_data not set: germline HGVS uses sarek's snpEff -canon transcript (longest CDS), which may differ from MANE Select."
+    if (!params.snpeff_mane_data && !(params.skip_germline_snv && params.skip_somatic_snv)) {
+        log.warn "--snpeff_mane_data not set: germline and somatic HGVS use sarek's snpEff -canon transcript (longest CDS), which may differ from MANE Select."
+    }
+    if (params.snpeff_mane_data && !params.snpeff_mane_db.contains('mane.1.2.') && file(params.mane_plus_clinical).name == 'mane_v1.2_plus_clinical.txt') {
+        log.warn "--snpeff_mane_db ${params.snpeff_mane_db} is not MANE v1.2: set --mane_plus_clinical to the MANE Plus Clinical list of that release."
     }
 
     // Local ClinVar panel resource (optional). Empty list => legacy dbNSFP 4.1a ClinVar (SNVs only, ~2020).
@@ -299,7 +303,8 @@ workflow SAREK_CLINICAL {
             ch_panel_bed,
             consensus_fasta,
             consensus_fasta_fai,
-            file(params.civic_cache)
+            file(params.civic_cache),
+            ch_snpeff_mane
         )
         if (!params.skip_hrd) {
             ch_hrd_tsv = SOMATIC_POSTPROCESS.out.hrd_tsv

@@ -26,7 +26,12 @@ Input: the ClinVar panel subset annotated with the snpEff MANE database, e.g.
       > clinvar_panel.mane.vcf
   # 3. index
   python3 scripts/build_clinvar_protein_index.py --vcf clinvar_panel.mane.vcf \\
-      --outdir /data/refs/clinvar
+      --mane-plus-clinical assets/mane/mane_v1.2_plus_clinical.txt --outdir /data/refs/clinvar
+
+The database also holds MANE Plus Clinical transcripts, which snpEff may list
+first (BRAF NM_001374258.1: p.Val640Glu): the ANN of a transcript in
+--mane-plus-clinical is never used, so every row is in MANE Select coordinates,
+as the germline HGVS (SNPEFF_MANE lists MANE Select first).
 """
 import argparse
 import datetime
@@ -63,6 +68,11 @@ def plp_class(sig):
     return None
 
 
+def load_plus_clinical(path):
+    with open(path) as fh:
+        return {l.split('\t')[0].strip() for l in fh if l.strip() and not l.startswith('#')}
+
+
 def md5(path):
     h = hashlib.md5()
     with open(path, 'rb') as fh:
@@ -74,9 +84,12 @@ def md5(path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--vcf', required=True, help='ClinVar panel subset annotated with snpEff MANE')
+    ap.add_argument('--mane-plus-clinical', required=True,
+                    help='MANE Plus Clinical transcripts of the snpEff MANE release (assets/mane)')
     ap.add_argument('--outdir', required=True)
     a = ap.parse_args()
 
+    plus = load_plus_clinical(a.mane_plus_clinical)
     date, snpeff_cmd, rows = None, '', []
     opener = gzip.open if a.vcf.endswith('.gz') else open
     with opener(a.vcf, 'rt') as fh:
@@ -92,7 +105,8 @@ def main():
             cls = plp_class(info.get('CLNSIG', ''))
             if not cls:
                 continue
-            ann = info.get('ANN', '').split(',')[0].split('|')
+            anns = [x.split('|') for x in info.get('ANN', '').split(',')]
+            ann = next((x for x in anns if len(x) > 6 and x[6] not in plus), [])
             if len(ann) < 11 or 'missense_variant' not in ann[1]:
                 continue
             m = HGVS_MISSENSE.match(ann[10])
@@ -118,6 +132,8 @@ def main():
         m.write(f'built:      {datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}\n')
         m.write(f'input:      {os.path.basename(a.vcf)} (md5 {md5(a.vcf)})\n')
         m.write(f'snpeff:     {snpeff_cmd}\n')
+        m.write(f'plus_clin:  {os.path.basename(a.mane_plus_clinical)} (md5 {md5(a.mane_plus_clinical)}, '
+                f'{len(plus)} MANE Plus Clinical transcripts not used)\n')
         m.write(f'variants:   {len(rows)} (>=2 stars {sum(r[6] >= 2 for r in rows)}, '
                 f'splice_region {sum(r[12] for r in rows)})\n')
         m.write(f'md5_tsv:    {md5(prefix + ".tsv.gz")}\n')

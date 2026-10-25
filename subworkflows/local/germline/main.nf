@@ -29,7 +29,7 @@ workflow GERMLINE_POSTPROCESS {
     ch_pharmaco_variants     // path: pharmacogenomics rsID file
     ch_gnomad                // list: [tsv.gz, tsv.gz.tbi, regions.bed.gz, regions.bed.gz.tbi] or []
     ch_clinvar               // list: [tsv.gz, tsv.gz.tbi] or []
-    ch_snpeff_mane           // list: [snpEff data dir, database name] or []
+    ch_snpeff_mane           // list: [snpEff data dir, database name, MANE Plus Clinical list] or []
     ch_revel                 // list: [tsv.gz, tsv.gz.tbi] or []
     ch_spliceai              // list: [fasta, fasta.fai] or []
     ch_protein_index         // path: ClinVar protein index (PS1 / PM5) or []
@@ -43,7 +43,8 @@ workflow GERMLINE_POSTPROCESS {
         SNPEFF_MANE(
             ch_vcfs_for_dbnsfp,
             ch_snpeff_mane[0],
-            ch_snpeff_mane[1]
+            ch_snpeff_mane[1],
+            ch_snpeff_mane[2]
         )
         ch_vcfs_for_dbnsfp = SNPEFF_MANE.out.vcf
     }

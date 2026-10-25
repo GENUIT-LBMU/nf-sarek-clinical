@@ -570,14 +570,24 @@ Then set `gcnv_lowmap_bed: /data/refs/cnv/lowmap/GRCh38_lowmappabilityall_panel.
 The annotated germline CNV TSV gains `LOWMAP` (fraction of each exon) and
 `LOWMAP_SEG` (fraction of the segment's panel exon bases).
 
-### snpEff MANE database — germline nomenclature (recommended)
+### snpEff MANE database — germline and somatic nomenclature (recommended)
 
 Sarek runs snpEff with `-canon`, which keeps the transcript with the longest CDS.
-For ~1 in 10 candidate panel variants that is not the MANE Select transcript, so the
-reported HGVS differs from ClinVar and the literature (e.g. BRCA1 p.Ser1634Gly
-instead of p.Ser1613Gly, MUTYH p.Gln335His instead of p.Gln338His). With
-`snpeff_mane_data` set, the germline VCF is re-annotated (`SNPEFF_MANE`, snpEff 5.2)
-with the MANE Select database, one RefSeq NM transcript per gene.
+For ~1 in 10 panel variants that is not the MANE Select transcript, so the
+reported HGVS differs from ClinVar and the literature (e.g. germline BRCA1
+p.Ser1634Gly instead of p.Ser1613Gly; somatic BRAF p.Lys641Glu instead of
+p.Lys601Glu, CHEK2 p.Arg389Cys instead of p.Arg346Cys). With `snpeff_mane_data`
+set, the germline VCF and the somatic Mutect2 VCF are re-annotated (`SNPEFF_MANE`,
+snpEff 5.2) with the MANE database, one RefSeq NM transcript per gene. The somatic
+consensus, TMB and signatures keep the sarek annotation.
+
+The database also holds the 64 MANE Plus Clinical transcripts, which snpEff may
+list first (BRAF, FGFR2, KRAS, MUTYH and SMARCA4 among the panel genes).
+`SNPEFF_MANE` moves them after the MANE Select transcript
+(`--mane_plus_clinical`, default `assets/mane/mane_v1.2_plus_clinical.txt`, from
+the NCBI MANE v1.2 summary) and copies their HGVS to `INFO/MANE_PLUS_CLINICAL`.
+The reports show the transcript under HGVS_c and, when it differs, the MANE Plus
+Clinical HGVS under HGVS_p (MUTYH p.Gly368Asp with `NM_001128425.2: p.Gly396Asp`).
 
 ```bash
 mkdir -p /data/refs/snpeff && cd /data/refs/snpeff
@@ -639,7 +649,8 @@ references need >= `clinvar_min_stars` stars and are not at exon edges
 the bcftools + snpEff MANE commands, then:
 
 ```bash
-python3 scripts/build_clinvar_protein_index.py --vcf clinvar_panel.mane.vcf --outdir /data/refs/clinvar
+python3 scripts/build_clinvar_protein_index.py --vcf clinvar_panel.mane.vcf \
+    --mane-plus-clinical assets/mane/mane_v1.2_plus_clinical.txt --outdir /data/refs/clinvar
 # → clinvar_20260822_protein_index.tsv.gz, manifest
 ```
 
@@ -800,8 +811,9 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | `--panel_bed` | — | WES capture BED for TMB calculation (mut/Mb) |
 | `--gnomad_tsv` | — | Local gnomAD panel resource (`scripts/build_gnomad_panel.sh`); path or https URL. Recommended |
 | `--gnomad_regions` | `<gnomad_tsv>_regions.bed.gz` | Regions BED of that resource (only needed if renamed) |
-| `--snpeff_mane_data` | — | snpEff data dir with the MANE database; re-annotates germline with MANE Select. Recommended |
+| `--snpeff_mane_data` | — | snpEff data dir with the MANE database; re-annotates germline and somatic Mutect2 with MANE Select. Recommended |
 | `--snpeff_mane_db` | `GRCh38.mane.1.2.refseq` | snpEff MANE database name |
+| `--mane_plus_clinical` | `assets/mane/mane_v1.2_plus_clinical.txt` | MANE Plus Clinical transcripts of that release: listed after MANE Select, HGVS shown as secondary |
 | `--clinvar_tsv` | — | Local ClinVar panel resource (`scripts/build_clinvar_panel.sh`); path or https URL. Recommended |
 | `--clinvar_protein_index` | — | ClinVar P/LP missense in MANE protein coordinates (`scripts/build_clinvar_protein_index.py`) for PS1 / PM5. Recommended |
 | `--revel_tsv` | — | Local REVEL v1.3 panel resource (`scripts/build_revel_panel.py`), MANE Select score. Recommended |

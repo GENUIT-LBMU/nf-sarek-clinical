@@ -132,6 +132,28 @@ def clinvar_display(get_field):
     return f'{txt} ({st}*)' if st not in ('', '.') else txt
 
 
+def hgvs_display(get_field):
+    """
+    HGVS for reports: (hgvs_c, transcript, hgvs_p, plus). `plus` lists the MANE
+    Plus Clinical HGVS of the same gene ('NM_001128425.2: p.Gly396Asp') when it
+    differs from the one shown (SNPEFF_MANE, INFO/MANE_PLUS_CLINICAL).
+    """
+    def clean(x):
+        x = (x or '').strip()
+        return '' if x == '.' else x
+    gene, tx = clean(get_field('ANN[*].GENE')), clean(get_field('ANN[*].FEATUREID'))
+    hc, hp = clean(get_field('ANN[*].HGVS_C')), clean(get_field('ANN[*].HGVS_P'))
+    plus = []
+    for entry in clean(get_field('MANE_PLUS_CLINICAL')).split('&'):
+        f = entry.split('|')
+        if len(f) != 4 or f[0] != gene or f[1] == tx:
+            continue
+        shown, other = (hp, f[3]) if f[3] else (hc, f[2])
+        if other and other != shown:
+            plus.append(f'{f[1]}: {other}')
+    return hc, tx, hp, plus
+
+
 # =============================================================================
 # Population frequency
 # =============================================================================
