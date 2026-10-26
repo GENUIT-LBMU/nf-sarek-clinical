@@ -80,6 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variants of the panel (e.g. MSH2 c.942+3A>T) could never be reported.
 
 ### Changed
+- README rewritten against the code: requirements (Nextflow >= 24.04, host Python for the
+  reports, network for ClinicalTrials.gov, `--max_*` caps), every path read from the sarek
+  output, samplesheet with the identification columns, the workflow step by step, germline
+  CNV cohort mode vs case mode (what the pipeline runs, how the cohort model is built, its
+  parameters), report contents (PDF vs HTML), the complete parameter, skip-flag,
+  `filters.config` and output references, reproducibility, tests and troubleshooting.
+  `docs/usage.md` and `docs/output.md` (outdated) now point to the README.
 - Reports: one report model per pair (`REPORT_MODEL`, `bin/report_model.py`,
   published as `reporting/<pair>.report_model.json`) holds every value and
   interpretation (ACMG, AMP tiers and CIViC evidence, biomarker statuses, low-coverage
