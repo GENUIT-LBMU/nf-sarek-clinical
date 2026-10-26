@@ -31,13 +31,13 @@ include { CLINICAL_PDF_REPORT   } from '../modules/local/clinical_pdf_report/mai
 workflow SAREK_CLINICAL {
 
     // ── Reference file channels ───────────────────────────────────────────────
-    ch_snpsift_jar   = params.snpsift_jar ? file(params.snpsift_jar)          : error("--snpsift_jar required")
-    ch_panel_bed     = params.panel_bed   ? file(params.panel_bed)   : []
-    ch_gene_coords   = params.gene_coords_bed ? file(params.gene_coords_bed) : []
+    def ch_snpsift_jar   = params.snpsift_jar ? file(params.snpsift_jar)          : error("--snpsift_jar required")
+    def ch_panel_bed     = params.panel_bed   ? file(params.panel_bed)   : []
+    def ch_gene_coords   = params.gene_coords_bed ? file(params.gene_coords_bed) : []
 
     // Local gnomAD panel resource (required for germline SNVs, optional for somatic Tier IV).
     def gnomad_regions = params.gnomad_regions ?: (params.gnomad_tsv ? params.gnomad_tsv.toString().replaceAll(/\.tsv\.gz$/, '_regions.bed.gz') : null)
-    ch_gnomad        = params.gnomad_tsv
+    def ch_gnomad        = params.gnomad_tsv
         ? [ file(params.gnomad_tsv,            checkIfExists: true),
             file("${params.gnomad_tsv}.tbi",   checkIfExists: true),
             file(gnomad_regions,               checkIfExists: true),
@@ -55,7 +55,7 @@ workflow SAREK_CLINICAL {
     }
 
     // snpEff MANE database (optional). Empty list => keep sarek's snpEff -canon annotation.
-    ch_snpeff_mane   = params.snpeff_mane_data
+    def ch_snpeff_mane   = params.snpeff_mane_data
         ? [ file(params.snpeff_mane_data, checkIfExists: true), params.snpeff_mane_db,
             file(params.mane_plus_clinical, checkIfExists: true) ]
         : []
@@ -70,20 +70,20 @@ workflow SAREK_CLINICAL {
     }
 
     // Local ClinVar panel resource (required for germline SNVs).
-    ch_clinvar       = params.clinvar_tsv
+    def ch_clinvar       = params.clinvar_tsv
         ? [ file(params.clinvar_tsv,           checkIfExists: true),
             file("${params.clinvar_tsv}.tbi",  checkIfExists: true) ]
         : []
 
     // Local REVEL v1.3 panel resource (required for germline SNVs).
-    ch_revel         = params.revel_tsv
+    def ch_revel         = params.revel_tsv
         ? [ file(params.revel_tsv,             checkIfExists: true),
             file("${params.revel_tsv}.tbi",    checkIfExists: true) ]
         : []
 
     // SpliceAI on germline candidates (optional). Empty list => no splicing evidence.
     def spliceai_fasta = params.spliceai_fasta ?: params.gcnv_fasta
-    ch_spliceai      = (params.spliceai && spliceai_fasta)
+    def ch_spliceai      = (params.spliceai && spliceai_fasta)
         ? [ file(spliceai_fasta,               checkIfExists: true),
             file("${spliceai_fasta}.fai",      checkIfExists: true) ]
         : []
@@ -92,26 +92,26 @@ workflow SAREK_CLINICAL {
     }
 
     // ClinVar protein index for PS1 / PM5 (optional). [] => no PS1 / PM5.
-    ch_protein_index = params.clinvar_protein_index
+    def ch_protein_index = params.clinvar_protein_index
         ? file(params.clinvar_protein_index, checkIfExists: true)
         : []
     if (!params.clinvar_protein_index && !params.skip_germline_snv) {
         log.warn "--clinvar_protein_index not set: no ACMG PS1 / PM5. Build it with scripts/build_clinvar_protein_index.py."
     }
 
-    ch_germline_panel    = file(params.germline_panel)
-    ch_somatic_cnv_panel = file(params.somatic_cnv_panel)
-    ch_somatic_snv_panel = file(params.somatic_snv_panel)
-    ch_second_hit_panel  = params.second_hit_panel ? file(params.second_hit_panel, checkIfExists: true) : []
-    ch_tso500_panel      = params.tso500_panel     ? file(params.tso500_panel,     checkIfExists: true) : []
-    ch_pharmaco_variants = file(params.pharmaco_variants)
+    def ch_germline_panel    = file(params.germline_panel)
+    def ch_somatic_cnv_panel = file(params.somatic_cnv_panel)
+    def ch_somatic_snv_panel = file(params.somatic_snv_panel)
+    def ch_second_hit_panel  = params.second_hit_panel ? file(params.second_hit_panel, checkIfExists: true) : []
+    def ch_tso500_panel      = params.tso500_panel     ? file(params.tso500_panel,     checkIfExists: true) : []
+    def ch_pharmaco_variants = file(params.pharmaco_variants)
 
-    sarek_out = file(params.sarek_outdir)
+    def sarek_out = file(params.sarek_outdir)
 
     // ── Auto-discover Sarek outputs ───────────────────────────────────────────
 
     // Germline HaplotypeCaller VCFs (snpEff annotated)
-    ch_hc_vcfs = Channel.fromPath(
+    def ch_hc_vcfs = Channel.fromPath(
         "${sarek_out}/annotation/haplotypecaller/**/*.vcf.gz"
     ).map { vcf ->
         def sample = vcf.parent.name
@@ -119,7 +119,7 @@ workflow SAREK_CLINICAL {
     }
 
     // Somatic Mutect2 VCFs (snpEff annotated)
-    ch_mutect2_vcfs = Channel.fromPath(
+    def ch_mutect2_vcfs = Channel.fromPath(
         "${sarek_out}/annotation/mutect2/**/*mutect2.filtered_snpEff.ann.vcf.gz"
     ).map { vcf ->
         def pair = vcf.parent.name
@@ -131,18 +131,18 @@ workflow SAREK_CLINICAL {
     // with checkIfExists:false naturally emits an empty channel — no .ifEmpty needed.
     // (.ifEmpty { Channel.empty() } emits a Channel-object as a value, which breaks the
     // downstream .filter in SOMATIC_POSTPROCESS.)
-    ch_strelka2_snvs = Channel.fromPath(
+    def ch_strelka2_snvs = Channel.fromPath(
         "${sarek_out}/variant_calling/strelka/**/*.somatic_snvs.vcf.gz",
         checkIfExists: false
     ).map { vcf -> [vcf.parent.name, vcf] }
 
-    ch_strelka2_indels = Channel.fromPath(
+    def ch_strelka2_indels = Channel.fromPath(
         "${sarek_out}/variant_calling/strelka/**/*.somatic_indels.vcf.gz",
         checkIfExists: false
     ).map { vcf -> [vcf.parent.name, vcf] }
 
     // CNVkit .somatic.call.cns (fallback to .call.cns)
-    ch_cns = Channel.fromPath(
+    def ch_cns = Channel.fromPath(
         "${sarek_out}/variant_calling/cnvkit/**/*.{somatic.call.cns,call.cns}"
     ).map { cns ->
         def pair   = cns.parent.name
@@ -157,29 +157,29 @@ workflow SAREK_CLINICAL {
     }
 
     // ASCAT metrics + segments
-    ch_ascat_metrics  = Channel.fromPath(
+    def ch_ascat_metrics  = Channel.fromPath(
         "${sarek_out}/variant_calling/ascat/**/*.metrics.txt"
     ).map { f -> [f.parent.name, f] }
 
-    ch_ascat_segments = Channel.fromPath(
+    def ch_ascat_segments = Channel.fromPath(
         "${sarek_out}/variant_calling/ascat/**/*segment*.txt"
     ).map { f -> [f.parent.name, f] }
 
-    ch_ascat = ch_ascat_metrics.join(ch_ascat_segments, remainder: true)
+    def ch_ascat = ch_ascat_metrics.join(ch_ascat_segments, remainder: true)
         .map { pair, met, seg -> [pair, seg ?: file('NO_ASCAT_SEG'), met ?: file('NO_ASCAT_MET')] }
 
     // Tumor sample names (for mutsig tumor column detection)
 
     // MSIsensor-pro result (file named as the pair) and mosdepth summary per sample (reports)
-    ch_msi = Channel.fromPath(
+    def ch_msi = Channel.fromPath(
         "${sarek_out}/variant_calling/msisensorpro/*/*", checkIfExists: false
     ).filter { f -> f.name == f.parent.name }.map { f -> [f.name, f] }
-    ch_mosdepth_summary = Channel.fromPath(
+    def ch_mosdepth_summary = Channel.fromPath(
         "${sarek_out}/reports/mosdepth/*/*.mosdepth.summary.txt", checkIfExists: false
     ).map { f -> [f.parent.name, f] }
 
     // mosdepth regions BED per sample
-    ch_mosdepth = Channel.fromPath(
+    def ch_mosdepth = Channel.fromPath(
         "${sarek_out}/reports/mosdepth/**/*.recal.regions.bed.gz"
     ).map { f ->
         def sample = f.parent.name
@@ -192,14 +192,14 @@ workflow SAREK_CLINICAL {
     // Resolved here (not in channel operators) so a validation error is reported alone.
     def recal_alns = files("${sarek_out}/preprocessing/recalibrated/**/*.recal.{bam,cram}")
         .groupBy { it.parent.name }
-        .collect { sample, files ->
-            def aln = files.find { it.name.endsWith('.bam') } ?: files[0]
+        .collect { sample, alns ->
+            def aln = alns.find { it.name.endsWith('.bam') } ?: alns[0]
             def idx = file(aln.toString() + (aln.name.endsWith('.bam') ? '.bai' : '.crai'))
             if (!idx.exists()) error("Index not found for ${aln}: expected ${idx}")
             [sample, aln, idx]
         }
         .sort { it[0] }
-    ch_bams = Channel.fromList(recal_alns)
+    def ch_bams = Channel.fromList(recal_alns)
 
     // ── GERMLINE POSTPROCESSING (SNV + Pharmaco) ──────────────────────────────
     if (!params.skip_germline_snv || !params.skip_pharmaco) {
@@ -279,10 +279,19 @@ workflow SAREK_CLINICAL {
 
     // ── SOMATIC POSTPROCESSING (SNV + Consensus + ASCAT/CNVkit + TMB + Signatures + HRD) ─
     // Reference FASTA for bcftools norm in consensus module
-    def consensus_fasta     = params.gcnv_fasta ? file(params.gcnv_fasta) : file('NO_FILE')
-    def consensus_fasta_fai = params.gcnv_fasta ? file("${params.gcnv_fasta}.fai") : file('NO_FILE')
+    // --skip_strelka_consensus: every pair uses Mutect2 PASS only (no Strelka2 intersection)
+    if (params.skip_strelka_consensus) {
+        ch_strelka2_snvs   = Channel.empty()
+        ch_strelka2_indels = Channel.empty()
+    }
+    def has_strelka = !params.skip_strelka_consensus &&
+        files("${sarek_out}/variant_calling/strelka/**/*.somatic_snvs.vcf.gz").size() > 0
+    if (has_strelka && !params.gcnv_fasta)
+        error("--gcnv_fasta (reference FASTA + .fai) is required for the Mutect2 + Strelka2 consensus (bcftools norm), or set --skip_strelka_consensus true")
+    def consensus_fasta     = params.gcnv_fasta ? file(params.gcnv_fasta) : file('NO_FASTA')
+    def consensus_fasta_fai = params.gcnv_fasta ? file("${params.gcnv_fasta}.fai") : file('NO_FASTA_FAI')
 
-    ch_hrd_tsv = Channel.empty()
+    def ch_hrd_tsv = Channel.empty()
     if (!params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures || !params.skip_hrd) {
         // CIViC annotation runs inside SOMATIC_POSTPROCESS with a frozen cache (no network)
         if (!params.civic_cache) error("--civic_cache is required for somatic postprocessing (build it with scripts/build_civic_cache.sh)")
@@ -373,7 +382,7 @@ workflow SAREK_CLINICAL {
     def by_key = { ch -> ch.toList().map { l -> [l.collectEntries { [(it[0]): it[1]] }] } }
     def som    = { name -> somatic_ran ? SOMATIC_POSTPROCESS.out."${name}" : Channel.empty() }
 
-    ch_pairs = ch_mutect2_vcfs.map { pair, _vcf -> pair }
+    def ch_pairs = ch_mutect2_vcfs.map { pair, _vcf -> pair }
         .mix(ch_ascat_metrics.map { pair, _met -> pair })
         .unique()
 
@@ -399,10 +408,10 @@ workflow SAREK_CLINICAL {
         sig_prof:  som('signatures_profiles'),
     ]
     def names = lookups.keySet() as List
-    ch_lookup = names.drop(1).inject(by_key(lookups[names[0]])) { acc, n -> acc.combine(by_key(lookups[n])) }
+    def ch_lookup = names.drop(1).inject(by_key(lookups[names[0]])) { acc, n -> acc.combine(by_key(lookups[n])) }
         .map { maps -> [names, maps].transpose().collectEntries() }
 
-    ch_report_input = ch_pairs
+    def ch_report_input = ch_pairs
         .combine(ch_lookup)
         .map { pair, m ->
             def tumor  = pair.contains('_vs_') ? pair.split('_vs_')[0] : pair

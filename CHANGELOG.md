@@ -180,6 +180,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- CI: the pipeline test pointed to a test dataset that never existed (it failed on
+  every run). Replaced by unit tests (`tests/`, pytest) and a `-stub` run on a fake
+  sarek output (`tests/stub/make_fixture.sh`, `conf/test.config`) on Nextflow 23.04.0
+  and the latest release, on every push.
+- The workflow did not compile on Nextflow < 25 (Groovy 3: variables assigned without
+  `def` in the workflow body), although the manifest declares >= 23.04.0.
+- Mutect2 + Strelka2 consensus without `--gcnv_fasta` stopped with an input file name
+  collision (NO_FILE twice); it now stops at start with a clear message.
+  `--skip_strelka_consensus` (documented) was ignored; it now keeps Mutect2 PASS only.
 - Per-gene coverage: a panel gene the capture BED names otherwise is found by its
   MANE exon coordinates (RAD51D, named RAD51L3-RFFL in the capture, was missing from
   the coverage tables: 104 of 105 genes). Genes without any capture region are logged.

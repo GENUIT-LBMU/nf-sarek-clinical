@@ -1117,6 +1117,21 @@ APC, B2M, BLM, BRAF, BRCA1, BRCA2, CTNNB1, EGFR, EPCAM, ERBB2, FBXW7, KRAS, MAP2
 
 ---
 
+## Tests
+
+```bash
+python -m pytest -q tests/                     # unit tests of bin/ (synthetic data)
+bash tests/stub/make_fixture.sh                # fake sarek output + empty resources
+nextflow run . -profile test -stub --outdir results_test
+```
+
+The unit tests cover the shared modules (ACMG classification, AMP tiers, MSI,
+signature calls, CNV harmonisation, report helpers) and check that the report
+scripts load. The stub run executes the whole workflow with the `stub:` block of
+every module, which checks channels, joins and report inputs without tools or
+containers. CI (`.github/workflows/ci.yml`) runs both on every push, the stub run
+on Nextflow 23.04.0 (minimum) and the latest stable release.
+
 ## Troubleshooting
 
 | Problem | Solution |

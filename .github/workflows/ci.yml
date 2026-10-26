@@ -1,10 +1,12 @@
 name: nf-sarek-clinical CI
 
+# unit: pytest on the shared modules of bin/ (ACMG, AMP tiers, CNV, reports), synthetic data.
+# stub: the whole workflow with the stub block of every module on a fake sarek
+#       output (tests/stub/make_fixture.sh, conf/test.config): channels, joins and
+#       report inputs, on the minimum and the latest Nextflow. No container needed.
+
 on:
   push:
-    branches:
-      - main
-      - dev
   pull_request:
   release:
     types: [published]
@@ -17,43 +19,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Run pipeline test
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        NXF_VER:
-          - "23.04.0"
-          - "latest-stable"
-    steps:
-      - name: Check out pipeline code
-        uses: actions/checkout@v4
-
-      - name: Install Nextflow
-        uses: nf-core/setup-nextflow@v2
-        with:
-          version: "${{ matrix.NXF_VER }}"
-
-      - name: Disk space cleanup
-        uses: jlumbroso/free-disk-space@v1.3.1
-
-      - name: Run pipeline (test profile – skips heavy modules)
-        run: |
-          nextflow run . \
-            -profile test,docker \
-            --outdir ./results_test
-        env:
-          NXF_VER: ${{ matrix.NXF_VER }}
-
-  lint:
-    name: nf-core lint
+  unit:
+    name: Unit tests (pytest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install nf-core
-        run: pip install nf-core
-      - name: Run nf-core lint
-        run: nf-core lint --dir . --fail-ignored --fail-warned || true
+      - name: Install test dependencies
+        run: pip install pytest reportlab pymupdf
+      - name: Run unit tests
+        run: python -m pytest -q tests/
+
+  stub:
+    name: Stub run (Nextflow ${{ matrix.NXF_VER }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        NXF_VER:
+          - "23.04.0"        # manifest.nextflowVersion
+          - "latest-stable"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install Nextflow
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: "${{ matrix.NXF_VER }}"
+      - name: Install bgzip / tabix (consensus stub)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tabix
+      - name: Build the fake sarek output
+        run: bash tests/stub/make_fixture.sh
+      - name: Stub run
+        run: nextflow run . -profile test -stub --outdir results_test
+      - name: Both reports produced
+        run: |
+          test -f results_test/reporting/T1_vs_N1_molecular_report.html
+          test -f results_test/reporting/T1_vs_N1_clinical_report.pdf
