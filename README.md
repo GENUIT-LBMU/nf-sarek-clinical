@@ -64,7 +64,7 @@ providers {
 
 See [Reference files](#reference-files) for full download instructions. Required files:
 
-- dbNSFP 4.1a (`dbNSFP4.1a.txt.gz` + `.tbi`)
+- Local gnomAD v4.1, ClinVar and REVEL panel resources (built once with the scripts in `scripts/`, see below)
 - SnpSift JAR (`SnpSift.jar` from snpEff bundle)
 - hg38 FASTA + dict
 - GATK CNV Panel of Normals and interval lists (from [FlorPio/gatk-cnv-somatic](https://github.com/FlorPio/gatk-cnv-somatic))
@@ -207,8 +207,7 @@ cp full_pipeline.params.yml my_lab_params.yml
 Edit `my_lab_params.yml` with your local reference file paths (see [Reference files](#reference-files) below for where to obtain each file):
 
 ```yaml
-# SNV annotation
-dbnsfp:          /data/refs/dbNSFP/dbNSFP4.1a.txt.gz
+# SNV annotation (germline: also gnomad_tsv, clinvar_tsv, revel_tsv below)
 snpsift_jar:     /data/refs/snpEff/SnpSift.jar
 
 # WES capture BED (for TMB calculation)
@@ -459,17 +458,6 @@ nextflow run GENUIT-LBMU/nf-sarek-clinical \
 
 All Docker images contain the bioinformatics tools. The files below must be downloaded once and stored locally. Configure their paths in `my_lab_params.yml`.
 
-### dbNSFP — variant functional annotation
-
-Download from the **Liu Lab** (free registration required):
-[sites.google.com/site/jpopgen/dbNSFP](https://sites.google.com/site/jpopgen/dbNSFP) → choose hg38 version.
-
-```bash
-mkdir -p /data/refs/dbNSFP && cd /data/refs/dbNSFP
-# After download:
-tabix -s 1 -b 2 -e 2 dbNSFP4.x.txt.gz
-```
-
 ### SnpSift — VCF filtering and field extraction
 
 Part of the **snpEff** package:
@@ -480,12 +468,12 @@ unzip snpEff_latest_core.zip -d /data/refs/snpEff
 # Jar → /data/refs/snpEff/snpEff/SnpSift.jar
 ```
 
-### gnomAD v4.1 — population frequencies (recommended)
+### gnomAD v4.1 — population frequencies (required for germline SNVs)
 
 A small local subset of gnomAD v4.1 *joint* (exomes + genomes, ~807k individuals)
-restricted to the MANE exons (±100 bp) of the panel genes. It replaces the
-dbNSFP gnomAD v2.1.1 frequency and the Ensembl / gnomAD web-API rescue for
-indels: no patient coordinates leave the host, every variant gets the same
+restricted to the MANE exons (±100 bp) of the panel genes, and to the whole gene
+body of the germline genes (`--gene-body`: intronic candidates kept for SpliceAI
+need a frequency for BA1). No patient coordinates leave the host, every variant gets the same
 gnomAD version, and a variant inside the resource regions that is not in
 gnomAD is reported as truly absent (`gnomAD_AF_source = gnomAD_v4.1_absent`).
 Sites failing gnomAD QC in both exomes and genomes (`*_qc_fail`, e.g. paralogous
@@ -497,13 +485,15 @@ docker run --rm -u $(id -u):$(id -g) -v $PWD:$PWD -v /data/refs:/data/refs -w $P
     quay.io/biocontainers/bcftools:1.20--h8b25389_0 \
     bash scripts/build_gnomad_panel.sh \
         --genes <(awk -F'\t' 'NR>1 && $1!="RYBP" && $1!="TERC" {print $1}' assets/gene_panels/genes.tsv) \
+        --gene-body assets/gene_panels/germline_cancer_predisposition.txt \
         --mane  /data/refs/mane/exons_mane_v1.2.txt \
         --outdir /data/refs/gnomad
 # → gnomad_v4.1_panel.tsv.gz(.tbi), gnomad_v4.1_panel_regions.bed.gz(.tbi), manifest
 ```
 
 All 541 genes of `genes.tsv` with a MANE v1.2 transcript (germline, somatic core,
-TSO500, somatic CNV, MMR / HRR): ~73 MB, 3.8 M records, about 2.5 h (remote reads of
+TSO500, somatic CNV, MMR / HRR), plus the gene body of the 105 germline genes (~8 Mb):
+~180 MB, about 6 h (remote reads of
 the gnomAD bucket). The exon table must include the MANE Plus Clinical exons
 (`scripts/build_mane_exons.py` does), or variants on BRAF NM_001374258.1, GNAS XLαs,
 CDKN2A p14ARF, PTCH1, MITF, … get no frequency. Then set
@@ -558,7 +548,6 @@ whatever its CIViC evidence. Tier IV variants are listed in a separate table as 
 germline polymorphisms and are not counted as somatic findings, double hits or second
 hits (e.g. 1128 BRCA2 p.Thr1915Met, gnomAD AF 2.7%, called at VAF 0.125). Without
 `--gnomad_tsv` there is no population frequency and no Tier IV (the run warns).
-dbNSFP is used for the germline only.
 
 ### Low-mappability BED — germline CNV flags (required for germline CNV)
 
@@ -612,11 +601,10 @@ Then set `snpeff_mane_data: /data/refs/snpeff/data` (`snpeff_mane_db` defaults t
 `GRCh38.mane.1.2.refseq`). MANE 1.2 transcripts are identical (same NM version) to
 MANE 1.5 for all 122 genes of the three panels.
 
-### ClinVar — germline classifications (recommended)
+### ClinVar — germline classifications (required for germline SNVs)
 
 A local subset of the official NCBI ClinVar GRCh38 VCF over the same panel
-regions. It replaces the ClinVar fields of dbNSFP 4.1a (~2020, SNVs only):
-matching is by allele, so indels are covered, and the release date is recorded
+regions. Matching is by allele, so indels are covered, and the release date is recorded
 in every output. When `clinvar_tsv` is set it is the **only** ClinVar source: a
 variant absent from that release is reported as not in ClinVar.
 
@@ -670,13 +658,12 @@ python3 scripts/build_clinvar_protein_index.py --vcf clinvar_panel.mane.vcf \
 Set `clinvar_protein_index: /data/refs/clinvar/clinvar_20260822_protein_index.tsv.gz`
 and rebuild it with each ClinVar release.
 
-### REVEL v1.3 — missense scores per MANE transcript (recommended)
+### REVEL v1.3 — missense scores per MANE transcript (required for germline SNVs)
 
 A panel subset of REVEL v1.3 (Zenodo 7072866, ODbL). REVEL gives one score per
 amino-acid change; the build keeps, for every allele, the score of the MANE
 Select transcript (`REVEL_source = REVEL_v1.3_MANE`), or the highest score over
-the other transcripts when MANE has none (`REVEL_v1.3_other_tx`). It replaces the
-dbNSFP 4.1a REVEL value, which is the first transcript of dbNSFP's list.
+the other transcripts when MANE has none (`REVEL_v1.3_other_tx`).
 
 ```bash
 # download the 25 zips of https://zenodo.org/records/7072866 into /data/refs/revel/source
@@ -776,9 +763,6 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 
 ```
 /data/refs/
-├── dbNSFP/
-│   ├── dbNSFP4.1a.txt.gz
-│   └── dbNSFP4.1a.txt.gz.tbi
 ├── snpEff/
 │   └── snpEff/SnpSift.jar
 ├── hg38/
@@ -812,7 +796,6 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | `--sarek_outdir` | Path to completed nf-core/sarek results directory |
 | `--run_name` | Run identifier used in output filenames and report header |
 | `--outdir` | Where clinical results will be written |
-| `--dbnsfp` | `dbNSFP4.x.txt.gz` (bgzipped + tabix indexed) |
 | `--snpsift_jar` | `SnpSift.jar` from the snpEff package |
 
 ### SNV & TMB
@@ -939,9 +922,7 @@ point system (Tavtigian et al. 2020): P >= 10, LP 6..9, VUS 0..5, LB -1..-6, B <
 | BS1_Sup | -1 | VCEP gene threshold (BRCA1, BRCA2, PTEN, ENG) |
 | BA1 | stand-alone B | gnomAD FAF95 > `ba1_af`, or the VCEP gene threshold (also removes the variant in the germline filter, except ClinVar P/LP with >= `clinvar_min_stars` stars) |
 
-PP3 / BP4 are not applied to null variants (PVS1 already weighs them). The
-9-tool dbNSFP panel is no longer scored; `insil_dam` / `insil_ben` stay in the
-TSV as information.
+PP3 / BP4 are not applied to null variants (PVS1 already weighs them).
 
 FAF95 is the maximum filtering allele frequency (95% CI) across gnomAD ancestry
 groups (`fafmax_faf95_max_joint`): a variant common in one group, e.g. admixed
@@ -1036,7 +1017,7 @@ Strelka2 SNVs + Indels (PASS) ──┘
 
 | Analysis | Reason |
 |----------|--------|
-| **Somatic SNV report table** | Needs full snpEff + dbNSFP + CIViC annotations (only in Mutect2 path) |
+| **Somatic SNV report table** | Needs full snpEff + CIViC annotations (only in Mutect2 path) |
 | **CIViC annotation** | Requires snpEff gene/protein annotations from Mutect2 |
 
 The somatic SNV report table includes a **Callers** column indicating whether each variant was confirmed by both callers (`M+S`) or only by Mutect2 (`M`). Variants with VAF < 5% are flagged with a warning badge.
@@ -1146,7 +1127,6 @@ APC, B2M, BLM, BRAF, BRCA1, BRCA2, CTNNB1, EGFR, EPCAM, ERBB2, FBXW7, KRAS, MAP2
 If you use `nf-sarek-clinical` in your research, please cite:
 
 - **nf-core/sarek**: Garcia M, et al. (2020). *Genome Medicine*.
-- **dbNSFP**: Liu X, et al. (2020). *Genome Medicine*.
 - **CIViC/civicpy** (v5.4.0): Griffith M, et al. (2017). *Nature Genetics*.
 - **SigProfilerAssignment**: Bergstrom EN, et al. (2022). *Cell Genomics*.
 - **HRProfiler**: Chopra N, et al. (2024). [github.com/FlorPio/HRProfiler-workflow](https://github.com/FlorPio/HRProfiler-workflow).

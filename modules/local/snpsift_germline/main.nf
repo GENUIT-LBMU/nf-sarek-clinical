@@ -2,72 +2,15 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     GERMLINE SNV POSTPROCESSING MODULE
     ===================================
+    Input: germline VCF annotated with snpEff MANE and the local gnomAD, ClinVar
+    and REVEL resources.
     Steps:
-      1. dbNSFP annotation (SnpSift dbnsfp)
-      2. Gene panel + impact filter (SnpSift filter): HIGH / MODERATE, plus splice-region,
+      1. Gene panel + impact filter (SnpSift filter): HIGH / MODERATE, plus splice-region,
          synonymous and intronic variants when noncoding_splice is on (Step 2 keeps
          those only with SpliceAI >= 0.2 or ClinVar P/LP)
-      3. Field extraction to TSV (SnpSift extractFields)
+      2. Field extraction to TSV (SnpSift extractFields) and ACMG classification
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
-
-process SNPSIFT_DBNSFP_GERMLINE {
-    tag "$sample"
-    label 'process_medium'
-    label 'snpsift'
-
-    publishDir "${params.outdir}/germline/snv/dbnsfp", mode: params.publish_dir_mode
-
-    input:
-    tuple val(sample), path(vcf)
-    path dbnsfp
-    path dbnsfp_tbi
-    path snpsift_jar
-
-    output:
-    tuple val(sample), path("${sample}.dbnsfp.vcf.gz"), emit: vcf
-
-    stub:
-    """
-    touch ${sample}.dbnsfp.vcf.gz
-    """
-
-    script:
-    def dbnsfp_fields = [
-        "SIFT_score","SIFT_converted_rankscore","SIFT_pred",
-        "SIFT4G_score","SIFT4G_converted_rankscore","SIFT4G_pred",
-        "Polyphen2_HDIV_score","Polyphen2_HDIV_rankscore","Polyphen2_HDIV_pred",
-        "Polyphen2_HVAR_score","Polyphen2_HVAR_rankscore","Polyphen2_HVAR_pred",
-        "LRT_score","LRT_converted_rankscore","LRT_pred",
-        "MutationTaster_score","MutationTaster_converted_rankscore","MutationTaster_pred",
-        "MutationAssessor_score","MutationAssessor_rankscore","MutationAssessor_pred",
-        "FATHMM_score","FATHMM_converted_rankscore","FATHMM_pred",
-        "PROVEAN_score","PROVEAN_converted_rankscore","PROVEAN_pred",
-        "REVEL_score","REVEL_rankscore",
-        "MutPred_score","MutPred_rankscore","MutPred_protID","MutPred_AAchange","MutPred_Top5features",
-        "PrimateAI_score","PrimateAI_rankscore","PrimateAI_pred",
-        "ClinPred_score","ClinPred_rankscore","ClinPred_pred",
-        "CADD_raw","CADD_raw_rankscore","CADD_phred",
-        "DANN_score","DANN_rankscore",
-        "fathmm-MKL_coding_score","fathmm-MKL_coding_rankscore","fathmm-MKL_coding_pred",
-        "GERP++_NR","GERP++_RS","GERP++_RS_rankscore",
-        "phyloP100way_vertebrate","phyloP100way_vertebrate_rankscore",
-        "phastCons100way_vertebrate","phastCons100way_vertebrate_rankscore",
-        "gnomAD_exomes_AC","gnomAD_exomes_AN","gnomAD_exomes_AF",
-        "gnomAD_genomes_AC","gnomAD_genomes_AN","gnomAD_genomes_AF",
-        "clinvar_id","clinvar_clnsig","clinvar_trait","clinvar_review","clinvar_hgvs",
-        "clinvar_var_source","clinvar_MedGen_id","clinvar_OMIM_id","clinvar_Orphanet_id",
-        "Interpro_domain"
-    ].join(",")
-    """
-    java -jar ${snpsift_jar} dbnsfp \\
-        -f ${dbnsfp_fields} \\
-        -v \\
-        -db ${dbnsfp} \\
-        ${vcf} | gzip -c > ${sample}.dbnsfp.vcf.gz
-    """
-}
-
 
 process SNPSIFT_FILTER_GERMLINE {
     tag "$sample"
@@ -170,7 +113,7 @@ process SNPSIFT_EXTRACT_GERMLINE {
     """
     printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tClinVar_PS1\\tClinVar_PM5\\tgnomAD_FAF95\\tgnomAD_AC\\tgnomAD_NHOMALT\\tgnomAD_AF_GRPMAX\\tgnomAD_AC_GRPMAX\\tgnomAD_AN_GRPMAX\\tgnomAD_BA1\\tQC_FLAG\\n" > ${sample}.germline_snvs.tsv
     touch ${sample}.germline_all_filtered.tsv
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tClinVar_PS1\\tClinVar_PM5\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tgnomAD_FAF95\\tgnomAD_AC\\tgnomAD_NHOMALT\\tgnomAD_AF_GRPMAX\\tgnomAD_AC_GRPMAX\\tgnomAD_AN_GRPMAX\\tgnomAD_BA1\\tACMG_class\\tACMG_criteria\\tACMG_spec\\tinsil_dam\\tinsil_ben\\tinsil_total\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tANN[*].IMPACT\\tZYGOSITY\\tClinVar_sig\\tClinVar_stars\\tClinVar_source\\tREVEL_score\\tREVEL_source\\tSpliceAI_DS\\tSpliceAI_detail\\tClinVar_PS1\\tClinVar_PM5\\tQC_FLAG\\tgnomAD_AF\\tgnomAD_AF_source\\tgnomAD_FAF95\\tgnomAD_AC\\tgnomAD_NHOMALT\\tgnomAD_AF_GRPMAX\\tgnomAD_AC_GRPMAX\\tgnomAD_AN_GRPMAX\\tgnomAD_BA1\\tACMG_class\\tACMG_criteria\\tACMG_spec\\n" > ${sample}.germline_snvs_acmg_annotated.tsv
     """
 
     script:
@@ -225,20 +168,6 @@ process SNPSIFT_EXTRACT_GERMLINE {
         "ANN[*].CDNA_POS" "ANN[*].CDNA_LEN" "ANN[*].CDS_POS" "ANN[*].CDS_LEN" \\
         "ANN[*].AA_POS" "ANN[*].AA_LEN" "ANN[*].DISTANCE" \\
         "GEN[0].GT" "GEN[0].AD" "GEN[0].DP" "GEN[0].GQ" \\
-        "dbNSFP_SIFT_pred" "dbNSFP_SIFT4G_pred" \\
-        "dbNSFP_Polyphen2_HDIV_pred" "dbNSFP_Polyphen2_HVAR_pred" \\
-        "dbNSFP_LRT_pred" "dbNSFP_MutationTaster_pred" \\
-        "dbNSFP_MutationAssessor_pred" "dbNSFP_FATHMM_pred" \\
-        "dbNSFP_PROVEAN_pred" \\
-        "dbNSFP_REVEL_score" "dbNSFP_REVEL_rankscore" \\
-        "dbNSFP_MutPred_score" "dbNSFP_MutPred_rankscore" \\
-        "dbNSFP_PrimateAI_pred" "dbNSFP_ClinPred_pred" \\
-        "dbNSFP_CADD_phred" \\
-        "dbNSFP_gnomAD_exomes_AF" "dbNSFP_gnomAD_genomes_AF" \\
-        "dbNSFP_clinvar_id" "dbNSFP_clinvar_clnsig" "dbNSFP_clinvar_trait" \\
-        "dbNSFP_clinvar_review" "dbNSFP_clinvar_hgvs" \\
-        "dbNSFP_clinvar_MedGen_id" "dbNSFP_clinvar_OMIM_id" "dbNSFP_clinvar_Orphanet_id" \\
-        "dbNSFP_Interpro_domain" \\
         \${GNOMAD_FIELDS} \${CLINVAR_FIELDS} \${REVEL_FIELDS} \${SPLICEAI_FIELDS} \${MANE_FIELDS} \\
         > "${sample}.germline_snvs_raw.tsv"
 
@@ -250,114 +179,21 @@ process SNPSIFT_EXTRACT_GERMLINE {
     rm -f "${sample}.germline_snvs_raw.tsv"
 
     # ── Step 1.5: population frequency → canonical gnomAD_AF / gnomAD_AF_source ──
-    #   LOCAL mode (GNOMAD_* columns present, --gnomad_tsv): no network access.
+    #   From the local gnomAD resource (GNOMAD_ANNOTATE, --gnomad_tsv); no network.
     #     gnomAD_v<ver>          AF from the local gnomAD joint resource (max over alleles)
     #     gnomAD_v<ver>_absent   inside resource regions, not in gnomAD -> AF 0 (PM2 valid)
     #     gnomAD_v<ver>_qc_fail  fails QC in both gnomAD exomes and genomes: AF kept for
     #                            BA1/BS1, never used for PM2
-    #     dbNSFP_v2              outside resource regions -> dbNSFP gnomAD v2.1.1 AF
-    #     unknown                outside regions and no dbNSFP AF -> no BA1/BS1/PM2
+    #     unknown                outside the resource regions -> no BA1/BS1/PM2
     #   gnomAD_FAF95: max filtering AF (95% CI) across ancestry groups from the local
     #     resource (0 when absent, "." outside the regions) -> BA1/BS1/PM2 use it
     #     with frequency_metric = 'faf95'; falls back to gnomAD_AF when ".".
     #   gnomAD_AC, gnomAD_NHOMALT, gnomAD_AF_GRPMAX, gnomAD_AC_GRPMAX, gnomAD_AN_GRPMAX
     #     (resource built with the grpmax columns): ClinGen VCEP gene-specific
     #     BA1/BS1/PM2 rules (acmg_shared VCEP_SPECS); 0 when absent, "." outside.
-    #   LEGACY mode (no --gnomad_tsv): behaviour below, unchanged.
-    #
-    # ── Legacy: gnomAD AF rescue (Ensembl VEP + gnomAD GraphQL fallback) ─────────
-    #   dbNSFP only covers SNVs — for indels the gnomAD AF column is empty.
-    #   This step queries:
-    #     1) Ensembl VEP REST API (/vep/human/region) — fast, but often lacks
-    #        gnomAD frequencies for indels (no colocated_variants returned).
-    #     2) gnomAD GraphQL API (gnomad.broadinstitute.org/api) as fallback
-    #        when Ensembl returns no frequency data.  Uses gnomAD v4 dataset.
-    #   Adds a gnomAD_AF_source column:  dbNSFP | ensembl | gnomad_api | .
-    #   Falls back gracefully if the network is unavailable.
     python3 - <<'PYEOF_GNOMAD'
-import sys, json, os, time
-try:
-    from urllib.request import Request, urlopen
-    from urllib.error   import HTTPError, URLError
-    _NET = True
-except ImportError:
-    _NET = False
+import sys, os
 
-ENSEMBL   = 'https://rest.ensembl.org'
-GNOMAD_GQL = 'https://gnomad.broadinstitute.org/api'
-MAX_Q     = int(os.environ.get("FILT_GNOMAD_RESCUE_MAX", "50"))
-SLEEP     = 0.35   # seconds between API calls
-
-# ── Source 1: Ensembl VEP ──────────────────────────────────────────────────
-def _ensembl_gnomad_af(chrom, pos, ref, alt):
-    # Return (af, True) from Ensembl VEP, or (None, False) if no freq data.
-    if not _NET:
-        return None, False
-    c   = chrom.lstrip('chr') or chrom
-    end = int(pos) + len(ref) - 1
-    url = ('{b}/vep/human/region/{c}:{p}-{e}:1/{a}'
-           '?content-type=application/json&gnomadg=1&gnomade=1').format(
-           b=ENSEMBL, c=c, p=pos, e=end, a=alt)
-    for attempt in range(3):
-        try:
-            req = Request(url, headers={'Accept': 'application/json'})
-            with urlopen(req, timeout=20) as r:
-                results = json.loads(r.read().decode())
-            best = None
-            for entry in results:
-                for cv in entry.get('colocated_variants', []):
-                    for pop, pdata in cv.get('frequencies', {}).items():
-                        af = float(pdata.get('af') or 0)
-                        if best is None or af > best:
-                            best = af
-            return best, (best is not None)
-        except HTTPError as e:
-            if e.code in (429, 503):
-                time.sleep(2 ** (attempt + 1))
-                continue
-            return None, False
-        except (URLError, Exception):
-            return None, False
-    return None, False
-
-# ── Source 2: gnomAD GraphQL API (v4) ──────────────────────────────────────
-def _gnomad_graphql_af(chrom, pos, ref, alt):
-    # Return max(exome,genome) AF from gnomAD v4 GraphQL, or None.
-    if not _NET:
-        return None
-    c = chrom.lstrip('chr') or chrom
-    vid = c + '-' + str(pos) + '-' + ref + '-' + alt
-    query = '{ variant(variantId: "' + vid + '", dataset: gnomad_r4) { exome { af } genome { af } } }'
-    body = json.dumps({'query': query}).encode()
-    for attempt in range(3):
-        try:
-            req = Request(GNOMAD_GQL,
-                          data=body,
-                          headers={'Content-Type': 'application/json',
-                                   'Accept': 'application/json'})
-            with urlopen(req, timeout=30) as r:
-                data = json.loads(r.read().decode())
-            v = (data.get('data') or {}).get('variant')
-            if v is None:
-                return None      # variant not in gnomAD
-            best = 0.0
-            for subset in ('exome', 'genome'):
-                sub = v.get(subset)
-                if sub and sub.get('af') is not None:
-                    af = float(sub['af'])
-                    if af > best:
-                        best = af
-            return best
-        except HTTPError as e:
-            if e.code in (429, 502, 503):
-                time.sleep(2 ** (attempt + 1))
-                continue
-            return None
-        except (URLError, Exception):
-            return None
-    return None
-
-# ── Main: iterate variants, rescue missing AFs ────────────────────────────
 TSV = '${sample}.germline_all_extracted.tsv'
 TMP = '${sample}.germline_all_extracted_rescue_tmp.tsv'
 
@@ -369,17 +205,11 @@ if len(lines) <= 1:
 
 hdr_list = lines[0].split('\\t')
 hdr      = {c: i for i, c in enumerate(hdr_list)}
-af_i     = hdr.get('dbNSFP_gnomAD_exomes_AF', -1)
-chr_i    = hdr.get('CHROM', -1)
-pos_i    = hdr.get('POS',   -1)
-ref_i    = hdr.get('REF',   -1)
-alt_i    = hdr.get('ALT',   -1)
-
-if af_i < 0 or chr_i < 0:
-    sys.exit(0)
+if 'GNOMAD_REGION' not in hdr:
+    sys.exit('ERROR: no GNOMAD_* fields: the germline VCF was not annotated by GNOMAD_ANNOTATE (--gnomad_tsv)')
 
 def _num(v):
-    # dbNSFP/gnomAD fields may hold one value per transcript/allele: "0.53,0.53"
+    # gnomAD fields hold one value per ALT allele: "0.53,0.01"
     vals = []
     for x in str(v).split(','):
         try:
@@ -388,126 +218,66 @@ def _num(v):
             pass
     return max(vals) if vals else None
 
-# ── LOCAL mode: frequencies from the local gnomAD resource, no network ──────
-if 'GNOMAD_REGION' in hdr:
-    tag = 'gnomAD_v' + (os.environ.get('GNOMAD_VERSION', '') or 'local')
-    gi  = {k: hdr.get(k, -1) for k in ('GNOMAD_REGION', 'GNOMAD_AF', 'GNOMAD_FILTER', 'GNOMAD_FAF95',
-                                       'GNOMAD_AC', 'GNOMAD_NHOMALT', 'GNOMAD_AF_GRPMAX',
-                                       'GNOMAD_AC_GRPMAX', 'GNOMAD_AN_GRPMAX',
-                                       'dbNSFP_gnomAD_exomes_AF', 'dbNSFP_gnomAD_genomes_AF')}
-    # grpmax columns only exist in resources built with them (ClinGen VCEP rules)
-    has_grp = gi['GNOMAD_AF_GRPMAX'] >= 0
-    EXTRA = ['GNOMAD_AC', 'GNOMAD_NHOMALT', 'GNOMAD_AF_GRPMAX', 'GNOMAD_AC_GRPMAX', 'GNOMAD_AN_GRPMAX']
-    def maxval(row, k):
-        # grpmax "." for an allele seen only in bottlenecked groups (ASJ, FIN, ...),
-        # which the VCEP rules exclude -> 0
-        v = _num(col(row, k))
-        if v is None:
-            return '0'
-        return '%d' % v if k != 'GNOMAD_AF_GRPMAX' else repr(v)
-    def col(row, k):
-        i = gi[k]
-        return row[i].strip() if 0 <= i < len(row) else '.'
-    n_base = len(hdr_list)
-    hdr_list += ['gnomAD_AF', 'gnomAD_AF_source', 'gnomAD_FAF95']
-    if has_grp:
-        hdr_list += ['gnomAD_' + k[7:] for k in EXTRA]
-    counts = {}
-    with open(TMP, 'w') as out:
-        out.write('\\t'.join(hdr_list) + '\\n')
-        for line in lines[1:]:
-            row = line.split('\\t')
-            while len(row) < n_base:
-                row.append('.')
-            afs   = col(row, 'GNOMAD_AF').split(',')
-            filts = col(row, 'GNOMAD_FILTER').split(',')
-            vals  = [(_num(a), filts[k] if k < len(filts) else '.') for k, a in enumerate(afs)]
-            vals  = [(a, f) for a, f in vals if a is not None]
-            region = col(row, 'GNOMAD_REGION')
-            fafs   = [x for x in (_num(f) for f in col(row, 'GNOMAD_FAF95').split(',')) if x is not None]
-            faf    = repr(max(fafs)) if (vals and fafs) else '.'
-            if vals:
-                good = [a for a, f in vals if f != 'BOTH_FILTERED']
-                if good:
-                    af, src = repr(max(good)), tag
-                else:
-                    # Fails QC in exomes AND genomes (paralogs, repeats): the AF is
-                    # kept for BA1/BS1 (benign direction) but never supports PM2.
-                    af, src = repr(max(a for a, _f in vals)), tag + '_qc_fail'
-            elif region not in ('', '.'):
-                af, src, faf = '0', tag + '_absent', '0'
-            else:
-                v2 = [x for x in (_num(col(row, 'dbNSFP_gnomAD_exomes_AF')),
-                                  _num(col(row, 'dbNSFP_gnomAD_genomes_AF'))) if x is not None]
-                af, src = (repr(max(v2)), 'dbNSFP_v2') if v2 else ('.', 'unknown')
-            counts[src] = counts.get(src, 0) + 1
-            extra = []
-            if has_grp:
-                # inside the regions: absent -> 0; outside -> "." (general rules)
-                if vals:
-                    extra = [maxval(row, k) for k in EXTRA]
-                else:
-                    extra = ['0' if src.endswith('_absent') else '.'] * len(EXTRA)
-            out.write('\\t'.join(row[:n_base] + [af, src, faf] + extra) + '\\n')
-    sys.stderr.write('[gnomAD local] ${sample}: ' + ', '.join(
-        k + '=' + str(v) for k, v in sorted(counts.items())) + '\\n')
-    os.replace(TMP, TSV)
-    sys.exit(0)
-
-# ── LEGACY mode ─────────────────────────────────────────────────────────────
-# Add gnomAD_AF_source column
-hdr_list.append('gnomAD_AF_source')
-src_i = len(hdr_list) - 1
-
-n = 0
+tag = 'gnomAD_v' + (os.environ.get('GNOMAD_VERSION', '') or 'local')
+gi  = {k: hdr.get(k, -1) for k in ('GNOMAD_REGION', 'GNOMAD_AF', 'GNOMAD_FILTER', 'GNOMAD_FAF95',
+                                   'GNOMAD_AC', 'GNOMAD_NHOMALT', 'GNOMAD_AF_GRPMAX',
+                                   'GNOMAD_AC_GRPMAX', 'GNOMAD_AN_GRPMAX')}
+# grpmax columns only exist in resources built with them (ClinGen VCEP rules)
+has_grp = gi['GNOMAD_AF_GRPMAX'] >= 0
+EXTRA = ['GNOMAD_AC', 'GNOMAD_NHOMALT', 'GNOMAD_AF_GRPMAX', 'GNOMAD_AC_GRPMAX', 'GNOMAD_AN_GRPMAX']
+def maxval(row, k):
+    # grpmax "." for an allele seen only in bottlenecked groups (ASJ, FIN, ...),
+    # which the VCEP rules exclude -> 0
+    v = _num(col(row, k))
+    if v is None:
+        return '0'
+    return '%d' % v if k != 'GNOMAD_AF_GRPMAX' else repr(v)
+def col(row, k):
+    i = gi[k]
+    return row[i].strip() if 0 <= i < len(row) else '.'
+n_base = len(hdr_list)
+hdr_list += ['gnomAD_AF', 'gnomAD_AF_source', 'gnomAD_FAF95']
+if has_grp:
+    hdr_list += ['gnomAD_' + k[7:] for k in EXTRA]
+counts = {}
 with open(TMP, 'w') as out:
-    out.write('\\t'.join(hdr_list + ['gnomAD_AF']) + '\\n')
+    out.write('\\t'.join(hdr_list) + '\\n')
     for line in lines[1:]:
         row = line.split('\\t')
-        while len(row) < src_i:
+        while len(row) < n_base:
             row.append('.')
-        row.append('.')          # gnomAD_AF_source placeholder
-
-        af_val = row[af_i].strip()
-        needs_rescue = af_val in ('', '.', 'NA', '0', '0.0', '0.00')
-
-        if not needs_rescue:
-            row[src_i] = 'dbNSFP'
-        elif n < MAX_Q:
-            ch  = row[chr_i] if chr_i < len(row) else ''
-            pos = row[pos_i] if pos_i < len(row) else ''
-            ref = row[ref_i] if ref_i < len(row) else ''
-            alt = row[alt_i] if alt_i < len(row) else ''
-            if ch and pos and ref not in ('', '.') and alt not in ('', '.'):
-                # Try Ensembl VEP first
-                af, has_freq = _ensembl_gnomad_af(ch, pos, ref, alt)
-                source = None
-                if has_freq and af is not None and af > 0:
-                    source = 'ensembl'
-                # Fallback: gnomAD GraphQL API (also when Ensembl returns 0.0)
-                if source is None:
-                    time.sleep(SLEEP)
-                    af_gql = _gnomad_graphql_af(ch, pos, ref, alt)
-                    if af_gql is not None:
-                        af = af_gql
-                        source = 'gnomad_api'
-                    elif has_freq and af is not None:
-                        # Ensembl had data (0.0) and gnomAD has no entry
-                        source = 'ensembl'
-                if source and af is not None:
-                    row[af_i] = str(af)
-                    row[src_i] = source
-                    n += 1
-                    sys.stderr.write(
-                        '[gnomAD rescue] ${sample} ' + ch + ':' + pos +
-                        ' ' + ref + '>' + alt + ' AF=' + str(af) +
-                        ' (' + source + ')\\n'
-                    )
-                time.sleep(SLEEP)
-        out.write('\\t'.join(row + [row[af_i]]) + '\\n')
-
-sys.stderr.write('[gnomAD rescue] ${sample}: rescued ' + str(n) + ' variant(s)\\n')
+        afs   = col(row, 'GNOMAD_AF').split(',')
+        filts = col(row, 'GNOMAD_FILTER').split(',')
+        vals  = [(_num(a), filts[k] if k < len(filts) else '.') for k, a in enumerate(afs)]
+        vals  = [(a, f) for a, f in vals if a is not None]
+        region = col(row, 'GNOMAD_REGION')
+        fafs   = [x for x in (_num(f) for f in col(row, 'GNOMAD_FAF95').split(',')) if x is not None]
+        faf    = repr(max(fafs)) if (vals and fafs) else '.'
+        if vals:
+            good = [a for a, f in vals if f != 'BOTH_FILTERED']
+            if good:
+                af, src = repr(max(good)), tag
+            else:
+                # Fails QC in exomes AND genomes (paralogs, repeats): the AF is
+                # kept for BA1/BS1 (benign direction) but never supports PM2.
+                af, src = repr(max(a for a, _f in vals)), tag + '_qc_fail'
+        elif region not in ('', '.'):
+            af, src, faf = '0', tag + '_absent', '0'
+        else:
+            af, src = '.', 'unknown'
+        counts[src] = counts.get(src, 0) + 1
+        extra = []
+        if has_grp:
+            # inside the regions: absent -> 0; outside -> "." (general rules)
+            if vals:
+                extra = [maxval(row, k) for k in EXTRA]
+            else:
+                extra = ['0' if src.endswith('_absent') else '.'] * len(EXTRA)
+        out.write('\\t'.join(row[:n_base] + [af, src, faf] + extra) + '\\n')
+sys.stderr.write('[gnomAD local] ${sample}: ' + ', '.join(
+    k + '=' + str(v) for k, v in sorted(counts.items())) + '\\n')
 os.replace(TMP, TSV)
+sys.exit(0)
 PYEOF_GNOMAD
 
     # ── Step 1.6: zygosity (ZYGOSITY column) ─────────────────────────────────────
@@ -560,11 +330,8 @@ PYEOF_GNOMAD
     # ── Step 1.7: canonical ClinVar columns ─────────────────────────────────────
     #   ClinVar_sig, ClinVar_stars, ClinVar_revstat, ClinVar_id, ClinVar_conf,
     #   ClinVar_dn, ClinVar_source. Every downstream consumer reads ClinVar_sig.
-    #   LOCAL mode (CLINVAR_* columns, --clinvar_tsv): the local release is the only
-    #     source; a variant absent from it is "." (no dbNSFP fallback).
-    #     ClinVar_source = ClinVar_<release date>
-    #   LEGACY mode: dbNSFP 4.1a ClinVar fields (~2020, SNVs only).
-    #     ClinVar_source = dbNSFP_4.1a
+    #   From the local ClinVar release (CLINVAR_ANNOTATE, --clinvar_tsv), the only
+    #     source; a variant absent from it is ".". ClinVar_source = ClinVar_<release date>
     #   Stars from the review status: practice guideline 4, expert panel 3,
     #   multiple submitters no conflicts 2, single submitter / conflicting 1, else 0.
     python3 - <<'PYEOF_CLINVAR'
@@ -591,13 +358,10 @@ def stars(revstat, sig):
 with open(TSV) as fin, open(TMP, 'w') as out:
     hdr = fin.readline().rstrip('\\n').split('\\t')
     idx = {c: i for i, c in enumerate(hdr)}
-    local = 'CLINVAR_SIG' in idx
-    if local:
-        src_cols = ('CLINVAR_SIG', 'CLINVAR_REVSTAT', 'CLINVAR_ID', 'CLINVAR_CONF', 'CLINVAR_DN')
-        source = 'ClinVar_' + (VER or 'local')
-    else:
-        src_cols = ('dbNSFP_clinvar_clnsig', 'dbNSFP_clinvar_review', 'dbNSFP_clinvar_id', None, 'dbNSFP_clinvar_trait')
-        source = 'dbNSFP_4.1a'
+    if 'CLINVAR_SIG' not in idx:
+        raise SystemExit('ERROR: no CLINVAR_* fields: the germline VCF was not annotated by CLINVAR_ANNOTATE (--clinvar_tsv)')
+    src_cols = ('CLINVAR_SIG', 'CLINVAR_REVSTAT', 'CLINVAR_ID', 'CLINVAR_CONF', 'CLINVAR_DN')
+    source = 'ClinVar_' + (VER or 'local')
     out.write('\\t'.join(hdr + ['ClinVar_sig', 'ClinVar_stars', 'ClinVar_revstat', 'ClinVar_id',
                                 'ClinVar_conf', 'ClinVar_dn', 'ClinVar_source']) + '\\n')
     for line in fin:
@@ -615,11 +379,10 @@ PYEOF_CLINVAR
 
     # ── Step 1.8: canonical REVEL and SpliceAI columns ──────────────────────────
     #   REVEL_score / REVEL_source:
-    #     LOCAL (REVEL_SCORE column, --revel_tsv): REVEL v1.3 score of the MANE Select
+    #     local REVEL (REVEL_ANNOTATE, --revel_tsv): REVEL v1.3 score of the MANE Select
     #       transcript (REVEL_v1.3_MANE); when REVEL lacks the MANE transcript ID, the
     #       score of the amino-acid change of the MANE HGVS_p (REVEL_v1.3_MANE_aa), else
-    #       the highest over other transcripts (REVEL_v1.3_other_tx); no dbNSFP fallback.
-    #     LEGACY: dbNSFP 4.1a REVEL (first transcript), source dbNSFP_4.1a.
+    #       the highest over other transcripts (REVEL_v1.3_other_tx).
     #   SpliceAI_DS: max of DS_AG / DS_AL / DS_DG / DS_DL over the genes scored for the
     #     ALT allele ("." when SpliceAI did not run); SpliceAI_detail: SYMBOL:type=DS@pos.
     python3 - <<'PYEOF_PRED'
@@ -648,25 +411,21 @@ def mane_aa(hgvs_p):
 with open(TSV) as fin, open(TMP, 'w') as out:
     hdr = fin.readline().rstrip('\\n').split('\\t')
     idx = {c: i for i, c in enumerate(hdr)}
-    local_revel = 'REVEL_SCORE' in idx
+    if 'REVEL_SCORE' not in idx:
+        raise SystemExit('ERROR: no REVEL_* fields: the germline VCF was not annotated by REVEL_ANNOTATE (--revel_tsv)')
     out.write('\\t'.join(hdr + ['REVEL_score', 'REVEL_source', 'SpliceAI_DS', 'SpliceAI_detail']) + '\\n')
     for line in fin:
         row = line.rstrip('\\n').split('\\t')
         row += ['.'] * (len(hdr) - len(row))
         g = lambda c: row[idx[c]].strip() if c in idx else '.'
-        if local_revel:
-            sc, tx = num(g('REVEL_SCORE')), g('REVEL_TX')
-            if sc is not None and tx == 'other_tx':
-                aa = mane_aa(g('ANN[*].HGVS_P'))
-                opts = dict(o.rsplit(':', 1) for o in g('REVEL_AA').split(',') if ':' in o)
-                if aa in opts and num(opts[aa]) is not None:
-                    sc, tx = num(opts[aa]), 'MANE_aa'
-            revel = '%.3f' % sc if sc is not None else '.'
-            src = ('REVEL_v' + VER + '_' + tx) if sc is not None else '.'
-        else:
-            sc = num(g('dbNSFP_REVEL_score').split(',')[0])
-            revel = '%.3f' % sc if sc is not None else '.'
-            src = 'dbNSFP_4.1a' if sc is not None else '.'
+        sc, tx = num(g('REVEL_SCORE')), g('REVEL_TX')
+        if sc is not None and tx == 'other_tx':
+            aa = mane_aa(g('ANN[*].HGVS_P'))
+            opts = dict(o.rsplit(':', 1) for o in g('REVEL_AA').split(',') if ':' in o)
+            if aa in opts and num(opts[aa]) is not None:
+                sc, tx = num(opts[aa]), 'MANE_aa'
+        revel = '%.3f' % sc if sc is not None else '.'
+        src = ('REVEL_v' + VER + '_' + tx) if sc is not None else '.'
         ds, detail = '.', '.'
         alt = g('ALT')
         for entry in g('SpliceAI').replace(';', ',').split(','):
@@ -795,14 +554,13 @@ PYEOF_BA1
             if (\$i == "FILTER")                     filter_col  = i
             if (\$i == "ClinVar_sig")                 cs_col      = i
             if (\$i == "ClinVar_stars")               st_col      = i
-            if (\$i == "dbNSFP_gnomAD_exomes_AF")     gnomad_v2   = i
             if (\$i == "gnomAD_AF")                   gnomad_can  = i
             if (\$i == "gnomAD_FAF95")                faf_col     = i
             if (\$i == "gnomAD_BA1")                  ba1_col     = i
             if (\$i == "SpliceAI_DS")                 sai_col     = i
         }
         sai_min = (ENVIRON["ACMG_SPLICEAI_PP3"] != "") ? ENVIRON["ACMG_SPLICEAI_PP3"]+0 : 0.2
-        gnomad_col = gnomad_can ? gnomad_can : gnomad_v2
+        gnomad_col = gnomad_can
         print \$0 "\\tQC_FLAG"; next
     }
     {
@@ -998,9 +756,6 @@ PYEOF
     #     ACMG_class    : P / LP / VUS / LB / B
     #     ACMG_criteria : pipe-separated evidence codes (e.g. PM2_Sup|PP3_Mod)
     #     ACMG_spec     : rule set used (ClinGen VCEP GNxxx vX.Y, or ACMG/SVI general)
-    #     insil_dam     : number of in silico tools voting damaging
-    #     insil_ben     : number voting benign/tolerated
-    #     insil_total   : total tools with a clear verdict
     #   Output: ${sample}.germline_snvs_acmg_annotated.tsv
     python3 - <<'PYEOF'
 import sys, os
@@ -1008,7 +763,6 @@ import sys, os
 # ACMG logic from bin/acmg_shared.py (staged into work dir as 'acmg_shared.py')
 sys.path.insert(0, '.')
 from acmg_shared import (
-    count_insil as _count_insil,
     acmg_criteria_list as _acmg_criteria_list_shared,
     acmg_spec as _acmg_spec,
     getter_for_row_hdr,
@@ -1035,16 +789,14 @@ def get_col(row, name):
     i = hdr.get(name, -1)
     return row[i].strip() if 0 <= i < len(row) else '.'
 
-new_cols = ['ACMG_class', 'ACMG_criteria', 'ACMG_spec', 'insil_dam', 'insil_ben', 'insil_total']
+new_cols = ['ACMG_class', 'ACMG_criteria', 'ACMG_spec']
 with open(TSV_OUT, 'w') as out:
     out.write("\\t".join(raw_header + new_cols) + "\\n")
     for line in lines[1:]:
         row = line.split("\\t")
         acmg, criteria = acmg_criteria_list(row, hdr)
-        dam, ben = _count_insil(lambda name, r=row: get_col(r, name))
-        total = dam + ben
         extra = [acmg, '|'.join(criteria) if criteria else '.',
-                 _acmg_spec(getter_for_row_hdr(row, hdr)), str(dam), str(ben), str(total)]
+                 _acmg_spec(getter_for_row_hdr(row, hdr))]
         out.write("\\t".join(row + extra) + "\\n")
 PYEOF
     """

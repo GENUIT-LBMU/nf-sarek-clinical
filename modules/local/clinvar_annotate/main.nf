@@ -13,7 +13,7 @@
       INFO/CLINVAR_DN       disease name(s) (CLNDN)
 
     When this resource is used it is the only ClinVar source: a variant absent
-    from it is "not in ClinVar" (no fallback to the dbNSFP 4.1a ClinVar fields).
+    from it is "not in ClinVar".
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 

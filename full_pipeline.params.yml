@@ -21,13 +21,11 @@ ascat_loci_gc:    /path/to/refs/ascat/ascat_loci_gc.zip
 ascat_loci_rt:    /path/to/refs/ascat/ascat_loci_rt.zip
 
 # ── SNV annotation ────────────────────────────────────────────────────────────
-dbnsfp:         /path/to/refs/dbNSFP/dbNSFP4.1a.txt.gz
 snpsift_jar:    /path/to/refs/snpEff/SnpSift.jar
 
-# ── Population frequencies (recommended) ──────────────────────────────────────
+# ── Population frequencies (required for germline SNVs) ───────────────────────
 # Local gnomAD v4.1 joint subset for the gene panels (scripts/build_gnomad_panel.sh).
-# The *_regions.bed.gz next to it is found automatically. Without it, germline
-# AF comes from dbNSFP (gnomAD v2.1.1 exomes) plus a web-API rescue for indels.
+# The *_regions.bed.gz next to it is found automatically.
 gnomad_tsv:     /path/to/refs/gnomad/gnomad_v4.1_panel.tsv.gz
 
 # ── MANE Select nomenclature (recommended) ────────────────────────────────────
@@ -35,9 +33,8 @@ gnomad_tsv:     /path/to/refs/gnomad/gnomad_v4.1_panel.tsv.gz
 # germline HGVS uses sarek's snpEff -canon transcript (longest CDS).
 snpeff_mane_data: /path/to/refs/snpeff/data
 
-# ── ClinVar (recommended) ─────────────────────────────────────────────────────
+# ── ClinVar (required for germline SNVs) ──────────────────────────────────────
 # Local ClinVar subset for the gene panels (scripts/build_clinvar_panel.sh).
-# Without it, germline ClinVar comes from dbNSFP 4.1a (~2020, SNVs only).
 clinvar_tsv:    /path/to/refs/clinvar/clinvar_20260822_panel.tsv.gz
 # ClinVar P/LP missense in MANE protein coordinates, for ACMG PS1 / PM5
 # (scripts/build_clinvar_protein_index.py). Rebuild with each ClinVar release.
@@ -46,9 +43,8 @@ clinvar_protein_index: /path/to/refs/clinvar/clinvar_20260822_protein_index.tsv.
 # with the civicpy image). Required for somatic postprocessing; no network at run time.
 civic_cache:    /path/to/refs/civic/civicpy_cache_20261024.pkl
 
-# ── REVEL v1.3 (recommended) ──────────────────────────────────────────────────
+# ── REVEL v1.3 (required for germline SNVs) ───────────────────────────────────
 # Panel subset with the MANE Select score per allele (scripts/build_revel_panel.py).
-# Without it, germline REVEL comes from dbNSFP 4.1a (first transcript).
 revel_tsv:      /path/to/refs/revel/revel_v1.3_panel.tsv.gz
 
 # ── SpliceAI (germline candidates) ────────────────────────────────────────────

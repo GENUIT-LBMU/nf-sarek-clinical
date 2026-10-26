@@ -24,7 +24,7 @@ The `--save_output_as_bam` flag is required for the GATK CNV modules (if enabled
 
 | Database | Download | Index |
 |----------|----------|-------|
-| dbNSFP 4.x | [Download](https://sites.google.com/site/jpopgen/dbNSFP) | `bgzip dbNSFP4.1a.txt && tabix -s 1 -b 2 -e 2 dbNSFP4.1a.txt.gz` |
+| Local gnomAD v4.1, ClinVar, REVEL v1.3 (germline SNVs) | Built with `scripts/build_gnomad_panel.sh`, `scripts/build_clinvar_panel.sh`, `scripts/build_revel_panel.py` (see README) | written by the scripts |
 | SnpSift.jar | Included in [snpEff package](https://pcingola.github.io/SnpEff/) | — |
 | WES BED | From capture kit vendor | optional: `bgzip && tabix` |
 
@@ -37,8 +37,10 @@ nextflow run nf-sarek-clinical/main.nf \
   -profile docker \
   --sarek_outdir /data/runs/MY_RUN/results \
   --run_name     MY_RUN_2024 \
-  --dbnsfp       /data/dbNSFP/dbNSFP4.1a.txt.gz \
   --snpsift_jar  /opt/snpEff/SnpSift.jar \
+  --gnomad_tsv   /data/refs/gnomad/gnomad_v4.1_panel.tsv.gz \
+  --clinvar_tsv  /data/refs/clinvar/clinvar_<DATE>_panel.tsv.gz \
+  --revel_tsv    /data/refs/revel/revel_v1.3_panel.tsv.gz \
   --outdir       /results/MY_RUN_2024_clinical
 ```
 
@@ -49,8 +51,10 @@ nextflow run nf-sarek-clinical/main.nf \
   -profile docker \
   --sarek_outdir  /data/runs/MY_RUN/results \
   --run_name      MY_RUN_2024 \
-  --dbnsfp        /data/dbNSFP/dbNSFP4.1a.txt.gz \
   --snpsift_jar   /opt/snpEff/SnpSift.jar \
+  --gnomad_tsv    /data/refs/gnomad/gnomad_v4.1_panel.tsv.gz \
+  --clinvar_tsv   /data/refs/clinvar/clinvar_<DATE>_panel.tsv.gz \
+  --revel_tsv     /data/refs/revel/revel_v1.3_panel.tsv.gz \
   --panel_bed     /data/hg38/S07604514_Regions.bed \
   --gene_coords_bed /data/hg38/S07604514_Regions_Annotated.bed \
   --outdir        /results/MY_RUN_2024_clinical \

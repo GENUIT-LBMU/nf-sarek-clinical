@@ -3,7 +3,7 @@
     SOMATIC SNV POSTPROCESSING MODULE
     ===================================
     Steps (input: Mutect2 VCF, MANE re-annotated and with local gnomAD
-    frequencies when configured; dbNSFP is germline-only):
+    frequencies when configured):
     The same processes run per gene track (core panel, second-hit genes,
     TSO500 extension) under aliases; task.ext.suffix (conf/modules.config)
     names the files of each track (e.g. <pair>.second_hit.somatic_snvs.tsv).

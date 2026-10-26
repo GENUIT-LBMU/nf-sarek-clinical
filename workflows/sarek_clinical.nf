@@ -31,13 +31,11 @@ include { CLINICAL_PDF_REPORT   } from '../modules/local/clinical_pdf_report/mai
 workflow SAREK_CLINICAL {
 
     // ── Reference file channels ───────────────────────────────────────────────
-    ch_dbnsfp        = params.dbnsfp      ? file(params.dbnsfp)               : error("--dbnsfp required")
-    ch_dbnsfp_tbi    = params.dbnsfp      ? file("${params.dbnsfp}.tbi")      : error("--dbnsfp required")
     ch_snpsift_jar   = params.snpsift_jar ? file(params.snpsift_jar)          : error("--snpsift_jar required")
     ch_panel_bed     = params.panel_bed   ? file(params.panel_bed)   : []
     ch_gene_coords   = params.gene_coords_bed ? file(params.gene_coords_bed) : []
 
-    // Local gnomAD panel resource (optional). Empty list => legacy dbNSFP v2 AF + web-API rescue.
+    // Local gnomAD panel resource (required for germline SNVs, optional for somatic Tier IV).
     def gnomad_regions = params.gnomad_regions ?: (params.gnomad_tsv ? params.gnomad_tsv.toString().replaceAll(/\.tsv\.gz$/, '_regions.bed.gz') : null)
     ch_gnomad        = params.gnomad_tsv
         ? [ file(params.gnomad_tsv,            checkIfExists: true),
@@ -45,8 +43,12 @@ workflow SAREK_CLINICAL {
             file(gnomad_regions,               checkIfExists: true),
             file("${gnomad_regions}.tbi",      checkIfExists: true) ]
         : []
-    if (!params.gnomad_tsv && !params.skip_germline_snv) {
-        log.warn "--gnomad_tsv not set: germline population frequencies come from dbNSFP (gnomAD v2.1.1 exomes) plus web-API rescue for indels. Build the local resource with scripts/build_gnomad_panel.sh."
+    // Germline SNV classification uses only local, versioned resources (no dbNSFP,
+    // no web APIs): gnomAD (frequency), ClinVar and REVEL are required
+    if (!params.skip_germline_snv) {
+        if (!params.gnomad_tsv)  error("--gnomad_tsv is required for germline SNVs (scripts/build_gnomad_panel.sh)")
+        if (!params.clinvar_tsv) error("--clinvar_tsv is required for germline SNVs (scripts/build_clinvar_panel.sh)")
+        if (!params.revel_tsv)   error("--revel_tsv is required for germline SNVs (scripts/build_revel_panel.py)")
     }
     if (!params.gnomad_tsv && !params.skip_somatic_snv) {
         log.warn "--gnomad_tsv not set: somatic variants have no population frequency, so common polymorphisms are not set to AMP Tier IV."
@@ -67,23 +69,17 @@ workflow SAREK_CLINICAL {
         log.warn "--snpeff_mane_db ${params.snpeff_mane_db} is not MANE v1.2: set --mane_plus_clinical to the MANE Plus Clinical list of that release."
     }
 
-    // Local ClinVar panel resource (optional). Empty list => legacy dbNSFP 4.1a ClinVar (SNVs only, ~2020).
+    // Local ClinVar panel resource (required for germline SNVs).
     ch_clinvar       = params.clinvar_tsv
         ? [ file(params.clinvar_tsv,           checkIfExists: true),
             file("${params.clinvar_tsv}.tbi",  checkIfExists: true) ]
         : []
-    if (!params.clinvar_tsv && !params.skip_germline_snv) {
-        log.warn "--clinvar_tsv not set: germline ClinVar comes from dbNSFP 4.1a (~2020, SNVs only). Build the local resource with scripts/build_clinvar_panel.sh."
-    }
 
-    // Local REVEL v1.3 panel resource (optional). Empty list => dbNSFP 4.1a REVEL.
+    // Local REVEL v1.3 panel resource (required for germline SNVs).
     ch_revel         = params.revel_tsv
         ? [ file(params.revel_tsv,             checkIfExists: true),
             file("${params.revel_tsv}.tbi",    checkIfExists: true) ]
         : []
-    if (!params.revel_tsv && !params.skip_germline_snv) {
-        log.warn "--revel_tsv not set: germline REVEL comes from dbNSFP 4.1a (first transcript, not MANE). Build the local resource with scripts/build_revel_panel.py."
-    }
 
     // SpliceAI on germline candidates (optional). Empty list => no splicing evidence.
     def spliceai_fasta = params.spliceai_fasta ?: params.gcnv_fasta
@@ -201,8 +197,6 @@ workflow SAREK_CLINICAL {
     if (!params.skip_germline_snv || !params.skip_pharmaco) {
         GERMLINE_POSTPROCESS(
             ch_hc_vcfs,
-            ch_dbnsfp,
-            ch_dbnsfp_tbi,
             ch_snpsift_jar,
             ch_germline_panel,
             ch_pharmaco_variants,

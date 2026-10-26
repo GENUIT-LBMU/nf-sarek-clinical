@@ -4,11 +4,10 @@
 
 | File | Description |
 |------|-------------|
-| `dbnsfp/*.dbnsfp.vcf.gz` | VCF with dbNSFP4.x pathogenicity scores added (SIFT, PolyPhen-2, CADD, REVEL, gnomAD, ClinVar, etc.) |
 | `filtered/*.filtered.vcf.gz` | VCF filtered to: 90-gene cancer predisposition panel + HIGH/MODERATE impact + DP ≥ 5 |
 | `extract/*.germline_snvs.tsv` | Tab-delimited table ready for Excel/R, with all annotation fields |
 
-**Key TSV columns:** CHROM, POS, REF, ALT, ANN[*].GENE, ANN[*].HGVS_P, GEN[0].GT, GEN[0].AD, dbNSFP_REVEL_score, dbNSFP_CADD_phred, dbNSFP_gnomAD_exomes_AF, dbNSFP_clinvar_clnsig, ...
+**Key TSV columns:** CHROM, POS, REF, ALT, ANN[*].GENE, ANN[*].HGVS_C / HGVS_P (MANE Select; `MANE_PLUS_CLINICAL`), GEN[0].GT, GEN[0].AD, ZYGOSITY, gnomAD_AF / gnomAD_FAF95 / gnomAD_AF_source (local gnomAD v4.1), ClinVar_sig / ClinVar_stars (local ClinVar), REVEL_score (local REVEL v1.3), SpliceAI_DS, ClinVar_PS1 / ClinVar_PM5, ACMG_class / ACMG_criteria / ACMG_spec (`*_acmg_annotated.tsv`)
 
 ## `results/germline/pharmaco/`
 
@@ -21,7 +20,7 @@
 | File | Description |
 |------|-------------|
 | `filtered/*.filtered.vcf.gz` | PASS + somatic panel (60+ genes) + HIGH/MODERATE + tumor DP ≥ 10 (MANE annotation and local gnomAD fields when configured) |
-| `extract/*.somatic_snvs.tsv` | Somatic SNV table: MANE HGVS (+ `MANE_PLUS_CLINICAL`), VAF, callers, local gnomAD (`GNOMAD_*`, `gnomAD_AF`, `gnomAD_AF_source`, `gnomAD_FAF95`, `gnomAD_NHOMALT`, `gnomAD_POP_AF`, `POP_COMMON` = 1 for AMP Tier IV). No dbNSFP columns (dbNSFP is germline-only) |
+| `extract/*.somatic_snvs.tsv` | Somatic SNV table: MANE HGVS (+ `MANE_PLUS_CLINICAL`), VAF, callers, local gnomAD (`GNOMAD_*`, `gnomAD_AF`, `gnomAD_AF_source`, `gnomAD_FAF95`, `gnomAD_NHOMALT`, `gnomAD_POP_AF`, `POP_COMMON` = 1 for AMP Tier IV). |
 | `extract/*.second_hit.somatic_snvs.tsv` | Second-hit track: somatic SNVs in germline second-hit genes outside the core (correlation only) |
 | `extract/*.tso500.somatic_snvs.tsv` | Pan-tumor track: somatic SNVs in TSO500 genes outside the core (same columns) |
 | `filtered/*.{second_hit,tso500}.filtered.vcf.gz`, `civic/*.tso500.civic.vcf.gz`, `civic_extract/*.tso500.civic.exploded.tsv` | Same steps for the tracks |

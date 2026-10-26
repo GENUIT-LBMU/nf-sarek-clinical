@@ -4,7 +4,7 @@
     =====================================
     Takes Sarek Mutect2 + Strelka2 annotated VCFs + ASCAT/CNVkit outputs and runs:
       - Consensus: Mutect2 ∩ Strelka2 intersection (when Strelka2 available)
-      - Somatic SNV: dbNSFP → gene+PASS+impact filter → CIViC → TSV
+      - Somatic SNV: [snpEff MANE] → [local gnomAD] → gene+PASS+impact filter → CIViC → TSV
       - Somatic CNV (ASCAT+CNVkit): Python interpretation → TSV + TXT
       - TMB: PASS+impact+DP filter → count → TMB per Mb (from consensus VCF)
       - Mutational signatures: SigProfilerMatrixGenerator + SigProfilerAssignment (from consensus VCF)

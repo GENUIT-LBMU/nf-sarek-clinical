@@ -10,8 +10,10 @@
         -profile docker \\
         --sarek_outdir /path/to/sarek/results \\
         --run_name     MY_RUN_2024 \\
-        --dbnsfp       /data/dbNSFP4.1a.txt.gz \\
         --snpsift_jar  /opt/snpEff/SnpSift.jar \\
+        --gnomad_tsv   /data/refs/gnomad/gnomad_v4.1_panel.tsv.gz \\
+        --clinvar_tsv  /data/refs/clinvar/clinvar_<DATE>_panel.tsv.gz \\
+        --revel_tsv    /data/refs/revel/revel_v1.3_panel.tsv.gz \\
         --panel_bed    /data/hg38/WES_panel.bed \\
         --outdir       /results/MY_RUN_2024_clinical
 

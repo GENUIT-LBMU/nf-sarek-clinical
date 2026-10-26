@@ -14,7 +14,9 @@
 #   gnomad_v<VER>_panel.manifest.txt   version, source URLs, genes, padding, md5
 #
 # Regions = MANE exons (incl. UTR) of every gene in the --genes files, +/- --padding bp,
-# primary chromosomes only (gnomAD has no alt/fix contigs).
+# primary chromosomes only (gnomAD has no alt/fix contigs). Genes in --gene-body files
+# get their whole gene span (first to last MANE exon, introns included) instead:
+# the germline panel, whose intronic candidates (SpliceAI) need a frequency for BA1.
 # Data are read remotely with tabix from the public gnomAD bucket, so only the
 # panel slices are downloaded. Needs bcftools/tabix/bgzip built with libcurl:
 #
@@ -35,12 +37,14 @@ PADDING=100
 OUTDIR=""
 MANE=""
 GENE_FILES=()
+BODY_FILES=()
 BASE_URL="https://storage.googleapis.com/gcp-public-data--gnomad/release"
 
 usage() { sed -n '2,30p' "$0"; exit 1; }
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --genes)    GENE_FILES+=("$2"); shift 2 ;;
+        --gene-body) BODY_FILES+=("$2"); GENE_FILES+=("$2"); shift 2 ;;
         --mane)     MANE="$2";          shift 2 ;;
         --outdir)   OUTDIR="$2";        shift 2 ;;
         --padding)  PADDING="$2";       shift 2 ;;
@@ -60,14 +64,28 @@ trap 'rm -rf "$TMP"' EXIT
 
 # ── 1. Gene list ──────────────────────────────────────────────────────────────
 cat "${GENE_FILES[@]}" | grep -v '^#' | awk 'NF{print $1}' | sort -u > "$TMP/genes.txt"
+: > "$TMP/body.txt"
+if [[ ${#BODY_FILES[@]} -gt 0 ]]; then
+    cat "${BODY_FILES[@]}" | grep -v '^#' | awk 'NF{print $1}' | sort -u > "$TMP/body.txt"
+fi
 N_GENES=$(wc -l < "$TMP/genes.txt")
 
 # ── 2. Regions: MANE exons +/- padding, merged, BED (0-based) with gene name ──
 awk -v pad="$PADDING" 'BEGIN{OFS="\t"}
-    NR==FNR {want[$1]=1; next}
+    FILENAME==ARGV[1] {body[$1]=1; next}
+    FILENAME==ARGV[2] {want[$1]=1; next}
     FNR==1 && $1=="chr" {next}
-    ($4 in want) && $1 ~ /^chr([0-9]+|X|Y)$/ {s=$2-1-pad; if (s<0) s=0; print $1, s, $3+pad, $4}' \
-    "$TMP/genes.txt" "$MANE" \
+    ($4 in want) && $1 ~ /^chr([0-9]+|X|Y)$/ {
+        if ($4 in body) {
+            k=$1 SUBSEP $4
+            if (!(k in lo) || $2 < lo[k]) lo[k]=$2
+            if (!(k in hi) || $3 > hi[k]) hi[k]=$3
+            next
+        }
+        s=$2-1-pad; if (s<0) s=0; print $1, s, $3+pad, $4
+    }
+    END { for (k in lo) { split(k, a, SUBSEP); s=lo[k]-1-pad; if (s<0) s=0; print a[1], s, hi[k]+pad, a[2] } }' \
+    "$TMP/body.txt" "$TMP/genes.txt" "$MANE" \
   | sort -k1,1 -k2,2n \
   | awk 'BEGIN{OFS="\t"}
         $1==c && $2<=e { if ($3>e) e=$3; if (index(","g",", ","$4",")==0) g=g","$4; next }
@@ -124,6 +142,7 @@ tabix -f -p bed "${PREFIX}_regions.bed.gz"
     echo "bcftools:   $(bcftools --version | head -1)"
     echo "mane_file:  $(basename "$MANE")"
     echo "padding_bp: ${PADDING}"
+    echo "gene_body:  $(wc -l < "$TMP/body.txt") genes (whole gene span)"
     echo "genes:      ${N_GENES} ($(paste -sd, "$TMP/genes.txt"))"
     echo "regions:    $(wc -l < "$TMP/regions.bed")"
     echo "records:    $(zcat "${PREFIX}.tsv.gz" | grep -vc '^#')"

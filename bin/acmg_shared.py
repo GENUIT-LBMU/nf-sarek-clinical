@@ -2,9 +2,8 @@
 ACMG germline classification — shared module.
 
 Single source of truth for:
-  * 9-tool in silico predictor panel (dbNSFP)
   * ACMG criteria scoring (ClinVar, BA1, PVS1, PM2, PP3/BP4, BS1)
-  * Resolved REVEL vs in silico panel (no double counting per ClinGen 2022)
+  * PP3 / BP4 from REVEL (Pejaver 2022) and SpliceAI (Walker 2023)
   * MMR / HRR gene sets used for germline pathway classification
 
 Public API
@@ -19,7 +18,6 @@ each representation.
 
 Functions
 ---------
-count_insil(get_field)            -> (dam:int, ben:int)
 gnomad_af(get_field)              -> float | None  (None = frequency unknown)
 gnomad_faf95(get_field)           -> float | None  (max FAF95 across ancestry groups)
 benign_freq(get_field)            -> float | None  (BA1/BS1 frequency: FAF95, else AF)
@@ -61,65 +59,15 @@ def getter_for_row_hdr(row, hdr):
 
 
 # =============================================================================
-# In silico predictor panel (9 tools from dbNSFP)
-# =============================================================================
-INSIL_DAMAGING = {
-    'dbNSFP_SIFT_pred':             ('D',),
-    'dbNSFP_SIFT4G_pred':           ('D',),
-    'dbNSFP_Polyphen2_HDIV_pred':   ('D', 'P'),  # P = possibly damaging
-    'dbNSFP_Polyphen2_HVAR_pred':   ('D', 'P'),
-    'dbNSFP_LRT_pred':              ('D',),
-    'dbNSFP_MutationTaster_pred':   ('A', 'D'),  # A = disease causing automatic
-    'dbNSFP_MutationAssessor_pred': ('H', 'M'),  # H = high, M = medium impact
-    'dbNSFP_FATHMM_pred':           ('D',),
-    'dbNSFP_PROVEAN_pred':          ('D',),
-}
-
-INSIL_BENIGN = {
-    'dbNSFP_SIFT_pred':             ('T',),
-    'dbNSFP_SIFT4G_pred':           ('T',),
-    'dbNSFP_Polyphen2_HDIV_pred':   ('B',),
-    'dbNSFP_Polyphen2_HVAR_pred':   ('B',),
-    'dbNSFP_LRT_pred':              ('N',),
-    'dbNSFP_MutationTaster_pred':   ('N', 'P'),  # N = neutral, P = polymorphism auto
-    'dbNSFP_MutationAssessor_pred': ('L', 'N'),  # L = low, N = neutral
-    'dbNSFP_FATHMM_pred':           ('T',),
-    'dbNSFP_PROVEAN_pred':          ('N',),
-}
-
-
-def count_insil(get_field):
-    """Count damaging vs benign votes across the 9-tool in silico panel.
-
-    Only predictors with a clear D or B verdict are counted; missing values
-    ('.', 'NA', '') abstain. dbNSFP stores multi-transcript predictions as
-    comma-separated values; the first (primary transcript) is used.
-
-    Returns (damaging_count, benign_count).
-    """
-    dam = ben = 0
-    for field in INSIL_DAMAGING:
-        v = get_field(field).split(',')[0].strip().upper()
-        if v in ('', '.', 'NA'):
-            continue
-        if v in INSIL_DAMAGING[field]:
-            dam += 1
-        elif v in INSIL_BENIGN.get(field, ()):
-            ben += 1
-    return dam, ben
-
-
-# =============================================================================
 # ClinVar
 # =============================================================================
 def clinvar_sig(get_field):
     """ClinVar germline classification used by the ACMG engine and filters.
 
     Reads the canonical `ClinVar_sig` column written by SNPSIFT_EXTRACT_GERMLINE
-    (local ClinVar release with --clinvar_tsv, else dbNSFP 4.1a). Falls back to
-    `dbNSFP_clinvar_clnsig` only when the column is missing (older TSVs).
+    from the local ClinVar release (--clinvar_tsv).
     """
-    return (get_field('ClinVar_sig') or get_field('dbNSFP_clinvar_clnsig') or '').strip()
+    return (get_field('ClinVar_sig') or '').strip()
 
 
 def clinvar_display(get_field):
@@ -161,20 +109,17 @@ def gnomad_af(get_field):
     """Population allele frequency used by BA1 / BS1 / PM2.
 
     Reads the canonical `gnomAD_AF` column written by SNPSIFT_EXTRACT_GERMLINE
-    (local gnomAD v4.1 resource, or the legacy dbNSFP/web-API value) and falls
-    back to `dbNSFP_gnomAD_exomes_AF` for tables produced before that column
-    existed.
+    from the local gnomAD v4.1 resource (--gnomad_tsv).
 
-    Returns a float, or None when the frequency is UNKNOWN (local mode: site
-    outside the resource regions with no dbNSFP value). Unknown must not be
-    read as "absent": callers skip BA1, BS1 and PM2 in that case. In legacy
-    mode a missing value keeps the historical behaviour (0.0, i.e. absent).
-    See gnomad_supports_pm2() for sites failing gnomAD QC.
+    Returns a float, or None when the frequency is UNKNOWN (site outside the
+    resource regions). Unknown must not be read as "absent": callers skip BA1,
+    BS1 and PM2 in that case. See gnomad_supports_pm2() for sites failing
+    gnomAD QC.
     """
     src = get_field('gnomAD_AF_source')
     if src == 'unknown':
         return None
-    for name in ('gnomAD_AF', 'dbNSFP_gnomAD_exomes_AF'):
+    for name in ('gnomAD_AF',):
         vals = []
         for x in get_field(name).split(','):   # "0.53,0.53" = one value per transcript
             try:
@@ -209,7 +154,7 @@ def benign_freq(get_field):
 
 def gnomad_display(get_field):
     """'0.0048 / FAF 0.113' for reports (AF alone when there is no FAF95)."""
-    af = (get_field('gnomAD_AF') or get_field('dbNSFP_gnomAD_exomes_AF') or '').strip()
+    af = (get_field('gnomAD_AF') or '').strip()
     if af in ('', '.'):
         return '-'
     faf = (get_field('gnomAD_FAF95') or '').strip()
@@ -792,9 +737,8 @@ def pvs1_evidence(get_field):
 
 
 def revel_score(get_field):
-    """REVEL score: canonical `REVEL_score` (local REVEL v1.3, MANE Select
-    transcript, or dbNSFP 4.1a), else `dbNSFP_REVEL_score` for older tables."""
-    for name in ('REVEL_score', 'dbNSFP_REVEL_score'):
+    """REVEL score: canonical `REVEL_score` (local REVEL v1.3, MANE Select transcript)."""
+    for name in ('REVEL_score',):
         v = (get_field(name) or '').strip()
         if v not in ('', '.'):
             try:

@@ -72,6 +72,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variants of the panel (e.g. MSH2 c.942+3A>T) could never be reported.
 
 ### Changed
+- **dbNSFP removed from the pipeline** (`--dbnsfp`, `SNPSIFT_DBNSFP_GERMLINE`).
+  With the local resources it decided nothing: ACMG PP3 / BP4 come from REVEL and
+  SpliceAI, ClinVar and frequencies from the local releases; its only effect was
+  the gnomAD v2 frequency of 2–4 common intronic candidates per patient. Removed
+  with it: the Ensembl / gnomAD web-API frequency rescue (`gnomad_rescue_max`), the
+  dbNSFP ClinVar / REVEL / gnomAD v2 fallbacks, and the unused 9-tool in silico
+  vote (`insil_*` and `dbNSFP_*` columns). `--gnomad_tsv`, `--clinvar_tsv` and
+  `--revel_tsv` are required for germline SNVs (the run stops with the build
+  script to use). Pharmacogenomics reads the local ClinVar. The local gnomAD
+  covers the whole gene body of the 105 germline genes (`build_gnomad_panel.sh
+  --gene-body`; 6.1 M records, 117 MB): every germline candidate of 1128 and
+  IMAX1141 now has a gnomAD v4.1 frequency (12 "unknown" per patient before).
+  ACMG classes, criteria and reports unchanged; germline annotation ~15 min faster
+  per normal.
 - Germline CNV gene list: `exon_annotation.R` reads `--genes` (the germline
   panel, `params.germline_panel`) instead of a fixed list of 91 genes, minus
   `filters.germline_cnv.exclude_genes` (16 somatic oncogenes: AR, BRAF,

@@ -12,7 +12,7 @@
                         SNPSIFT_EXTRACT_GERMLINE picks the one matching the MANE
                         HGVS_p when REVEL_TX = other_tx
 
-    Replaces the dbNSFP 4.1a REVEL value (first transcript in dbNSFP's list).
+    The only REVEL source of the germline ACMG PP3 / BP4.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 

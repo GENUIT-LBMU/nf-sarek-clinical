@@ -15,7 +15,7 @@ process PHARMACO_FILTER {
     publishDir "${params.outdir}/germline/pharmaco", mode: params.publish_dir_mode
 
     input:
-    tuple val(sample), path(vcf)    // dbNSFP-annotated germline VCF
+    tuple val(sample), path(vcf)    // germline VCF annotated with the local ClinVar (CLINVAR_ANNOTATE)
     path  snpsift_jar
     path  variants_file             // rsID list (format: rsXXXXX per line, with optional columns)
 
@@ -32,8 +32,7 @@ process PHARMACO_FILTER {
         printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tDP\\t" > ${sample}.pharmaco.tsv
         printf "ANN[*].GENE\\tANN[*].HGVS_C\\tANN[*].HGVS_P\\tANN[*].IMPACT\\t" >> ${sample}.pharmaco.tsv
         printf "GEN[0].GT\\tGEN[0].AD\\tGEN[0].DP\\tGEN[0].GQ\\t" >> ${sample}.pharmaco.tsv
-        printf "dbNSFP_clinvar_id\\tdbNSFP_clinvar_clnsig\\tdbNSFP_clinvar_trait\\t" >> ${sample}.pharmaco.tsv
-        printf "dbNSFP_SIFT_pred\\tdbNSFP_Polyphen2_HDIV_pred\\n" >> ${sample}.pharmaco.tsv
+        printf "CLINVAR_ID\\tCLINVAR_SIG\\tCLINVAR_REVSTAT\\n" >> ${sample}.pharmaco.tsv
         exit 0
     fi
 
@@ -54,8 +53,7 @@ PYEOF
         CHROM POS ID REF ALT QUAL FILTER DP \\
         "ANN[*].GENE" "ANN[*].HGVS_C" "ANN[*].HGVS_P" "ANN[*].IMPACT" \\
         "GEN[0].GT" "GEN[0].AD" "GEN[0].DP" "GEN[0].GQ" \\
-        "dbNSFP_clinvar_id" "dbNSFP_clinvar_clnsig" "dbNSFP_clinvar_trait" \\
-        "dbNSFP_SIFT_pred" "dbNSFP_Polyphen2_HDIV_pred" \\
+        CLINVAR_ID CLINVAR_SIG CLINVAR_REVSTAT \\
         > ${sample}.pharmaco.tsv
 
     echo "[PHARMACO] ${sample}: \$(wc -l < ${sample}.pharmaco.tsv) variants (incl. header)"
@@ -63,6 +61,6 @@ PYEOF
 
     stub:
     """
-    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tdbNSFP_clinvar_clnsig\\n" > ${sample}.pharmaco.tsv
+    printf "CHROM\\tPOS\\tID\\tREF\\tALT\\tANN[*].GENE\\tCLINVAR_SIG\\n" > ${sample}.pharmaco.tsv
     """
 }

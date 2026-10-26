@@ -975,7 +975,7 @@ def build_germline_section(germline_variants, story):
         zyg_raw = (v.get('ZYGOSITY') or '').strip()
         zyg = Paragraph(zyg_raw.replace('/', '/<br/>').replace('(', '<br/>(')
                         if zyg_raw not in ('', '.') else '-', _zyg_style)
-        revel  = trunc(v.get('REVEL_score') or v.get('dbNSFP_REVEL_score', '-'), 8)
+        revel  = trunc(v.get('REVEL_score') or '-', 8)
         gnomad = Paragraph(xml_escape(gnomad_display(lambda k: (v.get(k) or '').strip()))
                            .replace(' / ', '<br/>'), _zyg_style)
         clnsig = clinvar_display(lambda k: (v.get(k) or '').strip())
