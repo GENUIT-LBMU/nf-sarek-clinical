@@ -355,7 +355,8 @@ for (i in seq_along(input_files)) {
     all_results[[i]] <- annotated
   } else {
     cat("  ⚠ No se encontraron overlaps con genes\n")
-    all_results[[i]] <- data.frame()
+    # 0 filas con las mismas columnas: la muestra igual tiene su archivo (sin eventos)
+    all_results[[i]] <- seg_filtered[0, ] %>% mutate(GENE = character(0), EXON = character(0))
   }
 }
 
@@ -469,7 +470,8 @@ if (length(all_results) > 0) {
   # ============================================================
   # GUARDAR RESULTADOS INDIVIDUALES POR MUESTRA
   # ============================================================
-  for (sample in unique(combined_results$SAMPLE)) {
+  # Todas las muestras de entrada: sin eventos en los genes = archivo solo con cabecera
+  for (sample in sample_names) {
     sample_data <- combined_results %>%
       filter(SAMPLE == sample) %>%
       select(-SAMPLE)

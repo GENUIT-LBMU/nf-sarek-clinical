@@ -352,22 +352,16 @@ process MANE_ANNOTATE_SOMATIC_CNV {
         --mane      ${mane_txt} \\
         --genes     ${cnv_genes} \\
         ${ascat_metrics.name.startsWith('NO_') ? '' : "--ascat_metrics ${ascat_metrics}"} \\
-        --output_dir output || echo "WARNING: R annotation script exited non-zero (files may still be present)" >&2
+        --output_dir output
 
-    # Use find to locate annotated output safely (find exits 0 even with no matches,
-    # unlike ls glob which exits 1 under set -e when no .tsv files exist)
-    # Prefer sample-specific file first, then any annotated file
-    annotated="\$(find output/ -maxdepth 1 -type f -name '${tumor}*annotated*' 2>/dev/null | head -1)"
-    if [[ -z "\$annotated" ]]; then
-        annotated="\$(find output/ -maxdepth 1 -type f \\( -name '*annotated*.tsv' -o -name '*annotated*.txt' \\) 2>/dev/null | sort | head -1)"
+    # One annotated table per tumor (header only when no event in the genes). A failing
+    # R script or a missing table fails the task: the called.seg is not a substitute
+    # (other columns, no genes, no purity correction).
+    if [[ ! -f output/${tumor}_annotated.txt ]]; then
+        echo "ERROR: annotate_cnvs_complete_fixed.R wrote no output/${tumor}_annotated.txt" >&2
+        exit 1
     fi
-    if [[ -n "\$annotated" ]]; then
-        cp "\$annotated" ${tumor}_annotated.tsv
-    else
-        # Fallback: copy called.seg as TSV if R script produced no annotated output
-        echo "WARNING: annotate_cnvs_complete_fixed.R produced no annotated TSV, using fallback" >&2
-        cp ${called_seg} ${tumor}_annotated.tsv
-    fi
+    cp output/${tumor}_annotated.txt ${tumor}_annotated.tsv
 
     # Copy any additional outputs (plots, extra TSVs)
     for f in output/*; do

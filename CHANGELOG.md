@@ -180,6 +180,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- GATK somatic CNV annotation (SC8): a failing `annotate_cnvs_complete_fixed.R` no
+  longer passes with a warning, and the raw `called.seg` (other columns, no genes, no
+  purity correction) is no longer used as the annotated table. The R script writes a
+  header-only table for a tumor without events in the genes, so "no events" and
+  "failed" are told apart.
 - Reports (section R): every input staged per pair instead of `find` in `--outdir`
   (stale values with `-resume`, failures with a relative `--outdir`), and a hash of
   `bin/` + `assets/` reruns them after a code change. Sections say "not analysed in
