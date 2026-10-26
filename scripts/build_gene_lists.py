@@ -11,6 +11,7 @@ gene table assets/gene_panels/genes.tsv (one row per gene, 0/1 columns).
   second_hit - core  assets/gene_panels/somatic_track_second_hit.txt         second-hit SNV track
   tso500 - core      assets/gene_panels/somatic_track_tso500.txt             pan-tumor SNV track
   somatic_cnv        assets/gene_panels/somatic_38_oncogenes.txt             somatic CNV report
+  germline | cnv     assets/gene_panels/somatic_cnv_gatk_genes.txt           GATK somatic CNV R script
   mmr, hrr           bin/gene_sets.py (MMR_GENES, HRR_GENES)                 correlation, reports
 
 Edit genes.tsv, then run (from the repository root):
@@ -55,6 +56,9 @@ LISTS = [
     ('track_tso500', 'somatic_track_tso500.txt', [
         '# Somatic SNV pan-tumor track: TSO500 genes outside the core somatic panel',
         '# Reported apart from the core panel (Tier I/II with the actionable findings)']),
+    ('gatk_cnv', 'somatic_cnv_gatk_genes.txt', [
+        '# GATK somatic CNV annotation genes: germline panel + somatic CNV panel',
+        '# Read by bin/annotate_cnvs_complete_fixed.R (--genes)']),
     ('somatic_cnv', 'somatic_38_oncogenes.txt', [
         '# 38-gene somatic oncogene/TSG panel',
         '# Used for CNVkit somatic event reporting:',
@@ -88,6 +92,7 @@ def render(rows):
     derived = {
         'track_second_hit': lambda r: r['second_hit'] == '1' and r['somatic_core'] == '0',
         'track_tso500':     lambda r: r['tso500'] == '1' and r['somatic_core'] == '0',
+        'gatk_cnv':         lambda r: r['germline'] == '1' or r['somatic_cnv'] == '1',
     }
     for col, name, header in LISTS:
         keep = derived.get(col, lambda r, c=col: r[c] == '1')

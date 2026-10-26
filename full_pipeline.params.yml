@@ -67,7 +67,7 @@ gcnv_pon_dir:       /path/to/refs/cnv/PoN_CNV
 gcnv_interval_list: /path/to/refs/cnv/exomas.interval_list
 gcnv_fasta:         /path/to/refs/hg38/hg38.fa
 gcnv_dict:          /path/to/refs/hg38/hg38.dict
-gcnv_mane_txt:      /path/to/refs/cnv/exons_mane.txt
+gcnv_mane_txt:      /path/to/refs/mane/exons_mane_v1.2.txt   # scripts/build_mane_exons.py (MANE v1.2)
 gcnv_lowmap_bed:    /path/to/refs/cnv/lowmap/GRCh38_lowmappabilityall_panel.bed.gz  # scripts/build_lowmap_panel.sh
 # cram_fasta: /path/to/refs/Homo_sapiens_assembly38.fasta  # only if Sarek left CRAM and no BAM (the FASTA Sarek used; + .fai and .dict)
 # exon_annotation.R is bundled in the pipeline (bin/) — no path needed

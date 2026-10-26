@@ -1656,84 +1656,10 @@ def _somatic_variant_genes(path):
 
 def _harmonize_cnv_pdf(ascat_cnvkit_path, gatk_somatic_path,
                        somatic_panel_path, germline_panel_path, amp_threshold=5):
-    # Returns dict: {'homdel': [...], 'amp': [...], 'loh': [...]}
-    import csv as _csv
-    somatic_panel  = _load_cnv_panel(somatic_panel_path)
-    germline_panel = _load_cnv_panel(germline_panel_path)
-
-    a_homdel, a_amp, a_loh = {}, {}, {}
-    if ascat_cnvkit_path and os.path.isfile(ascat_cnvkit_path):
-        with open(ascat_cnvkit_path) as fh:
-            for row in _csv.DictReader(fh, delimiter='\t'):
-                gene  = row.get('gene', '').strip().upper()
-                etype = row.get('event_type', '').strip()
-                try:
-                    cn = int(float(row.get('cn', -1)))
-                except (ValueError, TypeError):
-                    cn = -1
-                chrom    = row.get('chrom', '')
-                log2     = row.get('log2', '')
-                loh_type = row.get('loh_type', '').strip()
-                if etype == 'HOMDEL' and gene in somatic_panel:
-                    a_homdel[gene] = {'cn': 0, 'chrom': chrom, 'log2': log2}
-                elif etype == 'AMP' and gene in somatic_panel and cn >= amp_threshold:
-                    if gene not in a_amp or cn > a_amp[gene]['cn']:
-                        a_amp[gene] = {'cn': cn, 'chrom': chrom, 'log2': log2}
-                elif etype == '2nd_hit_LOH' and gene in germline_panel:
-                    a_loh[gene] = {'cn': cn, 'loh_type': loh_type, 'chrom': chrom}
-
-    g_homdel, g_amp, g_loh = {}, {}, {}
-    if gatk_somatic_path and os.path.isfile(gatk_somatic_path):
-        with open(gatk_somatic_path) as fh:
-            for row in _csv.DictReader(fh, delimiter='\t'):
-                gene  = row.get('GENE', '').strip().upper()
-                etype = row.get('EVENT_TYPE', '').strip()
-                try:
-                    cn = int(float(row.get('CN_ABSOLUTE', -1)))
-                except (ValueError, TypeError):
-                    cn = -1
-                chrom = row.get('CONTIG', '')
-                if etype == 'DELETION' and cn == 0 and gene in somatic_panel:
-                    g_homdel[gene] = {'cn': 0, 'chrom': chrom}
-                elif etype == 'AMPLIFICATION' and cn >= amp_threshold and gene in somatic_panel:
-                    if gene not in g_amp or cn > g_amp[gene]['cn']:
-                        g_amp[gene] = {'cn': cn, 'chrom': chrom}
-                elif etype in ('CN-LOH', 'DEL+LOH') and gene in germline_panel:
-                    g_loh[gene] = {
-                        'cn': cn,
-                        'loh_type': 'cnLOH' if etype == 'CN-LOH' else 'HETDEL+LOH',
-                        'chrom': chrom,
-                    }
-
-    homdel_list, amp_list, loh_list = [], [], []
-    for gene in sorted(set(a_homdel) | set(g_homdel)):
-        a, g = a_homdel.get(gene), g_homdel.get(gene)
-        tools = '+'.join(t for t in ['CNVkit+ASCAT' if a else '', 'GATK' if g else ''] if t)
-        homdel_list.append({'gene': gene, 'cn_p': 0,
-                            'cn_s': g['cn'] if g else '',
-                            'chrom': (a or g)['chrom'],
-                            'tools': tools, 'conf': 'HIGH' if (a and g) else 'MODERATE'})
-    for gene in sorted(set(a_amp) | set(g_amp)):
-        a, g = a_amp.get(gene), g_amp.get(gene)
-        tools = '+'.join(t for t in ['CNVkit+ASCAT' if a else '', 'GATK' if g else ''] if t)
-        amp_list.append({'gene': gene,
-                         'cn_p': a['cn'] if a else (g['cn'] if g else ''),
-                         'cn_s': g['cn'] if g else '',
-                         'chrom': (a or g)['chrom'],
-                         'tools': tools, 'conf': 'HIGH' if (a and g) else 'MODERATE'})
-    for gene in sorted(set(a_loh) | set(g_loh)):
-        a, g = a_loh.get(gene), g_loh.get(gene)
-        tools = '+'.join(t for t in ['ASCAT' if a else '', 'GATK' if g else ''] if t)
-        loh_type = a['loh_type'] if a else (g['loh_type'] if g else 'LOH')
-        loh_list.append({'gene': gene, 'loh_type': loh_type,
-                         'cn_p': a['cn'] if a else '',
-                         'cn_s': g['cn'] if g else '',
-                         'chrom': (a or g)['chrom'],
-                         'tools': tools, 'conf': 'HIGH' if (a and g) else 'MODERATE'})
-    _loh_order = {'HETDEL+LOH': 0, 'cnLOH': 1}
-    loh_list.sort(key=lambda r: (_loh_order.get(r['loh_type'], 2), r['gene']))
-
-    return {'homdel': homdel_list, 'amp': amp_list, 'loh': loh_list}
+    # Single implementation in bin/cnv_shared.py (shared with the HTML report)
+    from cnv_shared import harmonize_cnv
+    return harmonize_cnv(ascat_cnvkit_path, gatk_somatic_path,
+                         somatic_panel_path, germline_panel_path, amp_threshold)
 
 
 def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,

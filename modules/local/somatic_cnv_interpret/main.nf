@@ -36,8 +36,9 @@ process SOMATIC_CNV_INTERPRET {
     """
 
     script:
-    def ascat_seg_arg  = ascat_segments  ? "--ascat_segments ${ascat_segments}" : ""
-    def ascat_met_arg  = ascat_metrics   ? "--ascat_metrics ${ascat_metrics}"   : ""
+    // NO_ASCAT_* placeholders: pair without ASCAT (CNVkit only)
+    def ascat_seg_arg  = ascat_segments && !ascat_segments.name.startsWith('NO_') ? "--ascat_segments ${ascat_segments}" : ""
+    def ascat_met_arg  = ascat_metrics  && !ascat_metrics.name.startsWith('NO_')  ? "--ascat_metrics ${ascat_metrics}"   : ""
     def coords_arg     = gene_coords_bed ? "--genecoords ${gene_coords_bed}"    : ""
     """
     parse_somatic_cnv.py \\

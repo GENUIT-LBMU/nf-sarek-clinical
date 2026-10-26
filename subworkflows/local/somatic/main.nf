@@ -189,14 +189,24 @@ workflow SOMATIC_POSTPROCESS {
     }
 
     // ── Somatic CNV (ASCAT + CNVkit) ─────────────────────────────────────────
+    // join(remainder) pads a missing side with a single null, so the tuple
+    // length varies: 6 = both, 5 = no ASCAT, 4 with tumor null = no CNVkit.
+    // The parser needs the CNVkit .cns; without ASCAT it runs on CNVkit alone.
     ch_cnv_joined = ch_cnvkit_cns.join(
         ch_ascat.map { pair, seg, met -> [pair, seg, met] },
         by: 0, remainder: true
-    ).map { pair, tumor, normal, cns, seg, met ->
-        [pair, tumor, normal, cns,
-         seg  ?: file('NO_FILE'),
-         met  ?: file('NO_FILE')]
-    }
+    ).map { row ->
+        def pair = row[0]
+        if (row.size() < 6 && row[1] == null) {
+            log.warn "${pair}: no CNVkit .cns, the ASCAT/CNVkit somatic CNV report is skipped"
+            return null
+        }
+        if (row.size() < 6) {
+            log.warn "${pair}: no ASCAT segments/metrics, the somatic CNV report uses CNVkit only"
+            return [pair, row[1], row[2], row[3], file('NO_ASCAT_SEG'), file('NO_ASCAT_MET')]
+        }
+        row
+    }.filter { it != null }
 
     SOMATIC_CNV_INTERPRET(
         ch_cnv_joined,
@@ -242,7 +252,7 @@ workflow SOMATIC_POSTPROCESS {
                 ch_ascat.map { pair, seg, met -> [pair, seg] },
                 by: 0
             )
-            .filter { pair, vcf, seg -> seg.name != 'NO_FILE' }
+            .filter { pair, vcf, seg -> !seg.name.startsWith('NO_') }
 
         HRD_PROFILER(
             ch_hrd_input,

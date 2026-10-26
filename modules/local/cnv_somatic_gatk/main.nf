@@ -330,6 +330,7 @@ process MANE_ANNOTATE_SOMATIC_CNV {
           path(hets_tsv),          // ${tumor}.hets.tsv
           path(called_seg)         // ${tumor}.called.seg
     path  mane_txt                 // exons_mane.txt
+    path  cnv_genes                // genes to annotate (germline + somatic CNV panels)
 
     output:
     tuple val(patient_id), val(tumor),
@@ -348,6 +349,7 @@ process MANE_ANNOTATE_SOMATIC_CNV {
     Rscript ${projectDir}/bin/annotate_cnvs_complete_fixed.R \\
         --input_dir seg_input \\
         --mane      ${mane_txt} \\
+        --genes     ${cnv_genes} \\
         --output_dir output || echo "WARNING: R annotation script exited non-zero (files may still be present)" >&2
 
     # Use find to locate annotated output safely (find exits 0 even with no matches,

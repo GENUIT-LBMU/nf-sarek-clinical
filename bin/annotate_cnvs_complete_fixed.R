@@ -30,6 +30,8 @@ option_list <- list(
               help="Umbral para amplificación (Log2CR > threshold)"),
   make_option(c("--log2cr_del"), type="numeric", default=-0.3,
               help="Umbral para deleción (Log2CR < threshold)"),
+  make_option(c("--genes"), type="character", default=NULL,
+              help="Gene list (one HGNC symbol per line, # comments): germline + somatic CNV panels from assets/gene_panels/genes.tsv"),
   make_option(c("--diploid_cn"), type="numeric", default=2,
               help="Número de copias diploide normal (default=2)")
 )
@@ -75,23 +77,12 @@ MANE_G <- makeGRangesFromDataFrame(
 # ============================================================
 # GENES DE INTERÉS
 # ============================================================
-genes_list <- c(
-  # Supresores tumorales
-  "AIP", "ALK", "APC", "ATM", "ATR", "AXIN2", "BAP1", "BARD1", "BLM", 
-  "BMPR1A", "BRCA1", "BRCA2", "BRIP1", "BUB1B", "CASR", "CDC73", "CDH1", 
-  "CDK4", "CDKN1B", "CDKN2A", "CFTR", "CHEK2", "CTNNA1", "CTRC", "DICER1", 
-  "ENG", "EPCAM", "FANCC", "FANCD2", "FANCM", "FH", "FLCN", "GREM1", 
-  "HOXB13", "KIF1B", "KIT", "LZTR1", "MAX", "MBD4", "MEN1", "MET", "MITF", 
-  "MLH1", "MLH3", "MRE11A", "MSH2", "MSH3", "MSH6", "MUTYH", "NF1", "NF2", 
-  "NBN", "NTHL1", "PALB2", "PDGFRA", "PIK3CA", "PMS2", "POLD1", "POLE", 
-  "POT1", "PRKAR1A", "PRSS1", "PTCH1", "PTEN", "RAD51C", "RAD51D", "RB1", 
-  "RECQL", "RECQL4", "RET", "RNF43", "RPS20", "SDHA", "SDHAF2", "SDHB", 
-  "SDHC", "SDHD", "SMAD4", "SMARCA4", "SMARCB1", "SMARCE1", "SPINK1", 
-  "STK11", "SUFU", "TMEM127", "TP53", "TSC1", "TSC2", "VHL", "WRN",
-  # Oncogenes
-  "ERBB2", "EGFR", "FGFR1", "FGFR2", "FGFR3", "KRAS", "BRAF", "MYC",
-  "CCND1", "CCND2", "CCND3", "CCNE1", "CDK6", "MDM2", "MDM4", "AR"
-)
+if (is.null(opt$genes) || !file.exists(opt$genes)) {
+  stop("--genes is required: gene list file (germline + somatic CNV panels)")
+}
+genes_list <- trimws(readLines(opt$genes))
+genes_list <- unique(genes_list[genes_list != "" & !startsWith(genes_list, "#")])
+cat("Genes de interés:", length(genes_list), "(", opt$genes, ")\n")
 
 # ============================================================
 # FUNCIÓN PARA CLASIFICAR EVENTOS BASADA EN CN ABSOLUTO
@@ -101,6 +92,13 @@ genes_list <- c(
 classify_event_by_cn <- function(cn_absolute, minor_af, 
                                   diploid_cn = 2, maf_th = 0.35) {
   event <- case_when(
+    # No heterozygous SNPs in the segment (MINOR_AF NA): classify by CN only.
+    # Homozygous deletions (CN 0) have no heterozygous sites, so without this
+    # they fell to "UNKNOWN" and GATK could never confirm a HOMDEL.
+    is.na(minor_af) & cn_absolute <  diploid_cn ~ "DELETION",
+    is.na(minor_af) & cn_absolute >  diploid_cn ~ "AMPLIFICATION",
+    is.na(minor_af) & cn_absolute == diploid_cn ~ "NEUTRAL",
+
     # Deleción con LOH
     cn_absolute < diploid_cn & minor_af < maf_th ~ "DEL+LOH",
     
@@ -326,7 +324,7 @@ for (i in seq_along(input_files)) {
     annotated <- seg_filtered[query_hits, ] %>%
       mutate(
         GENE = MANE_file$gene_symbol[subject_hits],
-        EXON = MANE_file$exon_number[subject_hits]
+        EXON = MANE_file$exon[subject_hits]
       ) %>%
       filter(GENE %in% genes_list) %>%
       distinct() %>%

@@ -108,9 +108,10 @@ workflow CNV_SOMATIC_GATK {
         .join(ch_tumor_allelic, by: [0, 1])
         // → [patient_id, tumor_name, denoisedCR, standardizedCR, tumor_allelicCounts]
 
-    // Join with normal allelic on patient_id only (normal sample name discarded here)
+    // Pair every tumor of a patient with its normal: combine (not join), so a
+    // patient with two tumors and one normal keeps both tumors
     ch_model_input = ch_tumor_merged
-        .join(
+        .combine(
             ch_normal_allelic.map { patient_id, normal_name, tsv -> [patient_id, normal_name, tsv] },
             by: 0
         )
@@ -162,7 +163,8 @@ workflow CNV_SOMATIC_GATK {
 
     MANE_ANNOTATE_SOMATIC_CNV(
         ch_annotate_input,
-        ch_mane_txt
+        ch_mane_txt,
+        file(params.cnv_gatk_genes, checkIfExists: true)
     )
 
     emit:

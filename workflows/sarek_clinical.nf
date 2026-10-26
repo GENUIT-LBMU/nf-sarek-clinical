@@ -170,7 +170,7 @@ workflow SAREK_CLINICAL {
     ).map { f -> [f.parent.name, f] }
 
     ch_ascat = ch_ascat_metrics.join(ch_ascat_segments, remainder: true)
-        .map { pair, met, seg -> [pair, seg ?: file('NO_FILE'), met ?: file('NO_FILE')] }
+        .map { pair, met, seg -> [pair, seg ?: file('NO_ASCAT_SEG'), met ?: file('NO_ASCAT_MET')] }
 
     // Tumor sample names (for mutsig tumor column detection)
 

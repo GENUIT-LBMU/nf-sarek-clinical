@@ -156,6 +156,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- GATK somatic CNV: segments without heterozygous SNPs (MINOR_AF NA) are
+  classified by copy number instead of "UNKNOWN"; AMP+LOH counts as an
+  amplification (IMAX1141: MYC CN >= 5 now reported) but not as LOH (a CN 3 gain has
+  a minor allele fraction ~0.33 with both alleles present); the R script reads its
+  genes from `--cnv_gatk_genes` (germline + somatic CNV panels from genes.tsv) instead
+  of a fixed list that missed 8 of the 38 somatic CNV genes and spelled MRE11 as
+  MRE11A; the EXON column is filled (it read a column that does not exist).
+- A patient with two tumors and one normal kept only one tumor in the GATK somatic
+  CNV (join by patient): every tumor is now paired with the normal.
+- A pair without ASCAT or without CNVkit no longer stops the run: without ASCAT the
+  somatic CNV report uses CNVkit only, without CNVkit it is skipped (both logged).
+- One somatic CNV harmonisation (`bin/cnv_shared.py`) for HTML and PDF instead of
+  two inline copies; the unused `bin/harmonize_cnvs.py` is removed.
+- MANE exon table: `exons_mane_v1.2.txt` (`scripts/build_mane_exons.py`, MANE v1.2
+  Select + Plus Clinical) recommended for `--gcnv_mane_txt`; germline and somatic
+  CNV events of 4 normals / 4 tumors unchanged.
 - Somatic population frequency from the local gnomAD v4.1 resource and AMP
   Tier IV. The somatic Mutect2 VCF goes through `GNOMAD_ANNOTATE` (`--gnomad_tsv`)
   and the somatic TSV gains `gnomAD_AF`, `gnomAD_AF_source`, `gnomAD_FAF95`,
