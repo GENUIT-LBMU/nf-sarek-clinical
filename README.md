@@ -68,7 +68,7 @@ See [Reference files](#reference-files) for full download instructions. Required
 - SnpSift JAR (`SnpSift.jar` from snpEff bundle)
 - hg38 FASTA + dict
 - GATK CNV Panel of Normals and interval lists (from [FlorPio/gatk-cnv-somatic](https://github.com/FlorPio/gatk-cnv-somatic))
-- MANE transcript list (`exons_mane.txt`)
+- MANE Select exon table (`exons_mane_v1.2.txt`, `scripts/build_mane_exons.py` from the NCBI MANE v1.2 GTF, the release of the snpEff MANE database)
 - WES capture BED file for your kit
 
 **4. Create your `lab_params.yml`**
@@ -221,7 +221,7 @@ gcnv_pon_dir:       /data/refs/cnv/PoN_CNV
 gcnv_interval_list: /data/refs/cnv/exomas.interval_list
 gcnv_fasta:         /data/refs/hg38/hg38.fa
 gcnv_dict:          /data/refs/hg38/hg38.dict
-gcnv_mane_txt:      /data/refs/cnv/exons_mane.txt
+gcnv_mane_txt:      /data/refs/mane/exons_mane_v1.2.txt   # scripts/build_mane_exons.py (MANE v1.2)
 gcnv_lowmap_bed:    /data/refs/cnv/lowmap/GRCh38_lowmappabilityall_panel.bed.gz
 
 # Somatic GATK CNV
@@ -496,16 +496,19 @@ regions such as FANCD2/FANCD2P2) keep their AF for BA1/BS1 but never support PM2
 docker run --rm -u $(id -u):$(id -g) -v $PWD:$PWD -v /data/refs:/data/refs -w $PWD \
     quay.io/biocontainers/bcftools:1.20--h8b25389_0 \
     bash scripts/build_gnomad_panel.sh \
-        --genes assets/gene_panels/germline_cancer_predisposition.txt \
-        --genes assets/gene_panels/somatic_snv_panel.txt \
-        --genes assets/gene_panels/somatic_38_oncogenes.txt \
-        --mane  /data/refs/cnv/exons_mane.txt \
+        --genes <(awk -F'\t' 'NR>1 && $1!="RYBP" && $1!="TERC" {print $1}' assets/gene_panels/genes.tsv) \
+        --mane  /data/refs/mane/exons_mane_v1.2.txt \
         --outdir /data/refs/gnomad
 # → gnomad_v4.1_panel.tsv.gz(.tbi), gnomad_v4.1_panel_regions.bed.gz(.tbi), manifest
 ```
 
-Then set `gnomad_tsv: /data/refs/gnomad/gnomad_v4.1_panel.tsv.gz`. Rebuild it
-whenever a gene panel changes. Germline TSVs gain `gnomAD_AF`, `gnomAD_AF_source`
+All 541 genes of `genes.tsv` with a MANE v1.2 transcript (germline, somatic core,
+TSO500, somatic CNV, MMR / HRR): ~73 MB, 3.8 M records, about 2.5 h (remote reads of
+the gnomAD bucket). The exon table must include the MANE Plus Clinical exons
+(`scripts/build_mane_exons.py` does), or variants on BRAF NM_001374258.1, GNAS XLαs,
+CDKN2A p14ARF, PTCH1, MITF, … get no frequency. Then set
+`gnomad_tsv: /data/refs/gnomad/gnomad_v4.1_panel.tsv.gz`. Rebuild it whenever
+`genes.tsv` changes. Germline TSVs gain `gnomAD_AF`, `gnomAD_AF_source`
 and the `GNOMAD_*` columns (FAF95 grpmax, ancestry group, admixed-American AF,
 homozygote counts, gnomAD FILTER, and grpmax AF / AC / AN for the ClinGen VCEP
 rules; resources built before 2026-10-23 lack these and use the general rules).
@@ -571,7 +574,7 @@ correlation. They are not hidden: real PMS2 exon 12–15 deletions fall there.
 ```bash
 bash scripts/build_lowmap_panel.sh \
     --genes assets/gene_panels/germline_cancer_predisposition.txt \
-    --mane  /data/refs/cnv/exons_mane.txt \
+    --mane  /data/refs/mane/exons_mane_v1.2.txt \
     --outdir /data/refs/cnv/lowmap
 # → GRCh38_lowmappabilityall_panel.bed.gz, manifest (needs curl + bedtools)
 ```
@@ -786,7 +789,7 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 │       ├── <kit>_Regions_Annotated.bed   ← for sarek intervals
 │       └── <kit>_Padded.withGenes.bed
 └── cnv/
-    ├── exons_mane.txt
+    ├── (exons_mane_v1.2.txt: see mane/, scripts/build_mane_exons.py)
     ├── exomas.interval_list
     ├── preprocessed.interval_list
     ├── common_snps_preprocessed.vcf.gz  (+ .tbi)
