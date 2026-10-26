@@ -322,9 +322,10 @@ nextflow run /path/to/nf-sarek-clinical/main.nf -profile docker \
 
 `nextflow run GENUIT-LBMU/nf-sarek-clinical -r main ...` pulls the repository from
 GitHub instead (configure `~/.nextflow/scm` for a private repository).
-`run_github.sh` wraps that for both phases; it runs sarek without Strelka2 / Manta (so
-no consensus) and without a pinned sarek release, and does not pass `--samplesheet` to
-phase 2: prefer `run_full.sh`.
+`run_github.sh` does both phases like `run_full.sh` (same sarek tools and pinned
+release, `--samplesheet` passed to phase 2, launched from the run directory), with
+phase 2 pulled from GitHub (`CLINICAL_REPO`, `CLINICAL_REVISION` = `main`, `-latest`);
+it needs `lab_params.yml` and `conf/sarek.config` next to the script.
 
 ### Several patients in one run
 
@@ -642,7 +643,7 @@ built once and stored locally. Configure their paths in your params file.
 | REVEL v1.3 panel | `revel_tsv` | germline SNVs (required) |
 | ClinVar protein index | `clinvar_protein_index` | PS1 / PM5 (recommended) |
 | snpEff MANE database | `snpeff_mane_data` | MANE Select nomenclature (recommended) |
-| CIViC cache | `civic_cache` | any somatic analysis (required) |
+| CIViC cache | `civic_cache` | somatic SNVs (required) |
 | MANE exons / CDS | `gcnv_mane_txt`, `mane_cds_bed` | germline CNV, GATK somatic CNV, coverage fallback; TMB territory |
 | Capture BED | `panel_bed`, `gene_coords_bed` | TMB, TERT note; somatic CNV interpretation |
 | hg38 FASTA + dict | `gcnv_fasta`, `gcnv_dict` (`somatic_fasta`, `somatic_dict`) | consensus, SpliceAI, GATK CNV |
@@ -1020,7 +1021,7 @@ the parameters below select inputs, resources and modules.
 | `--mane_plus_clinical` | `assets/mane/mane_v1.2_plus_clinical.txt` | MANE Plus Clinical transcripts of that release |
 | `--spliceai` | `true` | SpliceAI on the germline candidates |
 | `--spliceai_fasta` | `--gcnv_fasta` | GRCh38 FASTA (+ `.fai`) for SpliceAI |
-| `--civic_cache` | — | Frozen civicpy cache (`scripts/build_civic_cache.sh`). **Required** for somatic analyses |
+| `--civic_cache` | — | Frozen civicpy cache (`scripts/build_civic_cache.sh`). **Required** for somatic SNVs |
 | `--tumor_type` | — | Tumor type for AMP tiers: CIViC disease names joined by `\|` (whole run) |
 | `--tumor_types` | — | TSV `id<TAB>terms` (patient, tumor or pair); overrides `--tumor_type` |
 
@@ -1067,15 +1068,13 @@ the parameters below select inputs, resources and modules.
 |---|---|---|
 | `--hrd_organ` | `BREAST` | HRProfiler model: `BREAST` or `OVARIAN` (the only validated tumor types; applied to any tumor type, as the methodology states) |
 
-Legacy parameters `--tmb_min_dp`, `--tmb_min_af`, `--tmb_min_alt_reads`,
-`--germline_min_dp` and `--amp_threshold` are not read: set the thresholds in
-`conf/filters.config`.
+Thresholds are not command-line parameters: set them in `conf/filters.config`.
 
 ### Profiles
 
 `docker` (runs as the host user), `singularity`, `test` (stub test), `mirror`
 (digest-pinned `ghcr.io/genuit-lbmu/*` images, `conf/containers.mirror.config`),
-`debug`. The `conda` profile is not usable (no module declares conda packages).
+`debug`.
 
 ---
 
@@ -1087,8 +1086,8 @@ this run".
 
 | Flag | Effect |
 |---|---|
-| `--skip_germline_snv true` | Germline SNVs reported as not analysed; gnomAD / ClinVar / REVEL no longer required. The germline subworkflow runs (and classifies) while `--skip_pharmaco` is false; set both to skip it |
-| `--skip_pharmaco true` | Pharmacogenomics section reported as not analysed (the extraction step still runs with the germline subworkflow) |
+| `--skip_germline_snv true` | No germline SNV filtering / SpliceAI / classification; gnomAD / ClinVar / REVEL no longer required |
+| `--skip_pharmaco true` | No pharmacogenomics extraction (with `--skip_germline_snv` too, the germline subworkflow does not run) |
 | `--skip_germline_cnv true` | No GATK gCNV (no normal BAM / CRAM, or no cohort model) |
 | `--skip_somatic_cnv_gatk true` | No GATK somatic CNV (no tumor BAM / CRAM, or no PoN) |
 | `--skip_tmb true` | No TMB |
@@ -1097,7 +1096,8 @@ this run".
 | `--skip_strelka_consensus true` | Mutect2 PASS only for TMB, signatures and HRD (no Strelka2 intersection) |
 | `--skip_coverage true` | No per-gene coverage |
 | `--skip_report true` / `--skip_pdf_report true` | No HTML / no PDF (the report model is built while either is on) |
-| `--skip_somatic_snv`, `--skip_somatic_cnv` | Only effective together with `--skip_tmb --skip_signatures --skip_hrd`: the somatic subworkflow (SNV tracks, consensus, ASCAT / CNVkit interpretation) runs while any somatic analysis is on |
+| `--skip_somatic_snv true` | No somatic SNV tracks (core, second hit, TSO500), no CIViC / AMP tiers; `--civic_cache` no longer required. The consensus, TMB, signatures and HRD still run |
+| `--skip_somatic_cnv true` | No ASCAT / CNVkit interpretation (somatic CNV section and LOH second hits) |
 
 ---
 
@@ -1271,10 +1271,8 @@ somatic CNV step, `--cnv_gatk_genes`).
 Edit `genes.tsv`, then run `python3 scripts/build_gene_lists.py` (`--check` reports
 stale files). Custom lists can be passed to the filtering steps: `--germline_panel`,
 `--somatic_snv_panel`, `--somatic_cnv_panel`, `--second_hit_panel`, `--tso500_panel`
-(one HGNC symbol per line; `null` disables a track). The report model and the
-germline–somatic correlation read the files of `assets/gene_panels/` (germline,
-somatic SNV and somatic CNV panels), so edit `genes.tsv` rather than passing a
-custom germline / somatic list.
+(one HGNC symbol per line; `null` disables a track). The same lists reach the report
+model and the germline–somatic correlation.
 
 **Somatic SNV tracks.** The same chain (panel + PASS + impact + DP, MANE, gnomAD / Tier IV,
 CIViC, AMP) runs per track; files carry the track suffix

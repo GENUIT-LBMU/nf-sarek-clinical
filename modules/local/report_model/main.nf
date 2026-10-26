@@ -27,6 +27,10 @@ process REPORT_MODEL {
     val report_info // JSON: pipeline version, commit, sarek release, resources, code_md5
     path sarek_versions, stageAs: 'sarek_versions/*'
     path samplesheet, stageAs: 'samplesheet/*'   // patient / specimen identification, or NO_SAMPLESHEET
+    // the panels of the filtering steps (--germline_panel, --somatic_snv_panel, --somatic_cnv_panel)
+    path germline_panel,    stageAs: 'panels/germline_panel.txt'
+    path somatic_snv_panel, stageAs: 'panels/somatic_snv_panel.txt'
+    path somatic_cnv_panel, stageAs: 'panels/somatic_cnv_panel.txt'
 
     output:
     tuple val(pair), path("${pair}.report_model.json"), emit: model
@@ -73,7 +77,7 @@ INFOEOF
         --somatic-second-hit "\$(staged ${snv_second_hit_tsv})" \\
         --cnv           "\$(staged ${cnv_somatic_tsv})" \\
         --cnv-germline  "\$(staged ${cnv_gatk_germline_tsv})" \\
-        --germline-panel "${projectDir}/assets/gene_panels/germline_cancer_predisposition.txt" \\
+        --germline-panel "${germline_panel}" \\
         --sig           "\${SIG_SBS96}" \\
         --sig-id        "\${SIG_ID}" \\
         --tumor         "\${TUMOR}" \\
@@ -104,13 +108,13 @@ INFOEOF
         --cnv-somatic        "\$(staged ${cnv_somatic_tsv})" \\
         --cnv-gatk-somatic   "\$(staged ${cnv_gatk_somatic_tsv})" \\
         --cnv-germline-gatk  "\$(staged ${cnv_gatk_germline_tsv})" \\
-        --somatic-cnv-panel  "${projectDir}/assets/gene_panels/somatic_38_oncogenes.txt" \\
+        --somatic-cnv-panel  "${somatic_cnv_panel}" \\
         --sig-sbs96 "\${SIG_SBS96}" --sig-dbs "\${SIG_DBS}" --sig-id "\${SIG_ID}" \\
         --gene-ctx           "${projectDir}/assets/gene_annotations/somatic_gene_context.tsv" \\
         --gene-cov-n         "\$(staged ${gene_cov_n_tsv})" \\
         --gene-cov-t         "\$(staged ${gene_cov_t_tsv})" \\
-        --germline-panel     "${projectDir}/assets/gene_panels/germline_cancer_predisposition.txt" \\
-        --somatic-panel      "${projectDir}/assets/gene_panels/somatic_snv_panel.txt" \\
+        --germline-panel     "${germline_panel}" \\
+        --somatic-panel      "${somatic_snv_panel}" \\
         --pharmaco           "\$(staged ${pharmaco_tsv})" \\
         --samplesheet        "\$(staged ${samplesheet})" \\
         --corr-json correlation_section.json --corr-html correlation_section.html \\

@@ -47,7 +47,7 @@ workflow CNV_SOMATIC_GATK {
 
     main:
     // ── Tag each sample with patient_id and status (normal/tumor) ─────────────
-    ch_bams_tagged = ch_bams.map { sample, bam, bai ->
+    def ch_bams_tagged = ch_bams.map { sample, bam, bai ->
         def patient_id = sample.replaceAll(/_N\d*$/, '').replaceAll(/_T\d*$/, '')
         def status     = sample ==~ /.*_N\d*$/ ? 'normal' : 'tumor'
         [sample, patient_id, status, bam, bai]
@@ -89,29 +89,29 @@ workflow CNV_SOMATIC_GATK {
     //           tumor.denoisedCR, tumor.allelicCounts, normal.allelicCounts]
 
     // Separate denoised CR by status
-    ch_tumor_denoised = GATK_DENOISE_READ_COUNTS.out.denoised
+    def ch_tumor_denoised = GATK_DENOISE_READ_COUNTS.out.denoised
         .filter { sample, patient_id, status, std_cr, den_cr -> status == 'tumor' }
         .map    { sample, patient_id, status, std_cr, den_cr ->
             [patient_id, sample, den_cr, std_cr]   // [patient, tumor_name, denoisedCR, standardizedCR]
         }
 
     // Separate allelic counts by status
-    ch_tumor_allelic = GATK_COLLECT_ALLELIC_COUNTS.out.allelic_counts
+    def ch_tumor_allelic = GATK_COLLECT_ALLELIC_COUNTS.out.allelic_counts
         .filter { sample, patient_id, status, tsv -> status == 'tumor' }
         .map    { sample, patient_id, status, tsv -> [patient_id, sample, tsv] }
 
-    ch_normal_allelic = GATK_COLLECT_ALLELIC_COUNTS.out.allelic_counts
+    def ch_normal_allelic = GATK_COLLECT_ALLELIC_COUNTS.out.allelic_counts
         .filter { sample, patient_id, status, tsv -> status == 'normal' }
         .map    { sample, patient_id, status, tsv -> [patient_id, sample, tsv] }
 
     // Join tumor denoised + tumor allelic on [patient_id, tumor_name]
-    ch_tumor_merged = ch_tumor_denoised
+    def ch_tumor_merged = ch_tumor_denoised
         .join(ch_tumor_allelic, by: [0, 1])
         // → [patient_id, tumor_name, denoisedCR, standardizedCR, tumor_allelicCounts]
 
     // Pair every tumor of a patient with its normal: combine (not join), so a
     // patient with two tumors and one normal keeps both tumors
-    ch_model_input = ch_tumor_merged
+    def ch_model_input = ch_tumor_merged
         .combine(
             ch_normal_allelic.map { patient_id, normal_name, tsv -> [patient_id, normal_name, tsv] },
             by: 0
@@ -130,7 +130,7 @@ workflow CNV_SOMATIC_GATK {
 
     // ── Step 6: PlotDenoisedCopyRatios (per tumor) ──────────────────────────
     // Pair standardizedCR + denoisedCR by [patient_id, tumor_name]
-    ch_std_den_cr = ch_tumor_denoised
+    def ch_std_den_cr = ch_tumor_denoised
         .map { patient_id, tumor, den_cr, std_cr -> [patient_id, tumor, std_cr, den_cr] }
 
     GATK_PLOT_DENOISED_COPY_RATIOS(
@@ -141,7 +141,7 @@ workflow CNV_SOMATIC_GATK {
 
     // ── Step 7: PlotModeledSegments (per tumor) ──────────────────────────────
     // Need: denoised_cr, hets_tsv, model_final_seg → join on [patient_id, tumor]
-    ch_plot_modeled_input = ch_tumor_denoised
+    def ch_plot_modeled_input = ch_tumor_denoised
         .map { patient_id, tumor, den_cr, std_cr -> [patient_id, tumor, den_cr] }
         .join(GATK_MODEL_SEGMENTS.out.hets_tsv,       by: [0, 1])
         .join(GATK_MODEL_SEGMENTS.out.model_final_seg.map { p, t, n, f -> [p, t, f] }, by: [0, 1])
@@ -155,7 +155,7 @@ workflow CNV_SOMATIC_GATK {
 
     // ── Step 8: MANE Annotation (per tumor) ──────────────────────────────────
     // Gather all 4 ModelSegments outputs + called.seg → join on [patient_id, tumor]
-    ch_annotate_input = GATK_MODEL_SEGMENTS.out.model_final_seg
+    def ch_annotate_input = GATK_MODEL_SEGMENTS.out.model_final_seg
         .map { patient_id, tumor, normal, seg -> [patient_id, tumor, seg] }
         .join(GATK_MODEL_SEGMENTS.out.cr_seg,              by: [0, 1])
         .join(GATK_MODEL_SEGMENTS.out.hets_tsv,            by: [0, 1])

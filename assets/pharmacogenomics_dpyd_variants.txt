@@ -1,10 +1,11 @@
-# DPYD pharmacogenomics variants
-# Used for fluoropyrimidine toxicity risk assessment
-# References: CPIC guidelines, PharmGKB, DPYD star allele definitions
-# Format: rsID  gene  star_allele  clinical_significance
-rs3918290	DPYD	*2A	Decreased function – HapB3
-rs55886062	DPYD	*13	Decreased function
-rs67376798	DPYD	*2A (HapB3)	Decreased function – HapB3
-rs56038477	DPYD	HapB3	Decreased function
-rs4148323	UGT1A1	*28	Irinotecan metabolism (decreased)
-rs3064744	UGT1A1	*28 (TA7)	Irinotecan metabolism (decreased)
+# Pharmacogenomics variants (DPYD: fluoropyrimidines; UGT1A1: irinotecan)
+# Only the rsID column is used (PHARMACO_FILTER); the CPIC text of the reports is in
+# bin/report_model.py (CPIC_TABLE).
+# References: CPIC guidelines, PharmGKB, PharmVar star-allele definitions
+# Format: rsID  gene  allele  function
+rs3918290	DPYD	*2A (c.1905+1G>A)	No function
+rs55886062	DPYD	*13 (c.1679T>G, p.Ile560Ser)	No function
+rs67376798	DPYD	c.2846A>T (p.Asp949Val)	Decreased function
+rs56038477	DPYD	HapB3 (c.1236G>A tag; c.1129-5923C>G)	Decreased function
+rs4148323	UGT1A1	*6 (c.211G>A, p.Gly71Arg)	Decreased function
+rs3064744	UGT1A1	*28 (A(TA)7TAA promoter repeat)	Decreased function

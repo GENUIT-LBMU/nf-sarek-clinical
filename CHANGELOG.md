@@ -206,6 +206,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Pharmacogenomics: rs4148323 was shown as UGT1A1 *28; it is UGT1A1 *6 (c.211G>A,
+  p.Gly71Arg), a decreased-function allele like *28 (rs3064744). The variant list
+  (`assets/pharmacogenomics_dpyd_variants.txt`) also had DPYD *2A and c.2846A>T
+  swapped with HapB3 labels (labels only; the rsIDs were right).
+- `run_github.sh` ran sarek without Strelka2 / Manta (no consensus) and without a pinned
+  release, pulled a possibly stale copy of the pipeline and did not pass `--samplesheet`;
+  it now matches `run_full.sh` (`SAREK_REVISION`, `CLINICAL_REVISION` + `-latest`,
+  launch from the run directory, `NXF_SYNTAX_PARSER=v1`).
+- `--germline_panel`, `--somatic_snv_panel` and `--somatic_cnv_panel` now also reach the
+  report model and the germline–somatic correlation (they read the `assets/` files).
+- `--skip_germline_snv`, `--skip_pharmaco`, `--skip_somatic_snv` and `--skip_somatic_cnv`
+  now skip the steps (they only changed the report text); `--civic_cache` is required
+  only with somatic SNVs. Unused parameters (legacy threshold aliases, nf-core
+  boilerplate) and the non-functional `conda` profile removed. Subworkflow variables are
+  declared (`def`) for Nextflow 24.
 - Nextflow 26: the config no longer defines a function (`check_max` replaced by
   `process.resourceLimits` from `--max_cpus / --max_memory / --max_time`; the trace file
   suffix is a parameter). Minimum Nextflow is now 24.04.0. With Nextflow >= 26 the

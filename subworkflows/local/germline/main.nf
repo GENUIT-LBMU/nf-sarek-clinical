@@ -33,7 +33,7 @@ workflow GERMLINE_POSTPROCESS {
 
     main:
     // ── Local gnomAD population frequencies (optional) ───────────────────────
-    ch_vcfs_annotated = ch_haplotypecaller_vcfs
+    def ch_vcfs_annotated = ch_haplotypecaller_vcfs
 
     // ── MANE Select re-annotation (optional) ─────────────────────────────────
     if (ch_snpeff_mane) {
@@ -77,42 +77,52 @@ workflow GERMLINE_POSTPROCESS {
         ch_vcfs_annotated = REVEL_ANNOTATE.out.vcf
     }
 
-    // ── Germline SNV pipeline ─────────────────────────────────────────────────
-    SNPSIFT_FILTER_GERMLINE(
-        ch_vcfs_annotated,
-        ch_germline_panel,
-        ch_snpsift_jar,
-        params.filters.germline_snv.min_dp,
-        ch_spliceai ? params.filters.germline_snv.noncoding_splice : false
-    )
-
-    // ── SpliceAI on the filtered candidates (optional) ───────────────────────
-    ch_candidates = SNPSIFT_FILTER_GERMLINE.out.vcf
-    if (ch_spliceai) {
-        SPLICEAI(
-            ch_candidates,
-            ch_spliceai[0],
-            ch_spliceai[1]
+    // ── Germline SNV pipeline (--skip_germline_snv switches it off) ──────────
+    def ch_snv_tsv  = Channel.empty()
+    def ch_acmg_tsv = Channel.empty()
+    if (!params.skip_germline_snv) {
+        SNPSIFT_FILTER_GERMLINE(
+            ch_vcfs_annotated,
+            ch_germline_panel,
+            ch_snpsift_jar,
+            params.filters.germline_snv.min_dp,
+            ch_spliceai ? params.filters.germline_snv.noncoding_splice : false
         )
-        ch_candidates = SPLICEAI.out.vcf
+
+        // ── SpliceAI on the filtered candidates (optional) ───────────────────
+        def ch_candidates = SNPSIFT_FILTER_GERMLINE.out.vcf
+        if (ch_spliceai) {
+            SPLICEAI(
+                ch_candidates,
+                ch_spliceai[0],
+                ch_spliceai[1]
+            )
+            ch_candidates = SPLICEAI.out.vcf
+        }
+
+        SNPSIFT_EXTRACT_GERMLINE(
+            ch_candidates,
+            ch_snpsift_jar,
+            [file("${projectDir}/bin/acmg_shared.py"), file("${projectDir}/bin/gene_sets.py")],
+            ch_protein_index
+        )
+        ch_snv_tsv  = SNPSIFT_EXTRACT_GERMLINE.out.tsv
+        ch_acmg_tsv = SNPSIFT_EXTRACT_GERMLINE.out.acmg_tsv
     }
 
-    SNPSIFT_EXTRACT_GERMLINE(
-        ch_candidates,
-        ch_snpsift_jar,
-        [file("${projectDir}/bin/acmg_shared.py"), file("${projectDir}/bin/gene_sets.py")],
-        ch_protein_index
-    )
-
-    // ── Pharmacogenomics ──────────────────────────────────────────────────────
-    PHARMACO_FILTER(
-        ch_vcfs_annotated,
-        ch_snpsift_jar,
-        ch_pharmaco_variants
-    )
+    // ── Pharmacogenomics (--skip_pharmaco switches it off) ────────────────────
+    def ch_pharmaco = Channel.empty()
+    if (!params.skip_pharmaco) {
+        PHARMACO_FILTER(
+            ch_vcfs_annotated,
+            ch_snpsift_jar,
+            ch_pharmaco_variants
+        )
+        ch_pharmaco = PHARMACO_FILTER.out.tsv
+    }
 
     emit:
-    snv_tsv    = SNPSIFT_EXTRACT_GERMLINE.out.tsv       // [ val(sample), path(*.germline_snvs.tsv) ]
-    acmg_tsv   = SNPSIFT_EXTRACT_GERMLINE.out.acmg_tsv  // [ val(sample), path(*.germline_snvs_acmg_annotated.tsv) ]
-    pharmaco   = PHARMACO_FILTER.out.tsv                // [ val(sample), path(*.pharmaco.tsv) ]
+    snv_tsv    = ch_snv_tsv     // [ val(sample), path(*.germline_snvs.tsv) ]
+    acmg_tsv   = ch_acmg_tsv    // [ val(sample), path(*.germline_snvs_acmg_annotated.tsv) ]
+    pharmaco   = ch_pharmaco    // [ val(sample), path(*.pharmaco.tsv) ]
 }

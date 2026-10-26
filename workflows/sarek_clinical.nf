@@ -295,8 +295,10 @@ workflow SAREK_CLINICAL {
     def ch_hrd_tsv = Channel.empty()
     if (!params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures || !params.skip_hrd) {
         // CIViC annotation runs inside SOMATIC_POSTPROCESS with a frozen cache (no network)
-        if (!params.civic_cache) error("--civic_cache is required for somatic postprocessing (build it with scripts/build_civic_cache.sh)")
-        if (!file(params.civic_cache).exists()) error("--civic_cache not found: ${params.civic_cache}")
+        if (!params.skip_somatic_snv) {   // CIViC annotation of the somatic SNV tracks
+            if (!params.civic_cache) error("--civic_cache is required for somatic SNVs (build it with scripts/build_civic_cache.sh), or set --skip_somatic_snv true")
+            if (!file(params.civic_cache).exists()) error("--civic_cache not found: ${params.civic_cache}")
+        }
         if (params.tumor_types && !file(params.tumor_types).exists())
             error("--tumor_types not found: ${params.tumor_types}")
         if (!params.tumor_type && !params.tumor_types)
@@ -321,7 +323,7 @@ workflow SAREK_CLINICAL {
             ch_panel_bed,
             consensus_fasta,
             consensus_fasta_fai,
-            file(params.civic_cache),
+            params.civic_cache ? file(params.civic_cache) : file('NO_CIVIC_CACHE'),
             ch_snpeff_mane
         )
         if (!params.skip_hrd) {
@@ -485,8 +487,8 @@ workflow SAREK_CLINICAL {
         germline_snv:     params.skip_germline_snv,
         pharmaco:         !germline_ran || params.skip_pharmaco,
         germline_cnv:     params.skip_germline_cnv,
-        somatic_snv:      !somatic_ran,
-        somatic_cnv:      !somatic_ran,
+        somatic_snv:      !somatic_ran || params.skip_somatic_snv,
+        somatic_cnv:      !somatic_ran || params.skip_somatic_cnv,
         somatic_cnv_gatk: params.skip_somatic_cnv_gatk,
         tmb:              !somatic_ran || params.skip_tmb,
         signatures:       !somatic_ran || params.skip_signatures,
@@ -504,7 +506,10 @@ workflow SAREK_CLINICAL {
             not_run,
             report_info,
             sarek_versions,
-            params.samplesheet ? file(params.samplesheet, checkIfExists: true) : file('NO_SAMPLESHEET')
+            params.samplesheet ? file(params.samplesheet, checkIfExists: true) : file('NO_SAMPLESHEET'),
+            ch_germline_panel,
+            ch_somatic_snv_panel,
+            ch_somatic_cnv_panel
         )
         // the renderers also need the signature directories (plots)
         def ch_render_input = REPORT_MODEL.out.model

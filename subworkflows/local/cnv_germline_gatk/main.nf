@@ -54,7 +54,7 @@ workflow CNV_GERMLINE_GATK {
 
     // ── Step 3: GermlineCNVCaller (CASE, per sample) ─────────────────────────
     // Join counts and ploidy on sample name
-    ch_cnvcaller_input = GATK_COLLECT_READ_COUNTS_GERMLINE.out.counts
+    def ch_cnvcaller_input = GATK_COLLECT_READ_COUNTS_GERMLINE.out.counts
         .join(GATK_DETERMINE_GERMLINE_CONTIG_PLOIDY.out.ploidy_dir, by: 0)
 
     GATK_GERMLINE_CNV_CALLER(
@@ -64,7 +64,7 @@ workflow CNV_GERMLINE_GATK {
 
     // ── Step 4: PostprocessGermlineCNVCalls ───────────────────────────────────
     // Join cnv_calls_dir and ploidy_dir on sample name
-    ch_postprocess_input = GATK_GERMLINE_CNV_CALLER.out.cnv_calls_dir
+    def ch_postprocess_input = GATK_GERMLINE_CNV_CALLER.out.cnv_calls_dir
         .join(GATK_DETERMINE_GERMLINE_CONTIG_PLOIDY.out.ploidy_dir, by: 0)
 
     GATK_POSTPROCESS_GERMLINE_CNV_CALLS(
