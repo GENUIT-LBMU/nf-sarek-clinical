@@ -258,6 +258,7 @@ _msi_disp = 'NA' if _msi_st == 'NA' else {
 import sys as _sys_rs; _sys_rs.path.insert(0, '${projectDir}/bin')
 from report_shared import unavailable_text as _unavail_text, kpi_value as _kpi_value
 from report_shared import pipeline_label as _pipeline_label, sarek_label as _sarek_label
+from report_shared import fmt_hrd_prob as _fmt_hrd_prob, fmt_num as _fmt_num
 from datetime import date as _date
 def _unavail(key, *paths):
     # '<p class=warn>why there is no data</p>', or '' when an input exists
@@ -274,7 +275,7 @@ metrics = {
     "Tumor Purity (%)":    "\${PURITY_PCT}",
     "Coverage Normal (X)": "\${COV_N_MEAN}",
     "Coverage Tumor (X)":  "\${COV_T_MEAN}",
-    "HRD Probability":     _kpi_value('hrd', "\${HRD_PROB}"),
+    "HRD Probability":     _kpi_value('hrd', _fmt_hrd_prob("\${HRD_PROB}")),
     "HRD Status":          _kpi_value('hrd', "\${HRD_STATUS}"),
 }
 
@@ -325,9 +326,10 @@ def _loh_relevant_genes(germline_tsv, somatic_tsvs):
     return loh_relevant_genes(germline_tsv, somatic_tsvs)
 
 def _conf_badge(c):
-    if c == 'HIGH':
-        return "<span class='badge badge-P' style='font-size:10px'>HIGH</span>"
-    return "<span class='badge badge-III' style='font-size:10px'>MODERATE</span>"
+    # CNV call confidence: HIGH blue, MODERATE grey (the same colours in the PDF)
+    bg = '#1d4ed8' if c == 'HIGH' else '#6b7280'
+    return ("<span class='badge' style='font-size:10px;background:" + bg + ";color:#fff'>"
+            + ('HIGH' if c == 'HIGH' else 'MODERATE') + "</span>")
 
 def _tools_html(t):
     out = ''
@@ -454,6 +456,8 @@ def hgvs_cells(get_field):
 # CIViC / AMP tier (bin/amp_tier.py, shared with the PDF report)
 # ----
 import amp_tier as _amp
+from report_shared import ACTIONABLE_TIERS as _ACTIONABLE_TIERS
+_ACTIONABLE_GENES = []   # genes with an AMP Tier I/II somatic variant (filled by tsv_to_html_somatic)
 TUMOR_TERMS, TUMOR_LABEL = _amp.tumor_terms_for([patient_id, tumor, pair], "${params.tumor_type ?: ''}", "${params.tumor_types ?: ''}")
 civic_index = _amp.load_civic(files['CIViC annotation'])
 civic_index.update(_amp.load_civic(files['CIViC annotation (TSO500)']))   # pan-tumor track (other genes)
@@ -474,11 +478,11 @@ def tsv_to_html(path, title):
     if not lines:
         return "<p class='warn'>Empty file</p>"
     header = lines[0].split("\\t")
-    th = "".join("<th>" + html.escape(c) + "</th>" for c in header)
+    th = "".join("<th>" + html.escape(c if c not in ('', '0') else '#') + "</th>" for c in header)
     tbody = ""
     for line in lines[1:]:
         cells = line.split("\\t")
-        td = "".join("<td>" + html.escape(v) + "</td>" for v in cells)
+        td = "".join("<td>" + html.escape(_fmt_num(v)) + "</td>" for v in cells)
         tbody += "<tr>" + td + "</tr>\\n"
     return ("<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
             "<tbody>" + tbody + "</tbody></table></div>")
@@ -677,6 +681,8 @@ def tsv_to_html_somatic(path, civic_idx, tso500_path=''):
                                  get_col(row, 'REF'), get_col(row, 'ALT')), [])
         tier, civic = _amp.variant_tier(records, TUMOR_TERMS, lambda k: get_col(row, k))
         civic = civic or {}
+        if tier in _ACTIONABLE_TIERS:   # drives the clinical-trial queries
+            _ACTIONABLE_GENES.append(get_col(row, 'ANN[*].GENE'))
         row_start = len(tbody)
         badge_cls = tier_colors.get(tier, 'badge-III')
 
@@ -1162,7 +1168,8 @@ _tmb_val_ct = "\${TMB_VAL}"
 _msi_val_ct = "\${MSI_VAL}"
 _hrd_stat_ct = "\${HRD_STATUS}"
 sections += ("<section><h2>Clinical Trials &#8212; Relevant Recruiting Studies</h2>"
-             + fetch_clinical_trials_html('correlation_section.json', _tmb_val_ct, _msi_val_ct, _hrd_stat_ct)
+             + fetch_clinical_trials_html('correlation_section.json', _tmb_val_ct, _msi_val_ct, _hrd_stat_ct,
+                                          _ACTIONABLE_GENES, TUMOR_LABEL)
              + "</section>\\n")
 
 # Test Methodology -- final section

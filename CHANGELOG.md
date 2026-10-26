@@ -180,6 +180,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Reports (section R): every input staged per pair instead of `find` in `--outdir`
+  (stale values with `-resume`, failures with a relative `--outdir`), and a hash of
+  `bin/` + `assets/` reruns them after a code change. Sections say "not analysed in
+  this run" or "no result for this sample" instead of an empty negative result (the
+  pharmacogenomics section said "standard dosing indicated" when its file was missing).
+  A correlation failure now fails the task (it removed the germline–somatic section
+  silently). Versions (pipeline, commit, sarek, tools, resources) in both reports;
+  `run_full.sh` launches sarek from the run directory, so the repository
+  `nextflow.config` no longer reaches it.
+- PDF layout: page 1 holds identification, every biomarker, the QC alerts and the
+  major findings; sections flow (1128: 22 → 14 pages). Effects shown readable
+  ("splice donor + intron") and never cut, no truncated therapies or mechanisms,
+  ACMG header not split; VAF from AD as ALT / (REF + ALT) instead of the REF count;
+  CNV confidence HIGH blue / MODERATE grey in both reports (green on green before).
+- One HRD probability format ("<0.01") in the reports and the correlation; signature
+  counts per type (SBS and ID were added up); an empty correlation table is replaced
+  by a sentence; HTML numeric tables rounded; HTML methodology corrected
+  (pharmacogenomics genes, signature rule, P/LP correlation).
+- Clinical trials: one query plan for HTML and PDF — actionable somatic genes (KRAS
+  in 1128 was not searched), germline–somatic genes and biomarkers with the tumor
+  type as condition, MSI-H / TMB-H also in any solid tumor, trials for the opposite
+  MSI status dropped; the query date is printed.
+- HTML "Reporte Clínico" print button removed (it hid Tier III / IV).
 - GATK somatic CNV uses the ASCAT purity of the tumor (`--ascat_metrics`;
   `PURITY_SOURCE` column) instead of its own LOH-based estimate (IMAX1141: 0.52
   instead of 0.44; 1229 had no estimate and uncorrected copy numbers). The ASCAT

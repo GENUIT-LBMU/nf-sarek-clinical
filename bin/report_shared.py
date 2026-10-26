@@ -121,3 +121,123 @@ def version_rows():
     rows += [(name, tools[key]) for name, key in SAREK_TOOLS if key in tools]
     rows += [(k, v) for k, v in (info.get('resources') or {}).items() if v]
     return rows
+
+
+# ── Number formats (R6): the same value prints the same way everywhere ───────
+
+def fmt_hrd_prob(val):
+    """HRD probability: '<0.01' below 0.01, else 2 decimals; 'NA' when missing."""
+    try:
+        f = float(str(val).strip())
+    except (ValueError, TypeError):
+        return 'NA'
+    if f != f:
+        return 'NA'
+    return '<0.01' if f < 0.01 else f'{f:.2f}'
+
+
+def fmt_num(val, sig=4):
+    """Numeric table cell with `sig` significant digits; text unchanged."""
+    s = str(val).strip()
+    try:
+        f = float(s)
+    except (ValueError, TypeError):
+        return s
+    if f != f or s.isdigit() or (s.startswith('-') and s[1:].isdigit()):
+        return s
+    return f'{f:.{sig}g}'
+
+
+# ── Clinical trials (R7): one query plan for both reports ───────────────────
+# Genes with an actionable somatic variant (AMP Tier I/II), the genes of the
+# germline-somatic findings and the biomarkers, each searched with the patient's
+# tumor type as condition; MSI-H and TMB-H also in any solid tumor. Trials
+# restricted to the opposite MSI status are dropped. Live query: the report
+# prints its date, and says so when ClinicalTrials.gov cannot be reached.
+
+ACTIONABLE_TIERS = ('IA', 'IB', 'IIC', 'IID')
+_MSI_TERM = 'microsatellite instability OR mismatch repair deficient OR dMMR'
+_MSS_WORDS = ('mss', 'microsatellite stable', 'pmmr', 'mismatch repair proficient')
+_MSI_WORDS = ('msi-h', 'msi high', 'dmmr', 'mismatch repair deficient', 'microsatellite instability-high')
+
+
+def _condition(tumor_label):
+    terms = [t.strip() for t in str(tumor_label or '').split('|') if t.strip()]
+    return terms[0] if terms else 'cancer'
+
+
+def trial_queries(corr_data, actionable_genes, tmb, msi_st, hrd_status, tumor_label, max_genes=4):
+    """[(label, condition, term)] in order of priority."""
+    cond = _condition(tumor_label)
+    genes = list(actionable_genes or [])
+    for r in (corr_data or {}).get('results', []):
+        if r.get('acmg') in ('P', 'LP'):
+            genes.append(r.get('gene', ''))
+    for r in (corr_data or {}).get('biallelic_somatic', []):
+        genes.append(r.get('gene', ''))
+    genes = [g for g in dict.fromkeys(genes) if g][:max_genes]
+    q = [(f'{g} · {cond}', cond, g) for g in genes]
+    if msi_st == 'MSI-H':
+        q += [(f'MSI-H / dMMR · {cond}', cond, _MSI_TERM),
+              ('MSI-H / dMMR · any solid tumor', 'solid tumor', _MSI_TERM)]
+    try:
+        if float(tmb) >= 10:
+            q.append(('TMB-H · any solid tumor', 'solid tumor', 'tumor mutational burden'))
+    except (ValueError, TypeError):
+        pass
+    if str(hrd_status) == 'HRD+':
+        q.append((f'HRD · {cond}', cond, 'homologous recombination deficiency OR PARP inhibitor'))
+    return q
+
+
+def _wrong_msi(trial, msi_st):
+    text = (trial['title'] + ' ' + trial['conds']).lower()
+    if msi_st == 'MSI-H':
+        return any(w in text for w in _MSS_WORDS) and not any(w in text for w in _MSI_WORDS)
+    return any(w in text for w in _MSI_WORDS) and not any(w in text for w in _MSS_WORDS)
+
+
+def clinical_trials(queries, msi_st='', per_query=3, timeout=8):
+    """{'date', 'trials': [...], 'error': str|None} from ClinicalTrials.gov API v2."""
+    import datetime
+    import urllib.parse
+    import urllib.request
+    out = {'date': datetime.date.today().isoformat(), 'trials': [], 'error': None}
+    seen = set()
+    for label, cond, term in queries:
+        params = urllib.parse.urlencode({
+            'query.cond': cond, 'query.term': term,
+            'filter.overallStatus': 'RECRUITING',
+            'fields': 'NCTId,BriefTitle,Phase,OverallStatus,Condition,StartDate',
+            'pageSize': str(per_query * 3), 'format': 'json',
+        })
+        try:
+            req = urllib.request.Request('https://clinicaltrials.gov/api/v2/studies?' + params,
+                                         headers={'User-Agent': 'nf-sarek-clinical'})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = _json.loads(resp.read().decode('utf-8'))
+        except Exception as exc:   # network / API down: the report says so
+            out['error'] = str(exc)
+            break
+        kept = 0
+        for s in data.get('studies', []):
+            proto = s.get('protocolSection', {})
+            ident = proto.get('identificationModule', {})
+            stat = proto.get('statusModule', {})
+            t = {
+                'nct':    ident.get('nctId', ''),
+                'title':  ident.get('briefTitle', ''),
+                'phase':  ', '.join(proto.get('designModule', {}).get('phases', [])) or 'N/A',
+                'status': stat.get('overallStatus', ''),
+                'conds':  ', '.join(proto.get('conditionsModule', {}).get('conditions', [])[:2]),
+                'start':  (stat.get('startDateStruct') or {}).get('date', ''),
+                'query':  label,
+            }
+            if not t['nct'] or t['nct'] in seen or _wrong_msi(t, msi_st):
+                continue
+            seen.add(t['nct'])
+            out['trials'].append(t)
+            kept += 1
+            if kept >= per_query:
+                break
+    return out

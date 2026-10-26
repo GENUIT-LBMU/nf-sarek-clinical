@@ -29,6 +29,7 @@ import html as html_lib
 # bin/acmg_shared.py. Imported here for pathway classification + germline P/LP
 # filtering of correlation input.
 # ---------------------------------------------------------------------------
+from report_shared import fmt_hrd_prob  # noqa: E402
 from acmg_shared import (
     MMR_GENES,
     HRR_GENES,
@@ -459,7 +460,7 @@ def _pathway_biomarkers(pathway, tmb, msi, hrd_prob, sbs_calls, id_calls):
         match = _ge(msi, MSI_HIGH_PCT) or (_ge(tmb, TMB_HIGH) and bool(sbs_found or id_found))
 
     elif pathway == 'HRR':
-        items.append({'key': 'HRD probability', 'val': _fmt(hrd_prob, 4),
+        items.append({'key': 'HRD probability', 'val': 'not available' if hrd_prob is None else fmt_hrd_prob(hrd_prob),
                       'status': _level(hrd_prob, HRD_HIGH, HRD_BORDER), 'threshold': '>= ' + str(HRD_HIGH)})
         sig_v, found_hrd, sig_s = _sig_status(sbs_calls, HRD_SIGNATURES, 'SBS')
         items.append({'key': 'HRD signatures', 'val': sig_v, 'status': sig_s,
@@ -672,7 +673,7 @@ def build_html(results, sbs_calls, tmb, msi, hrd_prob, biallelic_results=None):
     if not results and not biallelic_results:
         return ('<p style="color:#fed7aa;background:rgba(124,45,18,.3);'
                 'border-radius:8px;padding:8px 12px;font-size:.85rem;">'
-                'No germline P/LP/VUS variants or somatic biallelic events available '
+                'No germline P/LP variants or somatic biallelic events available '
                 'for correlation analysis.'
                 '</p>')
 
@@ -698,7 +699,7 @@ def build_html(results, sbs_calls, tmb, msi, hrd_prob, biallelic_results=None):
     bio_bar = ('<div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 18px;">'
                + pill('TMB', tmb_ok, _fmt(tmb, 1, ' mut/Mb'))
                + pill('MSI', msi_ok, _fmt(msi, 1, '%'))
-               + pill('HRD prob', hrd_ok, _fmt(hrd_prob, 4))
+               + pill('HRD prob', hrd_ok, 'not available' if hrd_prob is None else fmt_hrd_prob(hrd_prob))
                + pill('MMR sigs', mmr_ok, ', '.join(mmr_sigs_found) if mmr_ok else
                       ('none' if sbs_calls['assessable'] else 'n/a (' + str(int(sbs_calls['total'])) + ' SBS)'))
                + pill('HRD sigs', hrr_ok, ', '.join(hrd_sigs_found) if hrr_ok else
@@ -806,9 +807,14 @@ def build_html(results, sbs_calls, tmb, msi, hrd_prob, biallelic_results=None):
 
     tbody += '</tbody>'
 
-    table = ('<div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(148,163,184,.2);margin-top:10px;">'
-             '<table style="border-collapse:collapse;width:100%;font-size:.78rem;">'
-             + thead + tbody + '</table></div>')
+    if results:
+        table = ('<div style="overflow-x:auto;border-radius:10px;border:1px solid rgba(148,163,184,.2);margin-top:10px;">'
+                 '<table style="border-collapse:collapse;width:100%;font-size:.78rem;">'
+                 + thead + tbody + '</table></div>')
+    else:
+        table = ('<p style="font-size:.8rem;color:#94a3b8;margin-top:10px;">'
+                 'No germline P/LP variant in the panel genes: no germline&ndash;somatic correlation rows. '
+                 'Somatic biallelic events are listed below.</p>')
 
     # Methodology note
     method_note = ('<div style="font-size:.72rem;color:rgba(226,232,240,.55);'
@@ -819,7 +825,7 @@ def build_html(results, sbs_calls, tmb, msi, hrd_prob, biallelic_results=None):
                    'Second hit detection uses somatic SNV (Mutect2, HIGH/MODERATE impact) and CNV/LOH '
                    '(ASCAT segments: cnLOH, HETDEL+LOH, HOMDEL). '
                    'Pathway biomarkers: MMR — MSI-high, or TMB &ge; 10 mut/Mb with an MMR signature '
-                   '(SBS6/15/20/21/26/44 or ID1/ID2/ID7); HRR — HRProfiler probability &ge; 0.45 or SBS3/SBS8. '
+                   '(SBS6/15/20/21/26/44 or ID1/ID2/ID7); HRR — HRProfiler probability &ge; ' + format(HRD_HIGH, 'g') + ' or SBS3/SBS8. '
                    'Signatures count only with &ge;10% of the assigned mutations, &ge;10 mutations and '
                    '&ge;100 SBS / 50 indels in the sample. '
                    'This analysis is intended as a decision-support tool and must be reviewed by a '

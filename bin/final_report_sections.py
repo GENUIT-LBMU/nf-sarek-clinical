@@ -17,6 +17,7 @@ import sys as _sys
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from acmg_shared import msi_status, MSI_HIGH_PCT, MSI_BORDER_PCT  # noqa: E402
 from report_shared import tool_label, pipeline_label, sarek_label, version_rows  # noqa: E402
+from report_shared import trial_queries, clinical_trials  # noqa: E402
 import csv
 
 _GCNV_MIN_QA = str(int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA', '4')))
@@ -125,86 +126,28 @@ def tsv_to_html_pharmaco(path):
 # ---------------------------------------------------------------------------
 # Clinical Trials section (ClinicalTrials.gov API v2)
 # ---------------------------------------------------------------------------
-def fetch_clinical_trials_html(corr_json_path, tmb_val, msi_val, hrd_status):
-    import urllib.request, urllib.parse, json as _json
-
-    # Determine query genes from correlation JSON
-    query_terms = []
+def fetch_clinical_trials_html(corr_json_path, tmb_val, msi_val, hrd_status,
+                               actionable_genes=None, tumor_label=''):
+    """Recruiting trials: the query plan shared with the PDF (report_shared.trial_queries)."""
+    import json as _json
+    cdata = {}
     if corr_json_path and os.path.isfile(corr_json_path):
-        try:
-            with open(corr_json_path) as fh:
-                cdata = _json.load(fh)
-            for r in cdata.get('results', []):
-                if r.get('acmg') in ('P', 'LP'):
-                    g = r.get('gene', '')
-                    if g and g not in query_terms:
-                        query_terms.append(g)
-            for r in cdata.get('biallelic_somatic', []):
-                g = r.get('gene', '')
-                if g and g not in query_terms:
-                    query_terms.append(g)
-        except Exception:
-            pass
-    try:
-        if float(str(tmb_val).replace('NA','0') or '0') >= 10:
-            query_terms.append('TMB-H pembrolizumab')
-    except (ValueError, TypeError):
-        pass
-    try:
-        if msi_status(msi_val) == 'MSI-H':
-            query_terms.append('microsatellite instability MSI-H')
-    except (ValueError, TypeError):
-        pass
-    if str(hrd_status) == 'HRD+':
-        query_terms.append('BRCA homologous recombination deficiency PARP inhibitor')
-
-    if not query_terms:
+        with open(corr_json_path) as fh:
+            cdata = _json.load(fh)
+    msi_st = msi_status(msi_val)
+    queries = trial_queries(cdata, actionable_genes, tmb_val, msi_st, hrd_status, tumor_label)
+    if not queries:
         return "<p class='warn'>No reportable findings to drive clinical trial queries.</p>"
+    res = clinical_trials(queries, msi_st)
+    all_trials = res['trials']
 
-    all_trials = []
-    api_error = None
-    for term in query_terms[:4]:
-        try:
-            params = urllib.parse.urlencode({
-                'query.term': term + ' cancer',
-                'filter.overallStatus': 'RECRUITING',
-                'fields': 'NCTId,BriefTitle,Phase,OverallStatus,Condition,StartDate',
-                'pageSize': '3',
-                'format': 'json',
-            })
-            url = 'https://clinicaltrials.gov/api/v2/studies?' + params
-            req = urllib.request.Request(url, headers={'User-Agent': 'nf-sarek-clinical/1.0'})
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                data = _json.loads(resp.read().decode('utf-8'))
-            existing_ncts = {t['nct'] for t in all_trials}
-            for s in data.get('studies', []):
-                proto  = s.get('protocolSection', {})
-                id_mod = proto.get('identificationModule', {})
-                stat   = proto.get('statusModule', {})
-                des    = proto.get('designModule', {})
-                cond   = proto.get('conditionsModule', {})
-                nct    = id_mod.get('nctId', '')
-                if nct and nct not in existing_ncts:
-                    all_trials.append({
-                        'nct':    nct,
-                        'title':  id_mod.get('briefTitle', ''),
-                        'phase':  ', '.join(des.get('phases', [])) or 'N/A',
-                        'status': stat.get('overallStatus', ''),
-                        'conds':  ', '.join(cond.get('conditions', [])[:2]),
-                        'start':  (stat.get('startDateStruct') or {}).get('date', ''),
-                        'query':  term,
-                    })
-        except Exception as e:
-            api_error = str(e)
-            break
-
-    if api_error and not all_trials:
+    if res['error'] and not all_trials:
         return (
             "<div class='callout-info' style='background:#fff7ed;border-color:#f97316;color:#7c2d12;'>"
             "<strong>ClinicalTrials.gov API Unavailable</strong><br/>"
-            "Could not connect to ClinicalTrials.gov at report generation time (timeout/network). "
+            "Could not connect to ClinicalTrials.gov on " + res['date'] + " (no network or API down). "
             "Please search manually at <a href='https://clinicaltrials.gov' style='color:#f97316;'>clinicaltrials.gov</a> "
-            "for recruiting studies involving: " + html.escape(', '.join(query_terms[:4])) +
+            "for recruiting studies involving: " + html.escape('; '.join(q[0] for q in queries)) +
             "</div>"
         )
 
@@ -213,12 +156,12 @@ def fetch_clinical_trials_html(corr_json_path, tmb_val, msi_val, hrd_status):
             "<div class='callout-info'>"
             "<strong>No Recruiting Trials Found</strong><br/>"
             "No recruiting clinical trials were found for the identified variants/biomarkers "
-            "in the ClinicalTrials.gov registry at report generation time."
+            "in the ClinicalTrials.gov registry on " + res['date'] + "."
             "</div>"
         )
 
     th = ("<th>NCT ID</th><th>Trial Title</th><th>Phase</th>"
-          "<th>Status</th><th>Condition(s)</th><th>Start Date</th><th>Query Gene/Biomarker</th>")
+          "<th>Status</th><th>Condition(s)</th><th>Start Date</th><th>Query (finding &middot; condition)</th>")
     tbody = ""
     for t in all_trials:
         tbody += (
@@ -235,8 +178,11 @@ def fetch_clinical_trials_html(corr_json_path, tmb_val, msi_val, hrd_status):
         )
     note = (
         "<p style='font-size:.72rem;color:#94a3b8;margin-top:6px;'>"
-        "Sourced from ClinicalTrials.gov at report generation date. "
-        "Only RECRUITING status trials shown. Eligibility must be verified before referral.</p>"
+        "ClinicalTrials.gov queried on " + res['date'] + " (results change over time): actionable somatic "
+        "genes (AMP Tier I/II), genes of the germline&ndash;somatic findings and biomarkers, with the tumor "
+        "type as condition; MSI-H and TMB-H also in any solid tumor; trials restricted to the opposite MSI "
+        "status are not shown. Only RECRUITING trials, up to 3 per query. Eligibility must be verified "
+        "before referral.</p>"
     )
     return (
         "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"

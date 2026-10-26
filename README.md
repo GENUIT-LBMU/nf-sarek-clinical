@@ -30,6 +30,15 @@
 - `*_clinical_report.pdf` — printable PDF with KPI dashboard and Major Clinical Findings summary
 - Structured TSV files for each analysis module (variant tables, CNV tables, TMB, HRD)
 
+Both reports print the pipeline version and git commit, the nf-core/sarek release
+(`--sarek_version`, or `pipeline_info/sarek_release.txt` written by `run_full.sh`),
+the tool versions recorded by sarek and the resource files used. Every report input
+is a task input (nothing is looked up in `--outdir`), so `-resume` regenerates a
+report when any of its inputs, or the scripts in `bin/`, change. A section switched
+off with `--skip_*` says "not analysed in this run". Clinical trials are a live
+ClinicalTrials.gov query (actionable somatic genes, germline–somatic findings and
+biomarkers, with the tumor type as condition); the report prints the query date.
+
 ---
 
 ## Quick Start

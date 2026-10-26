@@ -48,6 +48,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm, mm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.platypus import (
+    CondPageBreak,
     BaseDocTemplate,
     Frame,
     PageTemplate,
@@ -260,19 +261,6 @@ def _ascat_field(path, name):
     return 'NA'
 
 
-def _fmt_hrd_prob(val):
-    """Format HRD probability: '<0.01' if very small, else 2 decimal places."""
-    try:
-        f = float(str(val).strip())
-        if f != f:
-            return 'NA'
-        if f < 0.01:
-            return '<0.01'
-        return f'{f:.2f}'
-    except (ValueError, TypeError):
-        return str(val) if val not in ('NA', None, '') else 'NA'
-
-
 def _make_kpi_cell(label, value):
     """Create a KPI Paragraph: small grey label above large coloured value.
     HRD+ gets red, HRD- gets green; everything else gets orange.
@@ -390,6 +378,15 @@ def trunc(text, n=40):
     return s if len(s) <= n else s[:n - 3] + '...'
 
 
+def effect_label(effect):
+    """'splice_donor_variant&intron_variant' -> 'splice donor + intron' (wraps, never cut)."""
+    e = str(effect or '').strip()
+    if e in ('', '.', '-'):
+        return '-'
+    parts = [p.replace('_variant', '').replace('_', ' ') for p in e.split('&') if p]
+    return ' + '.join(dict.fromkeys(parts))
+
+
 def safe_float(val, default=None):
     """Return float or default if conversion fails."""
     try:
@@ -423,7 +420,8 @@ def read_tsv(path):
 # ACMG classification — delegates to bin/acmg_shared.py (single source of truth)
 # ---------------------------------------------------------------------------
 from cnv_shared import ascat_alerts, ploidy_note  # noqa: E402  (filters.ascat report alerts)
-from report_shared import (ANALYSES, unavailable_text, kpi_value,  # noqa: E402
+from report_shared import (ANALYSES, unavailable_text, kpi_value, fmt_hrd_prob,  # noqa: E402
+                           ACTIONABLE_TIERS, trial_queries, clinical_trials,
                            tool_label, pipeline_label, sarek_label, version_rows)
 from acmg_shared import (
     acmg_criteria_list as _acmg_criteria_list_shared,
@@ -767,7 +765,7 @@ def build_cover_page(args, metrics, story):
             _msi_st = {'MSI-H': T('msi_detected'), 'MSI borderline': T('msi_border')}.get(_st, T('msi_not_det'))
             _msi_disp_pdf = _msi_st + '<br/>' + str(_msi_raw_pdf) + '%'
 
-    _hrd_prob_disp = _indet if is_low_cov else _fmt_hrd_prob(metrics.get('hrd_prob', 'NA'))
+    _hrd_prob_disp = _indet if is_low_cov else fmt_hrd_prob(metrics.get('hrd_prob', 'NA'))
 
     global_kpis = [
         (T('kpi_tmb'),      _indet if is_low_cov else kpi_value('tmb', metrics.get('tmb', 'N/A'))),
@@ -836,8 +834,7 @@ def build_cover_page(args, metrics, story):
 # Secondary Biomarkers + Disclaimer + PageBreak  (end of page 1)
 # ---------------------------------------------------------------------------
 def build_secondary_biomarkers(metrics, story):
-    """Append Secondary Biomarkers section and Disclaimer."""
-    story.append(PageBreak())
+    """Append Secondary Biomarkers (page 1, after the global biomarkers)."""
     story.append(Paragraph(T('sect_secondary_bm'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
@@ -849,16 +846,14 @@ def build_secondary_biomarkers(metrics, story):
                           + (' (WGD)' if str(metrics.get('wgd', '')).strip() in ('1', 'True', 'TRUE') else '')),
     ]
     story.append(_build_kpi_table(secondary_kpis, ncols=4))
-    story.append(Spacer(1, 0.5 * cm))
-    story.append(Paragraph(T('disclaimer'), STYLE_DISCLAIMER))
+    story.append(Spacer(1, 0.4 * cm))
 
 
 # ---------------------------------------------------------------------------
 # Genomic Quality Metrics page
 # ---------------------------------------------------------------------------
 def build_quality_metrics_page(metrics, story):
-    """Append Genomic Quality Metrics section (Purity + Coverage)."""
-    story.append(PageBreak())
+    """Append Genomic Quality Metrics (page 1, after the secondary biomarkers)."""
     story.append(Paragraph(T('sect_quality'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
@@ -959,7 +954,8 @@ def build_variant_table(col_headers, col_widths, data_rows, colour_col_idx=None,
 # ---------------------------------------------------------------------------
 def build_germline_section(germline_variants, story):
     """Append germline SNV section flowables to story."""
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('sect_germline'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
@@ -1074,15 +1070,15 @@ def _somatic_row(v, include_civic=False):
     if v.get('_TRACK') == 'TSO500':   # pan-tumor track gene (outside the core panel)
         gene = Paragraph(f'{xml_escape(gene)}<br/><font size="5" color="#64748b">TSO500</font>', STYLE_CELL)
     hgvsc, hgvsp = _hgvs_cells(v, 32, 28)
-    effect = trunc(v.get('ANN[*].EFFECT', '-'), 22)
-    af_raw = v.get('GEN[1].AF', v.get('GEN[1].AD', '-'))
-    try:
-        af_val = float(str(af_raw).split(',')[0])
-        af_str = f'{af_val:.3f}'
-        low_vaf = af_val < 0.05
-    except (ValueError, TypeError):
-        af_str = trunc(af_raw, 8)
-        low_vaf = False
+    effect = effect_label(v.get('ANN[*].EFFECT', '-'))
+    # VAF: FORMAT AF of the tumor; without it, ALT / (REF + ALT) from AD (never the REF count)
+    af_val = safe_float(str(v.get('GEN[1].AF') or '').split(',')[0])
+    if af_val is None:
+        _ad = [safe_float(x) for x in str(v.get('GEN[1].AD') or '').split(',')]
+        if len(_ad) >= 2 and None not in _ad and sum(_ad) > 0:
+            af_val = sum(_ad[1:]) / sum(_ad)
+    af_str  = '-' if af_val is None else f'{af_val:.3f}'
+    low_vaf = af_val is not None and af_val < 0.05
     # VAF cell with low-VAF warning
     if low_vaf:
         vaf_cell = Paragraph(
@@ -1105,8 +1101,8 @@ def _somatic_row(v, include_civic=False):
     gnomad = Paragraph(xml_escape(gnomad_display(lambda k: (v.get(k) or '').strip()))
                        .replace(' / ', '<br/>'), STYLE_CELL)
     if include_civic:
-        disease = trunc(civic.get('disease') or '-', 30)
-        therapy = trunc(_amp.therapy_cell(civic) or '-', 34)
+        disease = xml_escape(civic.get('disease') or '-')
+        therapy = xml_escape(_amp.therapy_cell(civic) or '-')
         evid    = trunc(civic.get('level') or '-', 3)
         return [gene, hgvsc, hgvsp, effect, vaf_cell, gnomad, callers_cell, evid, disease, therapy, tier]
     return [gene, hgvsc, hgvsp, effect, vaf_cell, gnomad, callers_cell, tier]
@@ -1167,7 +1163,8 @@ def build_somatic_section(somatic_variants, story, gene_ctx=None, pop_variants=N
     """Append somatic SNV section: CIViC actionable table + other variants table
     + Tier IV population polymorphisms (pop_variants) + pan-tumor TSO500 Tier III
     (tso500_vus). somatic_variants may hold TSO500 Tier I/II (v['_TRACK'])."""
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('sect_somatic'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
     pop_variants = pop_variants or []
@@ -1573,7 +1570,8 @@ _SIG_AETIOLOGY = {
 
 def build_mutational_signatures_section(args, story):
     """Mutational Signatures section: detected-signature summary table + spectrum plots."""
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('sect_mutsig'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
@@ -1621,24 +1619,30 @@ def build_mutational_signatures_section(args, story):
         tbl = build_variant_table(col_headers, col_widths, rows_data)
         story.append(tbl)
         story.append(Spacer(1, 0.3 * cm))
-        n_total = sum(a for _, a in sbs_activities) + sum(a for _, a in id_activities)
+        n_sbs = sum(a for _, a in sbs_activities)
+        n_id  = sum(a for _, a in id_activities)
         story.append(Paragraph(
             f'<font size="7" color="#64748b">'
-            f'{len(sbs_activities) + len(id_activities)} signature(s) detected '
-            f'({len(sbs_activities)} SBS, {len(id_activities)} ID) — '
-            f'{n_total} total mutations attributed. '
+            f'{len(sbs_activities) + len(id_activities)} signature(s) assigned — '
+            f'SBS: {len(sbs_activities)} signature(s), {n_sbs} mutations; '
+            f'ID: {len(id_activities)} signature(s), {n_id} indels. '
             f'COSMIC v3.4 reference signatures.</font>',
             styles['Normal'],
         ))
     else:
         story.append(Paragraph(
-            'No mutational signatures detected above threshold.', STYLE_WARN))
+            'No COSMIC signature assigned by SigProfilerAssignment.', STYLE_WARN))
 
     story.append(Spacer(1, 0.4 * cm))
     if sig_sbs96 and os.path.isfile(sig_sbs96):
         build_signature_plots_pdf(sig_sbs96, 'SBS96', story)
     if sig_id and os.path.isfile(sig_id):
         build_signature_plots_pdf(sig_id, 'ID', story)
+
+
+def _conf_colour(conf):
+    """CNV call confidence badge: HIGH blue, MODERATE grey (the same in the HTML report)."""
+    return colors.HexColor('#1d4ed8') if str(conf) == 'HIGH' else colors.HexColor('#6b7280')
 
 
 def _load_cnv_panel(path):
@@ -1670,7 +1674,8 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
                                germline_snv_path='', somatic_snv_path='',
                                is_low_cov=False, second_hit_snv_path='', ploidy_text=''):
     # Unified somatic CNV section: HOMDEL, AMP, LOH
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('sect_som_cnv'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
@@ -1735,18 +1740,17 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
         rows_d = []
         for r in data['homdel']:
             cn_s_str = str(r['cn_s']) if r['cn_s'] != '' else '\u2014'
-            conf_c   = '#16a34a' if r['conf'] == 'HIGH' else '#6b7280'
             rows_d.append([
                 f"<b>{r['gene']}</b>",
                 r['chrom'],
                 '<font color="#ef4444"><b>0</b></font>',
                 cn_s_str,
                 r['tools'],
-                f'<font color="{conf_c}">{r["conf"]}</font>',
+                r['conf'],
             ])
         story.append(build_variant_table(hdrs, wids, rows_d,
                                           colour_col_idx=5,
-                                          colour_fn=lambda v: C_HIGH if 'HIGH' in str(v) else C_MOD))
+                                          colour_fn=_conf_colour))
     else:
         story.append(Paragraph(
             'No homozygous deletions detected in the somatic panel.', note_s))
@@ -1763,18 +1767,17 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
         rows_a = []
         for r in amp_sorted:
             cn_s_str = str(r['cn_s']) if r['cn_s'] != '' else '\u2014'
-            conf_c   = '#16a34a' if r['conf'] == 'HIGH' else '#6b7280'
             rows_a.append([
                 f"<b>{r['gene']}</b>",
                 r['chrom'],
                 f'<font color="#f97316"><b>{r["cn_p"]}</b></font>',
                 cn_s_str,
                 r['tools'],
-                f'<font color="{conf_c}">{r["conf"]}</font>',
+                r['conf'],
             ])
         story.append(build_variant_table(hdrs, wids, rows_a,
                                           colour_col_idx=5,
-                                          colour_fn=lambda v: C_HIGH if 'HIGH' in str(v) else C_MOD))
+                                          colour_fn=_conf_colour))
     else:
         story.append(Paragraph(
             f'No amplifications (CN \u2265 {amp_threshold}) detected in the somatic panel.', note_s))
@@ -1792,7 +1795,6 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
             cn_p_str = str(r['cn_p']) if r['cn_p'] != '' else '\u2014'
             cn_s_str = str(r['cn_s']) if r['cn_s'] != '' else '\u2014'
             loh_c    = loh_colors.get(r['loh_type'], '#7c3aed')
-            conf_c   = '#16a34a' if r['conf'] == 'HIGH' else '#6b7280'
             rows_l.append([
                 f"<b>{r['gene']}</b>",
                 r['chrom'],
@@ -1800,11 +1802,11 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
                 cn_p_str,
                 cn_s_str,
                 r['tools'],
-                f'<font color="{conf_c}">{r["conf"]}</font>',
+                r['conf'],
             ])
         story.append(build_variant_table(hdrs, wids, rows_l,
                                           colour_col_idx=6,
-                                          colour_fn=lambda v: C_HIGH if 'HIGH' in str(v) else C_MOD))
+                                          colour_fn=_conf_colour))
     else:
         story.append(Paragraph(
             'No LOH events in germline panel genes with a germline P/LP or somatic variant.'
@@ -1832,7 +1834,8 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
     Segments with LOWMAP_SEG >= FILT_GERMLINE_CNV_LOWMAP_FRAC (pseudogenes / paralogs)
     go to a separate table, never to the main one.
     """
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('sect_germ_cnv'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
     MIN_QA = FILT_GERMLINE_CNV_MIN_QA
@@ -2023,7 +2026,8 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
 def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, story,
                                      germline_panel_path='', somatic_panel_path=''):
     # Per-gene mean coverage as justified grid: gene name + colored value, two subsections.
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('sect_seqq'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
@@ -2188,7 +2192,8 @@ def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, st
 
 
 def build_correlation_section(corr_data, story):
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('sect_correlation'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
@@ -2197,7 +2202,7 @@ def build_correlation_section(corr_data, story):
 
     if not corr_data or (not results and not biallelic_somatic):
         story.append(Paragraph(
-            'No germline P/LP/VUS variants or somatic biallelic events available '
+            'No germline P/LP variants or somatic biallelic events available '
             'for correlation analysis.',
             STYLE_WARN))
         return
@@ -2209,14 +2214,14 @@ def build_correlation_section(corr_data, story):
     _na    = lambda v, nd: 'NA' if v is None else str(round(float(v), nd))   # None = not available
     tmb_s  = _na(metrics.get('tmb'), 1)
     msi_s  = _na(metrics.get('msi'), 1)
-    hrd_s  = _na(metrics.get('hrd_prob'), 4)
+    hrd_s  = 'NA' if metrics.get('hrd_prob') is None else fmt_hrd_prob(metrics.get('hrd_prob'))
     mmr_found = [s for s in detected_sigs if s in SIG_MMR_SBS_SET]
     hrd_found = [s for s in detected_sigs if s in SIG_HRD_SBS_SET]
     _msi_corr_status = msi_status(metrics.get('msi'))
     bio_line = (
         'Global biomarkers:  TMB=' + tmb_s + ('' if tmb_s == 'NA' else ' mut/Mb')
         + '  |  MSI=' + (msi_s + '% (' + _msi_corr_status + ')' if msi_s != 'NA' else 'NA')
-        + '  |  HRD prob=' + hrd_s
+        + '  |  HRD probability ' + hrd_s
         + '  |  MMR signatures: ' + (', '.join(mmr_found) if mmr_found else _sig_none(corr_data, 'sbs'))
         + '  |  HRD signatures: ' + (', '.join(hrd_found) if hrd_found else _sig_none(corr_data, 'sbs'))
     )
@@ -2227,7 +2232,7 @@ def build_correlation_section(corr_data, story):
     # Column headers — use full USABLE_W for better readability
     col_headers = ['Gene', 'Germline variant', 'ACMG', 'Pathway',
                    'Somatic 2nd hit', 'Biomarkers', 'Interpretation']
-    col_widths   = [1.3*cm, 4.0*cm, 0.9*cm, 1.4*cm, 4.2*cm, 4.2*cm, 3.0*cm]
+    col_widths   = [1.3*cm, 3.7*cm, 1.2*cm, 1.4*cm, 4.2*cm, 4.2*cm, 3.0*cm]
 
     header_style = ParagraphStyle('ch', fontSize=6.5, fontName='Helvetica-Bold',
                                   textColor=colors.white, leading=8)
@@ -2301,18 +2306,22 @@ def build_correlation_section(corr_data, story):
 
         table_data.append([gene_p, var_p, acmg_p, pw_p, hits_p, bm_p, interp_p])
 
-    tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
-    tbl.setStyle(TableStyle([
-        ('BACKGROUND',   (0, 0), (-1, 0),  C_SLATE),
-        ('TEXTCOLOR',    (0, 0), (-1, 0),  colors.white),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, C_ROW_ALT]),
-        ('GRID',         (0, 0), (-1, -1), 0.4, colors.HexColor('#e2e8f0')),
-        ('VALIGN',       (0, 0), (-1, -1), 'TOP'),
-        ('LEFTPADDING',  (0, 0), (-1, -1), 4),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ('TOPPADDING',   (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING',(0, 0), (-1, -1), 3),
-    ]))
+    if results:
+        tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ('BACKGROUND',   (0, 0), (-1, 0),  C_SLATE),
+            ('TEXTCOLOR',    (0, 0), (-1, 0),  colors.white),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, C_ROW_ALT]),
+            ('GRID',         (0, 0), (-1, -1), 0.4, colors.HexColor('#e2e8f0')),
+            ('VALIGN',       (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING',  (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING',   (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING',(0, 0), (-1, -1), 3),
+        ]))
+    else:
+        tbl = Paragraph('No germline P/LP variant in the panel genes: no germline\u2013somatic '
+                        'correlation rows. Somatic biallelic events are listed below.', STYLE_WARN)
     story.append(tbl)
     story.append(Spacer(1, 0.3 * cm))
     story.append(Paragraph(
@@ -2351,19 +2360,15 @@ def build_correlation_section(corr_data, story):
 
         sb_data = [[Paragraph(h, sb_header_style) for h in sb_col_headers]]
         pw_colors_pdf = {'MMR': '#6366f1', 'HRR': '#0ea5e9', 'Other TSG': '#8b5cf6'}
-        def _trunc_sb(s, n=55):
-            s = str(s or '')
-            return s if len(s) <= n else s[:n-1] + '\u2026'
-
         for b in biallelic_somatic:
             pw_hex = pw_colors_pdf.get(b['pathway'], '#8b5cf6')
             sb_data.append([
                 Paragraph('<b>' + b['gene'] + '</b>', sb_cell_style),
                 Paragraph('<font color="' + pw_hex + '"><b>' + b['pathway'] + '</b></font>',
                           sb_cell_style),
-                Paragraph('\u25a0 ' + _trunc_sb(b['snv_label'], 38), sb_cell_style),
-                Paragraph('\u25b3 ' + _trunc_sb(b['cnv_label'], 38), sb_cell_style),
-                Paragraph(_trunc_sb(b['mechanism'], 110), sb_cell_style),
+                Paragraph('\u25a0 ' + xml_escape(b['snv_label'] or ''), sb_cell_style),
+                Paragraph('\u25b3 ' + xml_escape(b['cnv_label'] or ''), sb_cell_style),
+                Paragraph(xml_escape(b['mechanism'] or ''), sb_cell_style),
             ])
 
         sb_tbl = Table(sb_data, colWidths=sb_col_widths, repeatRows=1)
@@ -2392,7 +2397,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
                                   corr_data, story, second_hit_variants=None):
     """Append Major Clinical Findings section. second_hit_variants (second-hit
     track) only add somatic hits in genes with a germline P/LP variant."""
-    story.append(PageBreak())
+    story.append(CondPageBreak(6 * cm))
     story.append(Paragraph(T('sect_major_finds'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=6))
 
@@ -2693,7 +2698,8 @@ C_PGX_ROW_N    = colors.HexColor('#f0fdf4')
 
 def build_pharmaco_section(pharmaco_path, story):
     """Pharmacogenomics section: CPIC rsID → phenotype → dose-modification table."""
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph('Pharmacogenomics (PGx) — CPIC Dose Recommendations',
                             ParagraphStyle('SH', parent=getSampleStyleSheet()['Normal'],
                                            fontSize=13, fontName='Helvetica-Bold',
@@ -2724,10 +2730,10 @@ def build_pharmaco_section(pharmaco_path, story):
                               fontSize=7, fontName='Helvetica-Bold', textColor=C_WHITE)
     STYLE_C = ParagraphStyle('PGC', parent=getSampleStyleSheet()['Normal'],
                               fontSize=7, fontName='Helvetica', textColor=C_TEXT,
-                              leading=9, wordWrap='CJK')
+                              leading=9)
     STYLE_SM = ParagraphStyle('PGSM', parent=getSampleStyleSheet()['Normal'],
                                fontSize=6.5, fontName='Helvetica', textColor=C_TEXT,
-                               leading=8, wordWrap='CJK')
+                               leading=8)
 
     if cpic_rows:
         col_headers = ['Gene', 'rsID', 'Allele / Variant', 'Genotype', 'Phenotype', 'Activity\nScore', 'Drugs Affected', 'CPIC Recommendation']
@@ -2804,47 +2810,10 @@ def build_pharmaco_section(pharmaco_path, story):
 # ---------------------------------------------------------------------------
 # Clinical Trials section
 # ---------------------------------------------------------------------------
-def _query_clinical_trials(gene, max_results=3):
-    """Query ClinicalTrials.gov API v2. Returns list of trial dicts or []."""
-    import urllib.request
-    import urllib.parse
-    import json as _json
-    try:
-        params = urllib.parse.urlencode({
-            'query.term': f'{gene} cancer',
-            'filter.overallStatus': 'RECRUITING',
-            'fields': 'NCTId,BriefTitle,Phase,OverallStatus,Condition,StartDate',
-            'pageSize': max_results,
-            'format': 'json',
-        })
-        url = f'https://clinicaltrials.gov/api/v2/studies?{params}'
-        req = urllib.request.Request(url, headers={'User-Agent': 'nf-sarek-clinical/1.0'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            data = _json.loads(resp.read().decode('utf-8'))
-        studies = data.get('studies', [])
-        results = []
-        for s in studies:
-            proto = s.get('protocolSection', {})
-            id_mod = proto.get('identificationModule', {})
-            stat_mod = proto.get('statusModule', {})
-            design_mod = proto.get('designModule', {})
-            cond_mod = proto.get('conditionsModule', {})
-            nct  = id_mod.get('nctId', '')
-            title = id_mod.get('briefTitle', '')
-            phase = ', '.join(design_mod.get('phases', [])) or 'N/A'
-            status = stat_mod.get('overallStatus', '')
-            conds  = ', '.join(cond_mod.get('conditions', [])[:2])
-            start  = (stat_mod.get('startDateStruct', {}) or {}).get('date', '')
-            results.append({'nct': nct, 'title': title, 'phase': phase,
-                            'status': status, 'conditions': conds, 'start': start})
-        return results
-    except Exception:
-        return None  # None = API unavailable; [] = no results
-
-
-def build_clinical_trials_section(corr_data, tmb_val, msi_val, hrd_status, story):
+def build_clinical_trials_section(corr_data, tmb_val, msi_val, hrd_status, story, somatic_variants=None):
     """Clinical Trials section: query ClinicalTrials.gov for relevant recruiting trials."""
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph('Clinical Trials — Relevant Recruiting Studies',
                             ParagraphStyle('SH', parent=getSampleStyleSheet()['Normal'],
                                            fontSize=13, fontName='Helvetica-Bold',
@@ -2857,60 +2826,31 @@ def build_clinical_trials_section(corr_data, tmb_val, msi_val, hrd_status, story
                                fontSize=7, fontName='Helvetica', textColor=C_TEXT, leading=9)
     STYLE_SM = ParagraphStyle('CTSM', parent=getSampleStyleSheet()['Normal'],
                                fontSize=6.5, fontName='Helvetica', textColor=C_TEXT,
-                               leading=8, wordWrap='CJK')
+                               leading=8)
 
-    # Determine genes/biomarkers to query
-    query_genes = []
-    if corr_data:
-        for r in corr_data.get('results', []):
-            if r.get('acmg') in ('P', 'LP'):
-                g = r.get('gene', '')
-                if g and g not in query_genes:
-                    query_genes.append(g)
-        for r in corr_data.get('biallelic_somatic', []):
-            g = r.get('gene', '')
-            if g and g not in query_genes:
-                query_genes.append(g)
-    # Biomarker queries
-    try:
-        if float(str(tmb_val).replace('NA','0') or '0') >= 10:
-            query_genes.append('TMB-H pembrolizumab')
-    except (ValueError, TypeError):
-        pass
-    try:
-        if msi_status(msi_val) == 'MSI-H':
-            query_genes.append('microsatellite instability MSI-H')
-    except (ValueError, TypeError):
-        pass
-    if str(hrd_status) == 'HRD+':
-        query_genes.append('BRCA homologous recombination deficiency PARP inhibitor')
-
-    if not query_genes:
+    # One query plan for both reports (report_shared.trial_queries)
+    _msi_st = msi_status(msi_val)
+    actionable = [v.get('ANN[*].GENE', '') for v in (somatic_variants or [])
+                  if v.get('_AMP_TIER') in ACTIONABLE_TIERS]
+    queries = trial_queries(corr_data, actionable, tmb_val, _msi_st, hrd_status, TUMOR_LABEL)
+    if not queries:
         story.append(Paragraph(
             'No reportable germline/somatic variants or elevated biomarkers identified '
             'to drive clinical trial queries.',
             ParagraphStyle('Warn', parent=getSampleStyleSheet()['Normal'],
                            fontSize=8, textColor=C_SLATE)))
         return
-
-    all_trials = []
-    api_ok = True
-    for g in query_genes[:4]:   # limit to 4 queries to avoid latency
-        res = _query_clinical_trials(g, max_results=3)
-        if res is None:
-            api_ok = False
-            break
-        for t in res:
-            if t['nct'] not in {x['nct'] for x in all_trials}:
-                t['query'] = g
-                all_trials.append(t)
+    ct_res     = clinical_trials(queries, _msi_st)
+    all_trials = ct_res['trials']
+    api_ok     = ct_res['error'] is None or bool(all_trials)
+    query_genes = [q[0] for q in queries]
 
     if not api_ok:
         callout_data = [[Paragraph(
             '<b>ClinicalTrials.gov API Unavailable</b><br/>'
-            'Could not connect to ClinicalTrials.gov at report generation time (network timeout). '
+            f'Could not connect to ClinicalTrials.gov on {ct_res["date"]} (no network or API down). '
             'Please search manually at clinicaltrials.gov for recruiting studies involving: '
-            + ', '.join(query_genes[:4]),
+            + xml_escape('; '.join(query_genes)),
             ParagraphStyle('CWarn', parent=getSampleStyleSheet()['Normal'],
                            fontSize=8, textColor=colors.HexColor('#7c2d12'), leading=11))]]
         ct = Table(callout_data, colWidths=[USABLE_W])
@@ -2933,19 +2873,19 @@ def build_clinical_trials_section(corr_data, tmb_val, msi_val, hrd_status, story
                            fontSize=8, textColor=C_SLATE)))
         return
 
-    col_headers = ['NCT ID', 'Trial Title', 'Phase', 'Status', 'Condition(s)', 'Start Date', 'Query Gene/Biomarker']
+    col_headers = ['NCT ID', 'Trial Title', 'Phase', 'Status', 'Condition(s)', 'Start Date', 'Query (finding · condition)']
     col_widths  = [60, 180, 45, 60, 80, 50, 78]  # sum=553
 
     tbl_data = [[Paragraph(h, STYLE_H) for h in col_headers]]
     for t in all_trials:
         tbl_data.append([
             Paragraph(t['nct'], STYLE_C),
-            Paragraph(t['title'], STYLE_SM),
+            Paragraph(xml_escape(t['title']), STYLE_SM),
             Paragraph(t['phase'], STYLE_C),
             Paragraph(t['status'], STYLE_C),
-            Paragraph(t['conditions'], STYLE_SM),
+            Paragraph(xml_escape(t['conds']), STYLE_SM),
             Paragraph(t['start'], STYLE_C),
-            Paragraph(t['query'], STYLE_SM),
+            Paragraph(xml_escape(t['query']), STYLE_SM),
         ])
 
     tbl = Table(tbl_data, colWidths=col_widths, repeatRows=1)
@@ -2958,9 +2898,11 @@ def build_clinical_trials_section(corr_data, tmb_val, msi_val, hrd_status, story
     story.append(tbl)
     story.append(Spacer(1, 6))
     story.append(Paragraph(
-        '<i>Trials sourced from ClinicalTrials.gov at report generation date. '
-        'Eligibility criteria must be verified at clinicaltrials.gov before referral. '
-        'Only RECRUITING status trials shown. Queries limited to primary actionable findings.</i>',
+        f'<i>ClinicalTrials.gov queried on {ct_res["date"]} (results change over time): actionable '
+        'somatic genes (AMP Tier I/II), genes of the germline\u2013somatic findings and biomarkers, with '
+        'the tumor type as condition; MSI-H and TMB-H also in any solid tumor; trials restricted to the '
+        'opposite MSI status are not shown. Only RECRUITING trials, up to 3 per query. Eligibility '
+        'must be verified at clinicaltrials.gov before referral.</i>',
         ParagraphStyle('Note', parent=getSampleStyleSheet()['Normal'],
                        fontSize=6.5, fontName='Helvetica-Oblique',
                        textColor=colors.HexColor('#64748b'), leading=8)))
@@ -2971,7 +2913,8 @@ def build_clinical_trials_section(corr_data, tmb_val, msi_val, hrd_status, story
 # ---------------------------------------------------------------------------
 def build_methodology_section(story):
     """Final methodology section documenting all callers, tools and calculations."""
-    story.append(PageBreak())
+    story.append(CondPageBreak(7 * cm))
+    story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph('Test Methodology',
                             ParagraphStyle('SH', parent=getSampleStyleSheet()['Normal'],
                                            fontSize=13, fontName='Helvetica-Bold',
@@ -2988,7 +2931,7 @@ def build_methodology_section(story):
                                 fontSize=7, fontName='Helvetica-Bold', textColor=C_WHITE)
     STYLE_TC   = ParagraphStyle('MTC', parent=getSampleStyleSheet()['Normal'],
                                 fontSize=7, fontName='Helvetica', textColor=C_TEXT,
-                                leading=9, wordWrap='CJK')
+                                leading=9)
 
     # ── Overview table ────────────────────────────────────────────────────────
     story.append(Paragraph('Bioinformatics Pipeline Overview', STYLE_SUB))
@@ -3356,11 +3299,17 @@ def main():
     story = []
     # Each section starts on a new page (leading PageBreak inside each build_* function).
     # Cover page is always page 1 (no leading PageBreak).
+    # Page 1: identification, every biomarker and the QC alerts, then the major
+    # findings and the disclaimer; the detailed results start on the next page
+    # and flow (a section starts a new page only when little space is left).
     build_cover_page(args, metrics, story)
-    build_major_findings_section(args, metrics, germline_variants, somatic_variants,
-                                  corr_data, story, second_hit_variants=second_hit_variants)
     build_secondary_biomarkers(metrics, story)
     build_quality_metrics_page(metrics, story)
+    build_major_findings_section(args, metrics, germline_variants, somatic_variants,
+                                  corr_data, story, second_hit_variants=second_hit_variants)
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(Paragraph(T('disclaimer'), STYLE_DISCLAIMER))
+    story.append(PageBreak())
     if not section_unavailable('germline_snv', [args.germline], story):
         build_germline_section(germline_variants, story)
     if not section_unavailable('germline_cnv', [args.cnv_germline_gatk], story):
@@ -3390,7 +3339,8 @@ def main():
         build_pharmaco_section(getattr(args, 'pharmaco', '') or '', story)
     # Clinical Trials — recruiting studies for identified variants/biomarkers
     build_clinical_trials_section(corr_data, metrics.get('tmb', 'NA'),
-                                   metrics.get('msi', 'NA'), metrics.get('hrd_status', 'NA'), story)
+                                   metrics.get('msi', 'NA'), metrics.get('hrd_status', 'NA'), story,
+                                   somatic_variants=somatic_variants)
     # Sequencing Quality
     if not section_unavailable('coverage', [args.gene_cov_n, args.gene_cov_t], story):
         build_sequencing_quality_section(
