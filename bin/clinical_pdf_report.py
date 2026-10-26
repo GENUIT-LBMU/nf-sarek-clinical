@@ -1644,34 +1644,6 @@ def _load_cnv_panel(path):
 # ---------------------------------------------------------------------------
 # LOH filter helpers
 # ---------------------------------------------------------------------------
-def _germline_plp_genes(path):
-    """Return set of gene names (uppercase) with ACMG P or LP classification."""
-    genes = set()
-    if not path or not os.path.isfile(path):
-        return genes
-    _, rows = read_tsv(path)
-    for row in rows:
-        cls = classify_acmg(row)
-        if cls in ('P', 'LP'):
-            gene = (row.get('ANN[*].GENE') or '').strip().upper()
-            if gene:
-                genes.add(gene)
-    return genes
-
-
-def _somatic_variant_genes(path):
-    """Return set of gene names (uppercase) present in somatic variant TSV."""
-    genes = set()
-    if not path or not os.path.isfile(path):
-        return genes
-    _, rows = read_tsv(path)
-    for row in rows:
-        gene = (row.get('ANN[*].GENE') or '').strip().upper()
-        if gene and not _amp.population_common(row.get):   # Tier IV: not somatic
-            genes.add(gene)
-    return genes
-
-
 def _harmonize_cnv_pdf(ascat_cnvkit_path, gatk_somatic_path,
                        somatic_panel_path, germline_panel_path, amp_threshold=5):
     # Single implementation in bin/cnv_shared.py (shared with the HTML report)
@@ -1684,7 +1656,7 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
                                somatic_panel_path, germline_panel_path, story,
                                amp_threshold=5,
                                germline_snv_path='', somatic_snv_path='',
-                               is_low_cov=False):
+                               is_low_cov=False, second_hit_snv_path=''):
     # Unified somatic CNV section: HOMDEL, AMP, LOH
     story.append(PageBreak())
     story.append(Paragraph(T('sect_som_cnv'), STYLE_H2))
@@ -1712,16 +1684,18 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
     data = _harmonize_cnv_pdf(ascat_cnvkit_path, gatk_somatic_path,
                                somatic_panel_path, germline_panel_path, amp_threshold)
 
-    # ── Filter LOH: only show if gene has germline P/LP or somatic variant ────
+    # ── LOH: only genes with a germline P/LP or a somatic variant (core panel or
+    #    second-hit track); the others are counted in a note (all in the HTML) ──
+    loh_hidden = []
     if germline_snv_path or somatic_snv_path:
-        plp_genes = _germline_plp_genes(germline_snv_path or '')
-        som_genes = _somatic_variant_genes(somatic_snv_path or '')
-        loh_before = len(data['loh'])
-        data['loh'] = [r for r in data['loh']
-                       if r['gene'] in plp_genes or r['gene'] in som_genes]
-        if loh_before != len(data['loh']):
-            print(f'[INFO] LOH filter: {loh_before} → {len(data["loh"])} events '
-                  f'(kept genes with germline P/LP or somatic variant)', file=sys.stderr)
+        from cnv_shared import loh_relevant_genes
+        relevant = loh_relevant_genes(germline_snv_path or '',
+                                      [somatic_snv_path or '', second_hit_snv_path or ''])
+        loh_hidden = sorted(r['gene'] for r in data['loh'] if r['gene'] not in relevant)
+        data['loh'] = [r for r in data['loh'] if r['gene'] in relevant]
+        if loh_hidden:
+            print(f'[INFO] LOH filter: {len(data["loh"])} shown, {len(loh_hidden)} without germline P/LP '
+                  f'or somatic variant not shown: {", ".join(loh_hidden)}', file=sys.stderr)
 
     note_s = ParagraphStyle('CnvNote', parent=styles['Normal'],
                              fontSize=6, textColor=colors.Color(0.6, 0.7, 0.8))
@@ -1817,7 +1791,13 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
                                           colour_fn=lambda v: C_HIGH if 'HIGH' in str(v) else C_MOD))
     else:
         story.append(Paragraph(
-            'No LOH events detected in the germline panel.', note_s))
+            'No LOH events in germline panel genes with a germline P/LP or somatic variant.'
+            if loh_hidden else 'No LOH events detected in the germline panel.', note_s))
+    if loh_hidden:
+        story.append(Paragraph(
+            f'{len(loh_hidden)} LOH event(s) in germline panel genes without a germline P/LP or somatic '
+            f'variant are not shown ({xml_escape(", ".join(loh_hidden))}); they are listed in the HTML '
+            f'report and the somatic CNV TSV.', note_s))
 
     n_total = len(data['homdel']) + len(data['amp']) + len(data['loh'])
     story.append(Paragraph(
@@ -3353,6 +3333,7 @@ def main():
         germline_snv_path=args.germline or '',
         somatic_snv_path=args.somatic or '',
         is_low_cov=metrics.get('is_low_cov', False),
+        second_hit_snv_path=args.somatic_second_hit or '',
     )
     build_correlation_section(corr_data, story)
     # Pharmacogenomics with CPIC dose recommendations

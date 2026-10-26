@@ -180,6 +180,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Somatic LOH in the PDF listed only the genes with a germline P/LP or somatic variant,
+  silently (1128: 1 LOH in the PDF, 4 in the HTML). The PDF keeps that clinical filter
+  and states the LOH not shown ("3 LOH event(s) … not shown (ALK, EPCAM, MSH6)"); the
+  filter also counts the somatic second-hit track (an LOH of FANCM with a somatic
+  FANCM variant was hidden); the HTML marks the LOH listed in the PDF ("2nd hit").
+  One rule: `cnv_shared.loh_relevant_genes()`.
 - One MSI-H threshold everywhere: `filters.biomarkers.msi_high` (3.5%, MSIsensor
   tumor-normal exome cut-off; borderline from `msi_borderline` 1.5%) for the
   correlation, PDF (cover, MMR card, biomarker line, trials, methodology) and HTML;

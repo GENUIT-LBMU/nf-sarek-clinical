@@ -112,3 +112,24 @@ def harmonize_cnv(ascat_cnvkit_path, gatk_somatic_path, somatic_panel_path,
     _order = {'HETDEL+LOH': 0, 'cnLOH': 1}
     loh_list.sort(key=lambda r: (_order.get(r['loh_type'], 2), r['gene']))
     return {'homdel': homdel_list, 'amp': amp_list, 'loh': loh_list}
+
+
+def loh_relevant_genes(germline_tsv='', somatic_tsvs=()):
+    """Genes whose LOH is clinically relevant: a germline ACMG P/LP variant, or a
+    somatic SNV (core panel or second-hit track TSVs; AMP Tier IV polymorphisms
+    excluded). The PDF lists only the LOH of these genes and the HTML marks them."""
+    from acmg_shared import acmg_class, getter_for_dict
+    genes = set()
+    if germline_tsv and os.path.isfile(germline_tsv):
+        with open(germline_tsv) as fh:
+            for row in csv.DictReader(fh, delimiter='\t'):
+                if acmg_class(getter_for_dict(row)) in ('P', 'LP'):
+                    genes.add((row.get('ANN[*].GENE') or '').strip().upper())
+    for path in somatic_tsvs:
+        if path and os.path.isfile(path):
+            with open(path) as fh:
+                for row in csv.DictReader(fh, delimiter='\t'):
+                    if (row.get('POP_COMMON') or '').strip() != '1':
+                        genes.add((row.get('ANN[*].GENE') or '').strip().upper())
+    genes.discard('')
+    return genes

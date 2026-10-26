@@ -288,6 +288,12 @@ def _harmonize_cnv(ascat_cnvkit_path, gatk_somatic_path):
     return harmonize_cnv(ascat_cnvkit_path, gatk_somatic_path,
                          _SOMATIC_38_PANEL, _GERMLINE_PANEL, _AMP_THRESHOLD)
 
+def _loh_relevant_genes(germline_tsv, somatic_tsvs):
+    import sys as _s
+    _s.path.insert(0, '${projectDir}/bin')
+    from cnv_shared import loh_relevant_genes
+    return loh_relevant_genes(germline_tsv, somatic_tsvs)
+
 def _conf_badge(c):
     if c == 'HIGH':
         return "<span class='badge badge-P' style='font-size:10px'>HIGH</span>"
@@ -304,7 +310,9 @@ def _loh_badge(lt):
     cls = colors.get(lt, 'badge-III')
     return "<span class='badge " + cls + "' style='font-size:10px'>" + html.escape(lt) + "</span>"
 
-def build_unified_cnv_html(ascat_cnvkit_path, gatk_somatic_path):
+def build_unified_cnv_html(ascat_cnvkit_path, gatk_somatic_path, loh_relevant=None):
+    # loh_relevant: genes with a germline P/LP or somatic variant (cnv_shared.loh_relevant_genes);
+    # their LOH is the one listed in the PDF, marked here
     data = _harmonize_cnv(ascat_cnvkit_path, gatk_somatic_path)
     out  = "<div class='cnv-unified'>"
 
@@ -359,8 +367,9 @@ def build_unified_cnv_html(ascat_cnvkit_path, gatk_somatic_path):
         out += ("<table><thead><tr>"
                 "<th>Gene</th><th>Chr</th><th>LOH Type</th>"
                 "<th>CN ASCAT</th><th>CN GATK</th>"
-                "<th>Tools</th><th>Confidence</th></tr></thead><tbody>")
+                "<th>Tools</th><th>Confidence</th><th>Clinical</th></tr></thead><tbody>")
         for r in data['loh']:
+            _rel = loh_relevant is not None and r['gene'] in loh_relevant
             out += ("<tr>"
                     "<td><b>" + html.escape(r['gene']) + "</b></td>"
                     "<td>" + html.escape(r['chrom']) + "</td>"
@@ -369,8 +378,12 @@ def build_unified_cnv_html(ascat_cnvkit_path, gatk_somatic_path):
                     "<td>" + (str(r['cn_s']) if r['cn_s'] != '' else '&mdash;') + "</td>"
                     "<td>" + _tools_html(r['tools']) + "</td>"
                     "<td>" + _conf_badge(r['conf']) + "</td>"
+                    "<td>" + ("<span class='badge badge-IB' title='Germline P/LP or somatic variant in the gene: listed in the PDF'>2nd hit</span>"
+                              if _rel else "&mdash;") + "</td>"
                     "</tr>")
         out += "</tbody></table>"
+        out += ("<p style='font-size:.75rem;color:#94a3b8;'>Clinical = gene with a germline P/LP or a somatic "
+                "variant (core panel or second-hit track): the LOH listed in the clinical PDF.</p>")
     else:
         out += "<p class='warn'>No LOH events detected in the germline panel.</p>"
 
@@ -381,6 +394,7 @@ files = {
     "Germline SNVs":       "\${SNV_GERMLINE}",
     "Somatic SNVs":        "\${SNV_SOMATIC}",
     "Somatic SNVs (TSO500)": "\${SNV_TSO500}",
+    "Somatic SNVs (second hit)": "\${SNV_SECOND_HIT}",
     "CIViC annotation (TSO500)": "\${CIVIC_TSO500}",
     "CIViC annotation":    "\${CIVIC_TSV}",
     "Somatic CNVs":        "\${CNV_SOMATIC}",
@@ -1051,7 +1065,7 @@ sections += "<section><h2>Germline SNVs</h2>" + tsv_to_html_germline(files['Germ
 sections += "<section><h2>Somatic SNVs</h2>" + tsv_to_html_somatic(files['Somatic SNVs'], civic_index, files['Somatic SNVs (TSO500)']) + "</section>\\n"
 
 # Remaining generic sections (skip gene coverage and handled tables)
-generic_skip = {'Germline SNVs', 'Somatic SNVs', 'CIViC annotation', 'Somatic SNVs (TSO500)', 'CIViC annotation (TSO500)',
+generic_skip = {'Germline SNVs', 'Somatic SNVs', 'CIViC annotation', 'Somatic SNVs (TSO500)', 'CIViC annotation (TSO500)', 'Somatic SNVs (second hit)',
                 'Somatic CNVs', 'Pharmacogenomics',
                 'Gene Coverage (N)', 'Gene Coverage (T)'}
 for title, path in files.items():
@@ -1104,7 +1118,9 @@ sections += '<section><h2>Germline&#8211;Somatic Correlation</h2>' + _corr_html 
 sections += "<section><h2>Germline CNVs (GATK) &#8212; deletions / duplications</h2>" + tsv_to_html_germline_cnv(cnv_germ_gatk, _load_panel(_GERMLINE_PANEL)) + "</section>\\n"
 # Somatic: unified HOMDEL / AMP / LOH from CNVkit+ASCAT+GATK
 sections += ("<section><h2>Somatic CNVs &#8212; Reportable Events</h2>"
-             + build_unified_cnv_html(files.get('Somatic CNVs', ''), cnv_som_gatk)
+             + build_unified_cnv_html(files.get('Somatic CNVs', ''), cnv_som_gatk,
+                                      _loh_relevant_genes(files.get('Germline SNVs', ''),
+                                                          [files.get('Somatic SNVs', ''), files.get('Somatic SNVs (second hit)', '')]))
              + "</section>\\n")
 
 # Clinical Trials -- ClinicalTrials.gov query for identified findings
