@@ -656,8 +656,8 @@ def render(m):
     sections += "<section><h2>Somatic SNVs</h2>" + (unavail(m, 'somatic_snv') or tsv_to_html_somatic(m)) + "</section>\n"
     sections += "<section><h2>TMB</h2>" + (unavail(m, 'tmb') or tsv_to_html(m['tables']['tmb'])) + "</section>\n"
     sections += "<section><h2>HRD Predictions</h2>" + (unavail(m, 'hrd') or tsv_to_html(m['tables']['hrd'])) + "</section>\n"
-    sections += ("<section><h2>Pharmacogenomics (PGx) &#8212; CPIC Dose Recommendations</h2>"
-                 + (unavail(m, 'pharmaco') or tsv_to_html_pharmaco(m['pharmaco'])) + "</section>\n")
+    sections += ("<section><h2>Pharmacogenomics (PGx) &#8212; Dose Recommendations</h2>"
+                 + (unavail(m, 'pharmaco') or tsv_to_html_pharmaco(m['pharmaco'], m.get('pharmaco_not_assessable') or [], m.get('pharmaco_assessed') or [])) + "</section>\n")
     sections += ("<section><h2>Sequencing Quality &#8212; Per-Gene Coverage</h2>"
                  + (unavail(m, 'coverage') or build_coverage_quality_html(m['coverage'], normal, tumor))
                  + "</section>\n")

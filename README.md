@@ -23,7 +23,7 @@ pipeline (clinical interpretation → reports).
 |---|---|
 | Germline SNVs / indels | 105-gene hereditary cancer panel; MANE Select nomenclature (snpEff MANE database, MANE Plus Clinical shown as secondary); local gnomAD v4.1 (AF, FAF95, grpmax), ClinVar (with review stars), REVEL v1.3, SpliceAI; ACMG/AMP 2015 with ClinGen SVI points, gene-specific ClinGen VCEP rules for 17 genes, PS1 / PM5 from ClinVar protein coordinates |
 | Germline CNVs | GATK gCNV in CASE mode against a laboratory cohort model; MANE exon annotation; low-mappability segments listed apart |
-| Pharmacogenomics | DPYD and UGT1A1 rsIDs with CPIC recommendations |
+| Pharmacogenomics | DPYD and UGT1A1 genotypes → phenotype from both alleles (DPYD activity score, CPIC 2017; UGT1A1 decreased-function alleles, DPWG for irinotecan) → dose recommendation; variants outside the capture reported as not assessable |
 | Somatic SNVs / indels | Mutect2 (report tables) and Mutect2 ∩ Strelka2 consensus (TMB, signatures, HRD); three gene tracks (core 60 genes, second-hit germline genes, TSO500 pan-tumor); AMP/ASCO/CAP tiers IA–IV from a frozen CIViC snapshot and the patient's tumor type; Tier IV for common gnomAD polymorphisms; TERT promoter assessability |
 | Somatic CNVs | ASCAT + CNVkit (from sarek) and GATK somatic CNV (with the ASCAT purity), harmonised: HOMDEL, AMP (CN ≥ 5), second-hit LOH in the germline panel |
 | Biomarkers | TMB (non-synonymous, capture ∩ MANE CDS), MSI (MSIsensor-pro), mutational signatures (SigProfilerAssignment, COSMIC v3.4 SBS / DBS / ID), HRD (HRProfiler), ASCAT purity / ploidy / WGD / LOH / GI with fit-quality alerts |
@@ -379,7 +379,16 @@ sarek output ─┬─ GERMLINE_POSTPROCESS ── germline SNVs (ACMG) + pharma
    alignment artefacts); then the ACMG classification of every candidate
    (`bin/acmg_shared.py`, see [ACMG points](#acmg-points)).
 6. `PHARMACO_FILTER` — DPYD / UGT1A1 rsIDs of `--pharmaco_variants` from the
-   HaplotypeCaller VCF; the report model matches them to the CPIC table.
+   HaplotypeCaller VCF. The report model counts the allele copies of each gene and
+   derives the phenotype: DPYD activity score = 2 − 1 per no-function copy (*2A, *13)
+   − 0.5 per decreased-function copy (c.2846A>T, HapB3), two variants of unknown phase
+   taken as on different alleles (CPIC 2017: 2 normal; 1–1.5 intermediate, start at 50%
+   and titrate; 0.5 / 0 poor, avoid); UGT1A1 decreased-function copies (*6, *28 / *37
+   repeat insertions; DPWG irinotecan: ≥ 2 poor, start at 70%; 1 intermediate, no
+   change). A genotyped variant outside `--panel_bed` is listed as not assessable
+   (Agilent S07604514 ends ~50 bp after the UGT1A1 *28 promoter repeat). Only these six
+   variants are genotyped; a recommendation must be confirmed by a clinical
+   pharmacologist.
 
 ### Germline CNVs
 

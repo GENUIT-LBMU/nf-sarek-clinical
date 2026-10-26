@@ -2422,16 +2422,16 @@ C_PGX_ROW_N    = colors.HexColor('#f0fdf4')
 
 
 def build_pharmaco_section(story):
-    """Pharmacogenomics section: CPIC rsID → phenotype → dose-modification table."""
+    """Pharmacogenomics: genotype → phenotype per gene → dose recommendation (report model)."""
     story.append(CondPageBreak(7 * cm))
     story.append(Spacer(1, 0.5 * cm))
-    story.append(Paragraph('Pharmacogenomics (PGx) — CPIC Dose Recommendations',
+    story.append(Paragraph('Pharmacogenomics (PGx) — Dose Recommendations',
                             ParagraphStyle('SH', parent=getSampleStyleSheet()['Normal'],
                                            fontSize=13, fontName='Helvetica-Bold',
                                            textColor=C_DARK_HEADER, spaceAfter=6)))
     story.append(HRFlowable(width='100%', thickness=1, color=C_ACCENT, spaceAfter=8))
 
-    cpic_rows = MODEL['pharmaco']   # CPIC matches (report_model.CPIC_TABLE)
+    cpic_rows = MODEL['pharmaco']   # genotype-based phenotype per gene (report_model.pharmaco)
 
     STYLE_H = ParagraphStyle('PGH', parent=getSampleStyleSheet()['Normal'],
                               fontSize=7, fontName='Helvetica-Bold', textColor=C_WHITE)
@@ -2443,8 +2443,8 @@ def build_pharmaco_section(story):
                                leading=8)
 
     if cpic_rows:
-        col_headers = ['Gene', 'rsID', 'Allele / Variant', 'Genotype', 'Phenotype', 'Activity\nScore', 'Drugs Affected', 'CPIC Recommendation']
-        col_widths  = [38, 55, 80, 42, 70, 35, 75, 158]  # sum=553
+        col_headers = ['Gene', 'rsID', 'Allele / Variant', 'Genotype', 'Phenotype', 'Activity score', 'Drugs Affected', 'Recommendation']
+        col_widths  = [38, 52, 76, 46, 68, 46, 72, 155]  # sum=553
 
         tbl_data = [[Paragraph(h, STYLE_H) for h in col_headers]]
         tbl_style = [
@@ -2463,7 +2463,8 @@ def build_pharmaco_section(story):
             gene_para = Paragraph(
                 f'<font color="{alert_color.hexval()}" size="8"><b>{r["gene"]}</b></font>',
                 STYLE_C)
-            recom_para = Paragraph(r['recommendation'], STYLE_SM)
+            recom_para = Paragraph(xml_escape(r['recommendation'])
+                                   + f'<br/><font size="5.5" color="#64748b">{xml_escape(r["guideline"])}</font>', STYLE_SM)
             tbl_data.append([
                 gene_para,
                 Paragraph(r['rsid'], STYLE_C),
@@ -2483,10 +2484,9 @@ def build_pharmaco_section(story):
         callout_data = [[
             Paragraph(
                 '<b>No Actionable Pharmacogenomic Variants Detected</b><br/>'
-                'The pharmacogenomics panel (DPYD, UGT1A1) '
-                'did not identify any germline variants with CPIC actionable dosing recommendations. '
-                'Standard dosing for fluoropyrimidines and irinotecan '
-                'is indicated based on pharmacogenomic genotyping.',
+                'None of the assessed variants (' + xml_escape(', '.join(MODEL.get('pharmaco_assessed') or [])) + ') '
+                'was found: normal metabolizer for these variants, standard dosing from the '
+                'pharmacogenomic point of view. Other variants of these genes are not tested.',
                 ParagraphStyle('Callout', parent=getSampleStyleSheet()['Normal'],
                                fontSize=8, fontName='Helvetica', textColor=colors.HexColor('#1e3a8a'),
                                leading=11))
@@ -2504,11 +2504,17 @@ def build_pharmaco_section(story):
         ]))
         story.append(callout_t)
 
+    # Genotyped variants outside the capture: absence is not a normal result there
+    _na = MODEL.get('pharmaco_not_assessable') or []
+    if _na:
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(
+            '<b>Not assessable (outside the capture regions of this assay):</b> ' + xml_escape(', '.join(_na))
+            + '. The phenotype of the gene is based on its other variants and may be underestimated '
+            '(e.g. UGT1A1 *28 requires a dedicated assay).', STYLE_WARN))
     story.append(Spacer(1, 6))
     story.append(Paragraph(
-        '<i>CPIC = Clinical Pharmacogenomics Implementation Consortium. '
-        'Recommendations based on CPIC guidelines for DPYD (2017) and UGT1A1 (2014). '
-        'rsID lookup against PharmGKB / CPIC variant annotations.</i>',
+        '<i>Phenotype from both alleles of each gene: DPYD activity score (no-function allele -1, decreased-function allele -0.5; two variants of unknown phase taken as on different alleles), CPIC 2017 for fluoropyrimidines; UGT1A1 decreased-function alleles (*28, *6), DPWG for irinotecan. Only the listed variants are genotyped (DPYD *2A, *13, c.2846A>T, HapB3; UGT1A1 *28, *6); a recommendation must be confirmed by a clinical pharmacologist.</i>',
         ParagraphStyle('Note', parent=getSampleStyleSheet()['Normal'],
                        fontSize=6.5, fontName='Helvetica-Oblique',
                        textColor=colors.HexColor('#64748b'), leading=8)))
@@ -2649,7 +2655,7 @@ def build_methodology_section(story):
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    f'Consensus VCF + ASCAT; SBS, microhomology deletions, LOH / CN features; HRD+ probability >= {BIO_HRD_HIGH:g} (models validated in breast / ovarian only)'],
         ['Mut. Signatures',    'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',   'Consensus VCF input; COSMIC v3.4 SBS96, DBS and ID signatures'],
         ['TMB',                'Consensus VCF / coding territory Mb',              'GRCh38', 'Non-synonymous consensus variants in capture \u2229 MANE CDS; TMB-H threshold >=10 mut/Mb'],
-        ['Pharmacogenomics',   'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1 rsIDs; CPIC annotation'],
+        ['Pharmacogenomics',   'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1 genotypes; phenotype from both alleles (CPIC DPYD, DPWG UGT1A1-irinotecan)'],
         ['Germline–Somatic',   'Custom integration script (germline_somatic_correlate.py)', 'N/A', 'P/LP germline variants cross-referenced with somatic 2nd hits and HRD/MMR biomarkers'],
     ]
 
@@ -2819,7 +2825,7 @@ def build_methodology_section(story):
         + xml_escape(sarek_label()) + '. All variant interpretations are for research/clinical '
         'investigational use. Results should be confirmed in a certified clinical laboratory '
         'before clinical decision-making. References: GATK Best Practices (Van der Auwera 2013), '
-        'ACMG/AMP 2015 (Richards et al.), CPIC guidelines (cpicpgx.org), '
+        'ACMG/AMP 2015 (Richards et al.), CPIC guidelines (cpicpgx.org), DPWG guidelines (UGT1A1-irinotecan), '
         'COSMIC v3.4 (cancer.sanger.ac.uk/signatures), ClinicalTrials.gov.</i>',
         ParagraphStyle('Disc', parent=getSampleStyleSheet()['Normal'],
                        fontSize=6.5, fontName='Helvetica-Oblique',

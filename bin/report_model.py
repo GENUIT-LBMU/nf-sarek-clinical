@@ -134,35 +134,62 @@ SIG_AETIOLOGY = {
 }
 _SIG_UNKNOWN = ('Unknown aetiology (see COSMIC v3.4)', 'unknown')
 
-# ── CPIC: the rsIDs of assets/pharmacogenomics (DPYD, UGT1A1) ─────────────────
-CPIC_TABLE = {
-    'rs3918290':  {'gene': 'DPYD', 'allele': '*2A (c.1905+1G>A)', 'activity': '0',
-                   'phenotype': 'No Function — Poor Metabolizer', 'drugs': '5-FU, Capecitabine, Tegafur',
-                   'recommendation': 'Avoid fluoropyrimidines. If unavoidable, reduce starting dose by ≥50% and perform therapeutic drug monitoring (TDM). Risk of severe/fatal toxicity.',
-                   'alert': 'HIGH'},
-    'rs55886062': {'gene': 'DPYD', 'allele': '*13 (c.1679T>G, p.Ile560Ser)', 'activity': '0',
-                   'phenotype': 'No Function — Poor Metabolizer', 'drugs': '5-FU, Capecitabine, Tegafur',
-                   'recommendation': 'Avoid fluoropyrimidines. If unavoidable, reduce starting dose by ≥50% and perform TDM.',
-                   'alert': 'HIGH'},
-    'rs67376798': {'gene': 'DPYD', 'allele': 'c.2846A>T (p.Asp949Val)', 'activity': '0.5',
-                   'phenotype': 'Decreased Function — Intermediate Met.', 'drugs': '5-FU, Capecitabine, Tegafur',
-                   'recommendation': 'Reduce starting dose by 25–50%; titrate based on toxicity and pharmacokinetics. Monitor for hematologic and gastrointestinal toxicity.',
-                   'alert': 'MODERATE'},
-    'rs56038477': {'gene': 'DPYD', 'allele': 'HapB3 (c.1236G>A, E412E)', 'activity': '0.5',
-                   'phenotype': 'Decreased Function — Intermediate Met.', 'drugs': '5-FU, Capecitabine, Tegafur',
-                   'recommendation': 'Reduce starting dose by 25–50%; titrate based on toxicity and pharmacokinetics.',
-                   'alert': 'MODERATE'},
-    'rs4148323':  {'gene': 'UGT1A1', 'allele': '*6 (c.211G>A, p.Gly71Arg)', 'activity': 'Reduced',
-                   'phenotype': 'Reduced UGT1A1 Activity', 'drugs': 'Irinotecan, Belinostat, Nilotinib',
-                   'recommendation': 'Decreased-function allele, like *28 (more frequent in East Asian populations). Two decreased-function alleles (*6/*6, *6/*28): reduce irinotecan starting dose by ≥30%. One allele: standard dose acceptable; monitor for diarrhea and neutropenia.',
-                   'alert': 'MODERATE'},
-    'rs3064744':  {'gene': 'UGT1A1', 'allele': '*28 (A(TA)7TAA promoter repeat)', 'activity': 'Reduced',
-                   'phenotype': 'Reduced UGT1A1 Activity', 'drugs': 'Irinotecan',
-                   'recommendation': 'Consider reduced irinotecan starting dose; monitor for SN-38-related toxicity.',
-                   'alert': 'MODERATE'},
+# ── Pharmacogenomics: genotype → phenotype → recommendation ─────────────────
+# Variants of assets/pharmacogenomics_dpyd_variants.txt. DPYD: CPIC 2017
+# (fluoropyrimidines) activity score = 2 minus each allele copy's loss (no function
+# 1, decreased function 0.5); two different variants of unknown phase are taken as
+# being on different alleles (the lower score). UGT1A1: number of decreased-function
+# allele copies (*28, *6); irinotecan dosing from DPWG (CPIC has no irinotecan guideline).
+PGX_VARIANTS = {
+    # GRCh38 positions (Ensembl), for the capture check
+    'rs3918290':  {'gene': 'DPYD', 'allele': '*2A (c.1905+1G>A)', 'function': 'No function', 'loss': 1.0,
+                   'pos': ('chr1', 97450058)},
+    'rs55886062': {'gene': 'DPYD', 'allele': '*13 (c.1679T>G, p.Ile560Ser)', 'function': 'No function', 'loss': 1.0,
+                   'pos': ('chr1', 97515787)},
+    'rs67376798': {'gene': 'DPYD', 'allele': 'c.2846A>T (p.Asp949Val)', 'function': 'Decreased function', 'loss': 0.5,
+                   'pos': ('chr1', 97082391)},
+    'rs56038477': {'gene': 'DPYD', 'allele': 'HapB3 (c.1236G>A)', 'function': 'Decreased function', 'loss': 0.5,
+                   'pos': ('chr1', 97573863)},
+    'rs4148323':  {'gene': 'UGT1A1', 'allele': '*6 (c.211G>A, p.Gly71Arg)', 'function': 'Decreased function', 'loss': 1,
+                   'pos': ('chr2', 233760498)},
+    # promoter A(TA)nTAA repeat: only insertions (TA7 = *28, TA8 = *37) are decreased function
+    'rs3064744':  {'gene': 'UGT1A1', 'allele': '*28 (A(TA)7TAA promoter repeat)', 'function': 'Decreased function', 'loss': 1,
+                   'insertion_only': True, 'pos': ('chr2', 233760234)},
 }
+PGX_DRUGS = {'DPYD': '5-FU, Capecitabine, Tegafur', 'UGT1A1': 'Irinotecan'}
+PGX_GUIDELINE = {'DPYD': 'CPIC 2017 (DPYD and fluoropyrimidines)', 'UGT1A1': 'DPWG (UGT1A1 and irinotecan)'}
 
 
+def _dpyd(score):
+    """(phenotype, recommendation, alert) for a DPYD activity score."""
+    if score >= 2:
+        return ('Normal metabolizer', 'Use the label-recommended dose and schedule.', 'LOW')
+    if score >= 1:
+        return ('Intermediate metabolizer',
+                'Reduce the starting dose by 50%, then titrate by toxicity or therapeutic drug monitoring.',
+                'MODERATE')
+    if score >= 0.5:
+        return ('Poor metabolizer',
+                'Avoid 5-FU / capecitabine. If no alternative, use a strongly reduced starting dose with early '
+                'therapeutic drug monitoring.', 'HIGH')
+    return ('Poor metabolizer', 'Avoid 5-FU / capecitabine and other fluoropyrimidines.', 'HIGH')
+
+
+def _ugt1a1(n_decreased):
+    if n_decreased >= 2:
+        return ('Poor metabolizer',
+                'Start irinotecan at 70% of the standard dose; increase guided by the neutrophil count if '
+                'tolerated.', 'MODERATE')
+    if n_decreased == 1:
+        return ('Intermediate metabolizer',
+                'No dose change; monitor for neutropenia and diarrhea (higher risk at doses > 250 mg/m2).', 'LOW')
+    return ('Normal metabolizer', 'Use the standard dose.', 'LOW')
+
+
+def _copies(gt):
+    """Number of ALT copies in a VCF GT ('0/1' -> 1, '1|1' -> 2); 0 when not called."""
+    alleles = [a for a in str(gt or '').replace('|', '/').split('/') if a not in ('', '.')]
+    return sum(1 for a in alleles if a != '0')
 # ── File helpers ──────────────────────────────────────────────────────────────
 
 def present(path):
@@ -441,16 +468,53 @@ def signatures(path, pair, kind):
 
 # ── Pharmacogenomics, coverage ────────────────────────────────────────────────
 
-def pharmaco(path):
+def pharmaco_not_assessable(capture_bed):
+    """Genotyped variants outside the capture: absence there is not a normal result
+    (Agilent S07604514 ends ~50 bp after the UGT1A1 *28 promoter repeat)."""
     out = []
+    for rsid, v in PGX_VARIANTS.items():
+        if _amp.bed_covers(capture_bed, *v['pos']) is False:
+            out.append(f"{v['gene']} {v['allele'].split(' (')[0]} ({rsid})")
+    return out
+
+
+def pharmaco(path):
+    """One row per detected variant, with the phenotype, activity score and
+    recommendation of its gene computed from every variant of that gene."""
+    found = []
     for row in read_tsv(path)[1]:
         for rsid in (row.get('ID') or '').split(';'):
-            rsid = rsid.strip()
-            if rsid in CPIC_TABLE:
-                out.append(dict(CPIC_TABLE[rsid], rsid=rsid,
-                                gt=(row.get('GEN[0].GT') or '').strip(),
-                                dp=(row.get('GEN[0].DP') or row.get('DP') or '').strip(),
-                                hgvs_c=(row.get('ANN[*].HGVS_C') or '').strip()))
+            v = PGX_VARIANTS.get(rsid.strip())
+            if not v:
+                continue
+            gt = (row.get('GEN[0].GT') or '').strip()
+            copies = _copies(gt)
+            ref, alt = (row.get('REF') or ''), (row.get('ALT') or '').split(',')[0]
+            if v.get('insertion_only') and len(alt) - len(ref) not in (2, 4):
+                copies = 0              # TA deletion (*36) or other: not decreased function
+            if copies:
+                found.append(dict(v, rsid=rsid.strip(), gt=gt, copies=copies,
+                                  dp=(row.get('GEN[0].DP') or row.get('DP') or '').strip(),
+                                  hgvs_c=(row.get('ANN[*].HGVS_C') or '').strip()))
+    out = []
+    for gene in ('DPYD', 'UGT1A1'):
+        rows = [r for r in found if r['gene'] == gene]
+        if not rows:
+            continue
+        loss = sum(r['loss'] * r['copies'] for r in rows)
+        if gene == 'DPYD':
+            score = max(0.0, 2.0 - loss)
+            phenotype, rec, alert = _dpyd(score)
+            activity = format(score, 'g')
+        else:
+            phenotype, rec, alert = _ugt1a1(int(loss))
+            activity = f'{int(loss)} decreased-function allele(s)'
+        for r in rows:
+            r.update(phenotype=phenotype, activity=activity, recommendation=rec, alert=alert,
+                     drugs=PGX_DRUGS[gene], guideline=PGX_GUIDELINE[gene])
+            for k in ('loss', 'insertion_only', 'pos'):
+                r.pop(k, None)
+            out.append(r)
     return out
 
 
@@ -591,6 +655,9 @@ def build(a):
         'correlation': corr,
         'correlation_html': corr_html,
         'pharmaco': pharmaco(a.pharmaco),
+        'pharmaco_not_assessable': pharmaco_not_assessable(a.capture_bed),
+        'pharmaco_assessed': [f"{v['gene']} {v['allele'].split(' (')[0]}" for rsid, v in PGX_VARIANTS.items()
+                              if f"({rsid})" not in ' '.join(pharmaco_not_assessable(a.capture_bed))],
         'coverage': {'normal': coverage(a.gene_cov_n), 'tumor': coverage(a.gene_cov_t),
                      'germline_panel': germline_panel, 'somatic_panel': somatic_panel},
         'tables': {'tmb': read_tsv(a.tmb), 'hrd': read_tsv(a.hrd)},

@@ -56,10 +56,49 @@ def test_signatures_aetiology_and_pair_row(tmp_path):
     assert s['calls']['detected'] == ['SBS1', 'SBS6']
 
 
-def test_pharmaco_matches_cpic_rsids_only(tmp_path):
-    p = write(tmp_path, 'pgx.tsv', 'ID\tGEN[0].GT\nrs3918290\t0/1\nrs123\t1/1\nrs4148323;rs99\t1/1\n')
-    rows = rm.pharmaco(p)
-    assert [(r['gene'], r['gt']) for r in rows] == [('DPYD', '0/1'), ('UGT1A1', '1/1')]
+PGX_HDR = 'CHROM\tPOS\tID\tREF\tALT\tGEN[0].GT\n'
+
+
+def pgx(tmp_path, *rows):
+    return rm.pharmaco(write(tmp_path, 'pgx.tsv', PGX_HDR + ''.join(r + '\n' for r in rows)))
+
+
+def gene_of(rows, gene):
+    return next(r for r in rows if r['gene'] == gene)
+
+
+def test_dpyd_heterozygous_no_function_is_intermediate_50pct(tmp_path):
+    r = gene_of(pgx(tmp_path, 'chr1\t1\trs3918290\tC\tT\t0/1'), 'DPYD')
+    assert r['activity'] == '1' and r['phenotype'] == 'Intermediate metabolizer'
+    assert '50%' in r['recommendation'] and 'CPIC' in r['guideline']
+
+
+def test_dpyd_two_variants_unknown_phase_taken_in_trans(tmp_path):
+    r = gene_of(pgx(tmp_path, 'chr1\t1\trs3918290\tC\tT\t0/1',
+                    'chr1\t2\trs67376798\tT\tA\t0/1'), 'DPYD')
+    assert r['activity'] == '0.5' and r['phenotype'] == 'Poor metabolizer' and r['alert'] == 'HIGH'
+
+
+def test_dpyd_homozygous_no_function_avoid(tmp_path):
+    r = gene_of(pgx(tmp_path, 'chr1\t1\trs3918290\tC\tT\t1/1'), 'DPYD')
+    assert r['activity'] == '0' and r['recommendation'].startswith('Avoid')
+
+
+def test_dpyd_decreased_function_heterozygous(tmp_path):
+    r = gene_of(pgx(tmp_path, 'chr1\t1\trs56038477\tC\tT\t0|1'), 'DPYD')
+    assert r['activity'] == '1.5' and r['phenotype'] == 'Intermediate metabolizer'
+
+
+def test_ugt1a1_alleles_and_repeat_length(tmp_path):
+    two = gene_of(pgx(tmp_path, 'chr2\t1\trs4148323\tG\tA\t0/1',
+                      'chr2\t2\trs3064744\tCAT\tCATAT\t0/1'), 'UGT1A1')
+    assert two['phenotype'] == 'Poor metabolizer' and '70%' in two['recommendation']
+    assert 'DPWG' in two['guideline'] and two['allele'].startswith('*6')
+    one = gene_of(pgx(tmp_path, 'chr2\t2\trs3064744\tCAT\tCATAT\t0/1'), 'UGT1A1')
+    assert one['phenotype'] == 'Intermediate metabolizer'
+    assert pgx(tmp_path, 'chr2\t2\trs3064744\tCATAT\tCAT\t0/1') == []     # TA deletion (*36)
+    assert pgx(tmp_path, 'chr2\t1\trs4148323\tG\tA\t0/0') == []           # reference call
+
 
 
 SHEET = ('patient,sex,status,sample,lane,fastq_1,fastq_2,patient_name,birth_date,diagnosis,'
@@ -89,3 +128,9 @@ def test_identification_conflicts_and_absence(tmp_path):
 def test_plain_sarek_samplesheet_has_no_identification(tmp_path):
     plain = 'patient,sex,status,sample,lane,fastq_1,fastq_2\nP1,XX,1,T1,L1,a,b\n'
     assert rm.identification(write(tmp_path, 's.csv', plain), 'T1', 'N1')['source'] == ''
+
+
+def test_pgx_variant_outside_capture_is_not_assessable(tmp_path):
+    bed = write(tmp_path, 'capture.bed', 'chr1\t97000000\t98000000\nchr2\t233760285\t233761153\n')
+    assert rm.pharmaco_not_assessable(bed) == ['UGT1A1 *28 (rs3064744)']
+    assert rm.pharmaco_not_assessable('') == []          # no capture BED: not checked

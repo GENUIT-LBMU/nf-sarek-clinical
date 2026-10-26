@@ -3,7 +3,7 @@
 final_report_sections.py
 ========================
 Helper functions for the GENUIT nf-sarek-clinical HTML report:
-  - CPIC Pharmacogenomics lookup table + rendering
+  - Pharmacogenomics rendering
   - ClinicalTrials.gov API query + rendering
   - Test Methodology section rendering
 
@@ -33,24 +33,28 @@ def _alert_badge(alert):
     c = colors_map.get(alert, '#6b7280')
     return "<span style='background:" + c + ";color:#fff;padding:2px 7px;border-radius:10px;font-size:.62rem;font-weight:700;'>" + html.escape(alert) + "</span>"
 
-def tsv_to_html_pharmaco(cpic_rows):
-    # Report model 'pharmaco': CPIC matches of the normal's genotypes (report_model.CPIC_TABLE)
+def tsv_to_html_pharmaco(cpic_rows, not_assessable=(), assessed=()):
+    # Report model 'pharmaco': genotype-based phenotype and recommendation per gene
     cpic_rows = [dict(r, gt=html.escape(r['gt']) or '&mdash;') for r in cpic_rows]
+    na_html = ("<p class='warn'><strong>Not assessable (outside the capture regions of this assay):</strong> "
+               + html.escape(', '.join(not_assessable)) + ". The phenotype of the gene is based on its other "
+               "variants and may be underestimated (e.g. UGT1A1 *28 requires a dedicated assay).</p>"
+               if not_assessable else "")
     if not cpic_rows:
         return (
             "<div class='callout-info'>"
             "<strong>No Actionable Pharmacogenomic Variants Detected</strong><br/>"
-            "The pharmacogenomics panel (DPYD, UGT1A1) did not identify any germline variants "
-            "with CPIC actionable dosing recommendations. Standard dosing for fluoropyrimidines "
-            "and irinotecan is indicated based on pharmacogenomic genotyping."
-            "</div>"
+            "None of the assessed variants (" + html.escape(', '.join(assessed)) + ") was found: "
+            "normal metabolizer for these variants, standard dosing from the pharmacogenomic "
+            "point of view. Other variants of these genes are not tested."
+            "</div>" + na_html
         )
 
     alert_row_bg = {'HIGH': 'rgba(220,38,38,0.08)', 'MODERATE': 'rgba(217,119,6,0.08)', 'LOW': 'rgba(22,163,74,0.06)'}
     th = (
         "<th>Gene</th><th>rsID</th><th>Allele / Variant</th>"
         "<th>Genotype</th><th>Phenotype</th><th>Activity Score</th>"
-        "<th>Drugs Affected</th><th>Alert</th><th>CPIC Recommendation</th>"
+        "<th>Drugs Affected</th><th>Alert</th><th>Recommendation</th>"
     )
     tbody = ""
     for r in cpic_rows:
@@ -66,17 +70,16 @@ def tsv_to_html_pharmaco(cpic_rows):
             "<td style='text-align:center;'>" + html.escape(str(r['activity'])) + "</td>"
             "<td style='font-size:.72rem;'>" + html.escape(r['drugs']) + "</td>"
             "<td>" + _alert_badge(r['alert']) + "</td>"
-            "<td style='font-size:.72rem;'>" + html.escape(r['recommendation']) + "</td>"
+            "<td style='font-size:.72rem;'>" + html.escape(r['recommendation']) + "<br><span class='tx'>" + html.escape(r['guideline']) + "</span></td>"
             "</tr>\n"
         )
     note = (
         "<p style='font-size:.72rem;color:#94a3b8;margin-top:6px;'>"
-        "CPIC = Clinical Pharmacogenomics Implementation Consortium. "
-        "Recommendations based on CPIC guidelines for DPYD (2017) and UGT1A1 (2014).</p>"
+        "Phenotype from both alleles of each gene: DPYD activity score (no-function allele -1, decreased-function allele -0.5; two variants of unknown phase taken as on different alleles), CPIC 2017 for fluoropyrimidines; UGT1A1 decreased-function alleles (*28, *6), DPWG for irinotecan. Only the listed variants are genotyped (DPYD *2A, *13, c.2846A>T, HapB3; UGT1A1 *28, *6); a recommendation must be confirmed by a clinical pharmacologist.</p>"
     )
     return (
         "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
-        "<tbody>" + tbody + "</tbody></table></div>" + note
+        "<tbody>" + tbody + "</tbody></table></div>" + na_html + note
     )
 
 # ---------------------------------------------------------------------------
@@ -171,7 +174,7 @@ def build_methodology_html(m):
         ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'Consensus VCF + ASCAT; HRD+ probability &ge;' + _HRD_HIGH + ' (models validated in breast / ovarian only); SBS3/SBS8'],
         ['Mut. Signatures',   'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',  'Consensus VCF input; COSMIC v3.4 SBS96, DBS, ID signatures; MMR / HRD calls: &ge;10% of the assigned mutations, &ge;10 mutations, &ge;100 SBS / 50 ID in the sample'],
         ['TMB',               'Consensus VCF / coding territory Mb',              'GRCh38', 'Non-synonymous consensus variants in capture &cap; MANE CDS; TMB-H &ge;10 mut/Mb'],
-        ['Pharmacogenomics',  'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1 rsIDs; CPIC guideline annotation'],
+        ['Pharmacogenomics',  'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1 genotypes; phenotype from both alleles (CPIC DPYD, DPWG UGT1A1-irinotecan)'],
         ['Germline&ndash;Somatic', 'germline_somatic_correlate.py',               'N/A',    'P/LP germline x somatic 2nd hits; HRD/MMR pathway biomarkers'],
     ]
     rows_html = ""
@@ -290,7 +293,7 @@ def build_methodology_html(m):
         "All variant interpretations are for investigational use. Results must be confirmed in a "
         "certified clinical laboratory before clinical decision-making. "
         "References: GATK Best Practices; ACMG/AMP 2015 (Richards et al.); "
-        "CPIC guidelines (cpicpgx.org); COSMIC v3.4 (cancer.sanger.ac.uk); ClinicalTrials.gov.</i>"
+        "CPIC guidelines (cpicpgx.org); DPWG (UGT1A1-irinotecan); COSMIC v3.4 (cancer.sanger.ac.uk); ClinicalTrials.gov.</i>"
         "</p>"
     )
 

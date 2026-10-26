@@ -206,6 +206,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Pharmacogenomics recommendations now follow the genotype of both alleles: the same
+  text was shown for any genotype ("avoid fluoropyrimidines" for a heterozygous DPYD
+  *2A carrier, whom CPIC 2017 doses at 50%). DPYD activity score from all variants
+  (unknown phase taken as trans), UGT1A1 decreased-function allele count with DPWG
+  irinotecan dosing (CPIC has no irinotecan guideline), *28 only for TA insertions.
+  Variants outside the capture are reported as not assessable: the UGT1A1 *28 promoter
+  repeat lies ~50 bp outside Agilent S07604514, so it was never genotyped and its
+  absence read as normal. Patient 711 (DPYD HapB3 heterozygous): activity score 1.5,
+  intermediate metabolizer, start at 50%.
 - Pharmacogenomics: rs4148323 was shown as UGT1A1 *28; it is UGT1A1 *6 (c.211G>A,
   p.Gly71Arg), a decreased-function allele like *28 (rs3064744). The variant list
   (`assets/pharmacogenomics_dpyd_variants.txt`) also had DPYD *2A and c.2846A>T
