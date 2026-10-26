@@ -499,7 +499,8 @@ workflow SAREK_CLINICAL {
             params.run_name,
             not_run,
             report_info,
-            sarek_versions
+            sarek_versions,
+            params.samplesheet ? file(params.samplesheet, checkIfExists: true) : file('NO_SAMPLESHEET')
         )
         // the renderers also need the signature directories (plots)
         def ch_render_input = REPORT_MODEL.out.model

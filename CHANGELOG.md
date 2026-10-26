@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Patient and specimen identification in both reports from optional extra columns
+  of the sarek samplesheet (`--samplesheet`, passed by `run_full.sh`): patient_name,
+  birth_date, medical_record, ordering_physician, institution, diagnosis (patient rows)
+  and accession_id, specimen_type, specimen_site, collection_date, received_date,
+  tumor_content (per sample); sex from the sarek column. sarek 3.5.1 ignores the extra
+  columns (warning only). Values that differ between rows of a patient or sample are
+  flagged in the report. The PDF cover shows the pathology tumor content next to the
+  ASCAT purity.
 - One gene table, `assets/gene_panels/genes.tsv` (543 genes; manifest of sources),
   from which `scripts/build_gene_lists.py` writes every panel file and
   `bin/gene_sets.py` (MMR / HRR); `--check` flags stale files. Includes the

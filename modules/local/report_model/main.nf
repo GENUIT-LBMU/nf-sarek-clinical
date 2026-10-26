@@ -26,6 +26,7 @@ process REPORT_MODEL {
     val not_run     // analyses switched off in this run (comma-separated, bin/report_shared.py)
     val report_info // JSON: pipeline version, commit, sarek release, resources, code_md5
     path sarek_versions, stageAs: 'sarek_versions/*'
+    path samplesheet, stageAs: 'samplesheet/*'   // patient / specimen identification, or NO_SAMPLESHEET
 
     output:
     tuple val(pair), path("${pair}.report_model.json"), emit: model
@@ -111,6 +112,7 @@ INFOEOF
         --germline-panel     "${projectDir}/assets/gene_panels/germline_cancer_predisposition.txt" \\
         --somatic-panel      "${projectDir}/assets/gene_panels/somatic_snv_panel.txt" \\
         --pharmaco           "\$(staged ${pharmaco_tsv})" \\
+        --samplesheet        "\$(staged ${samplesheet})" \\
         --corr-json correlation_section.json --corr-html correlation_section.html \\
         --out "${pair}.report_model.json"
     """

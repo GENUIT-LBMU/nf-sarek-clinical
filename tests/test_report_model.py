@@ -60,3 +60,32 @@ def test_pharmaco_matches_cpic_rsids_only(tmp_path):
     p = write(tmp_path, 'pgx.tsv', 'ID\tGEN[0].GT\nrs3918290\t0/1\nrs123\t1/1\nrs4148323;rs99\t1/1\n')
     rows = rm.pharmaco(p)
     assert [(r['gene'], r['gt']) for r in rows] == [('DPYD', '0/1'), ('UGT1A1', '1/1')]
+
+
+SHEET = ('patient,sex,status,sample,lane,fastq_1,fastq_2,patient_name,birth_date,diagnosis,'
+         'accession_id,specimen_type,tumor_content\n'
+         'P1,XX,0,N1,L1,a,b,Ana Test,1970-01-01,Colon adenocarcinoma,A-2,Blood,\n'
+         'P1,XX,1,T1,L1,a,b,Ana Test,1970-01-01,Colon adenocarcinoma,A-1,FFPE,60\n'
+         'P1,XX,1,T1,L2,a,b,Ana Test,1970-01-01,Colon adenocarcinoma,A-1,FFPE,60\n')
+
+
+def test_identification_from_samplesheet(tmp_path):
+    idn = rm.identification(write(tmp_path, 's.csv', SHEET), 'T1', 'N1')
+    assert idn['patient']['patient_name'] == 'Ana Test' and idn['patient']['sex'] == 'XX'
+    assert idn['patient']['patient'] == 'P1'
+    assert idn['tumor']['tumor_content'] == '60' and idn['tumor']['specimen_type'] == 'FFPE'
+    assert idn['normal']['accession_id'] == 'A-2' and idn['normal']['tumor_content'] == ''
+    assert idn['warnings'] == []
+
+
+def test_identification_conflicts_and_absence(tmp_path):
+    bad = SHEET.replace('P1,XX,1,T1,L2,a,b,Ana Test', 'P1,XX,1,T1,L2,a,b,Ana Other')
+    idn = rm.identification(write(tmp_path, 's.csv', bad), 'T1', 'N1')
+    assert any('patient_name' in w for w in idn['warnings'])
+    none = rm.identification('', 'T1', 'N1')
+    assert none['source'] == '' and none['patient']['patient_name'] == ''
+
+
+def test_plain_sarek_samplesheet_has_no_identification(tmp_path):
+    plain = 'patient,sex,status,sample,lane,fastq_1,fastq_2\nP1,XX,1,T1,L1,a,b\n'
+    assert rm.identification(write(tmp_path, 's.csv', plain), 'T1', 'N1')['source'] == ''

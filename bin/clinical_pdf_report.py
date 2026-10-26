@@ -18,7 +18,6 @@ import csv
 import json
 import os
 import sys
-from datetime import date
 from xml.sax.saxutils import escape as xml_escape
 
 # ---------------------------------------------------------------------------
@@ -46,8 +45,8 @@ SIG_HRD_SBS_SET    = set(_E('SIG_HRD_SBS', 'SBS3,SBS8').split(','))
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import cm, mm
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.units import cm
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.platypus import (
     CondPageBreak,
     BaseDocTemplate,
@@ -433,10 +432,8 @@ def tool_label(name, key):
     ver = MODEL['versions']['tools'].get(key, '')
     return f'{name} {ver}' if ver else name
 from acmg_shared import (
-    acmg_criteria_list as _acmg_criteria_list_shared,
     clinvar_display,
     gnomad_display,
-    getter_for_dict,
     hgvs_display,
     variant_label,
     msi_status,
@@ -671,14 +668,42 @@ def build_cover_page(args, metrics, story):
     story.append(Spacer(1, 0.4 * cm))
 
     # ── Metadata table ────────────────────────────────────────────────────────
-    meta_rows = [
-        [T('meta_run'),   args.run_name or 'N/A', T('meta_patient'), args.patient or 'N/A'],
-        [T('meta_tumor'), args.tumor or 'N/A',    T('meta_normal'),  args.normal or 'N/A'],
-        [T('meta_date'),  date.today().strftime('%Y-%m-%d'), T('meta_pipeline'), Paragraph(xml_escape(pipeline_label()), STYLE_META)],
-        ['', '', 'Upstream', Paragraph(xml_escape(sarek_label()), STYLE_META)],
+    # Patient / specimen identification from the samplesheet (report model);
+    # without --samplesheet only the sample identifiers are shown
+    ident = MODEL.get('identification') or {}
+    pt, tu, no = ident.get('patient', {}), ident.get('tumor', {}), ident.get('normal', {})
+    P = lambda v: Paragraph(xml_escape(v) if v else '<font color="#94a3b8">Not provided</font>', STYLE_META)
+    spec = lambda d: ' · '.join(x for x in (d.get('specimen_type'), d.get('specimen_site')) if x)
+    dates = lambda d: ' / '.join(x or '—' for x in (d.get('collection_date'), d.get('received_date'))) \
+        if (d.get('collection_date') or d.get('received_date')) else ''
+    with_acc = lambda name, d: name + (f'  (accession {d["accession_id"]})' if d.get('accession_id') else '')
+    meta_rows = []
+    if ident.get('source'):
+        meta_rows += [
+            ['Patient name', P(pt.get('patient_name')), T('meta_patient'), P(args.patient)],
+            ['Birth date', P(pt.get('birth_date')), 'Sex', P(pt.get('sex'))],
+            ['Medical record', P(pt.get('medical_record')), 'Diagnosis', P(pt.get('diagnosis'))],
+            ['Ordering physician', P(pt.get('ordering_physician')), 'Institution', P(pt.get('institution'))],
+            [T('meta_tumor'), P(with_acc(args.tumor, tu)), T('meta_normal'), P(with_acc(args.normal, no))],
+            ['Tumor specimen', P(spec(tu)), 'Normal specimen', P(spec(no))],
+            ['Collected / received', P(dates(tu)), 'Collected / received', P(dates(no))],
+            ['Tumor content (pathology)', P((tu.get('tumor_content') + '%') if tu.get('tumor_content') else ''),
+             'Tumor purity (ASCAT)', P((metrics.get('purity') + '%') if metrics.get('purity') not in (None, '', 'NA') else '')],
+        ]
+    else:
+        meta_rows += [
+            [T('meta_patient'), args.patient or 'N/A', T('meta_tumor'), args.tumor or 'N/A'],
+            ['', '', T('meta_normal'), args.normal or 'N/A'],
+        ]
+    meta_rows += [
+        [T('meta_run'),  P(args.run_name), T('meta_date'), MODEL['ids']['date']],
+        [T('meta_pipeline'), Paragraph(xml_escape(pipeline_label()), STYLE_META),
+         'Upstream', Paragraph(xml_escape(sarek_label()), STYLE_META)],
     ]
-    col_w = USABLE_W / 4
-    meta_table = Table(meta_rows, colWidths=[col_w] * 4)
+    _lbl = ParagraphStyle('MetaLbl', fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=C_SLATE)
+    meta_rows = [[Paragraph(c, _lbl) if j in (0, 2) and isinstance(c, str) else c
+                  for j, c in enumerate(r)] for r in meta_rows]
+    meta_table = Table(meta_rows, colWidths=[USABLE_W * w for w in (0.2, 0.3, 0.2, 0.3)])
     meta_table.setStyle(TableStyle([
         ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor('#f1f5f9')),
         ('TEXTCOLOR',     (0, 0), (0, -1), C_SLATE),
@@ -697,6 +722,12 @@ def build_cover_page(args, metrics, story):
          [colors.HexColor('#f8fafc'), colors.HexColor('#f1f5f9')]),
     ]))
     story.append(meta_table)
+    if not ident.get('source'):
+        story.append(Paragraph('<font size="6.5" color="#94a3b8">Patient and specimen identification '
+                               'not provided (no identification columns in the --samplesheet).</font>', styles['Normal']))
+    for w in ident.get('warnings', []):
+        story.append(Paragraph(f'<font size="7" color="#b45309">\u26a0 Samplesheet: {xml_escape(w)}</font>',
+                               styles['Normal']))
     story.append(Spacer(1, 0.5 * cm))
 
     # ── Determine low-coverage flag ────────────────────────────────────────────

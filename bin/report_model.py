@@ -463,6 +463,51 @@ def coverage(path):
             for r in read_tsv(path)[1] if (r.get('gene') or '').strip()}
 
 
+# ── Identification (extra samplesheet columns, all optional) ──────────────────
+# Patient columns repeat on every row of the patient; sample columns per sample.
+# sarek ignores them ("unidentified headers"); the pipeline reads the same file
+# with --samplesheet.
+PATIENT_FIELDS = ['patient_name', 'birth_date', 'sex', 'medical_record',
+                  'ordering_physician', 'institution', 'diagnosis']
+SAMPLE_FIELDS = ['accession_id', 'specimen_type', 'specimen_site', 'collection_date',
+                 'received_date', 'tumor_content']
+
+
+def identification(path, tumor, normal):
+    """{'patient': {...}, 'tumor': {...}, 'normal': {...}, 'warnings': [...]} from the
+    samplesheet rows of the two samples; a field missing everywhere is ''."""
+    out = {'patient': {f: '' for f in PATIENT_FIELDS + ['patient']},
+           'tumor': {f: '' for f in SAMPLE_FIELDS}, 'normal': {f: '' for f in SAMPLE_FIELDS},
+           'warnings': [], 'source': os.path.basename(path) if present(path) else ''}
+    if not present(path):
+        return out
+    with open(path, newline='', encoding='utf-8-sig') as fh:
+        reader = csv.DictReader(fh)
+        rows = [{k.strip(): (v or '').strip() for k, v in r.items() if k} for r in reader]
+        header = {h.strip() for h in reader.fieldnames or []}
+    # a plain sarek samplesheet (no identification column): reports stay compact
+    if not header & (set(PATIENT_FIELDS + SAMPLE_FIELDS) - {'sex'}):
+        out['source'] = ''
+        return out
+    rows = [r for r in rows if r.get('sample') in (tumor, normal)]
+    if not rows:
+        out['warnings'].append(f'{tumor} / {normal} not found in {out["source"]}')
+        return out
+    for f in PATIENT_FIELDS + ['patient']:
+        vals = list(dict.fromkeys(r.get(f, '') for r in rows if r.get(f, '')))
+        out['patient'][f] = vals[0] if vals else ''
+        if len(vals) > 1:
+            out['warnings'].append(f'{f}: different values in the samplesheet ({" / ".join(vals)})')
+    for role, sample in (('tumor', tumor), ('normal', normal)):
+        srows = [r for r in rows if r.get('sample') == sample]
+        for f in SAMPLE_FIELDS:
+            vals = list(dict.fromkeys(r.get(f, '') for r in srows if r.get(f, '')))
+            out[role][f] = vals[0] if vals else ''
+            if len(vals) > 1:
+                out['warnings'].append(f'{sample} {f}: different values in the samplesheet ({" / ".join(vals)})')
+    return out
+
+
 # ── Model ─────────────────────────────────────────────────────────────────────
 
 def build(a):
@@ -515,10 +560,13 @@ def build(a):
         'coverage': [a.gene_cov_n, a.gene_cov_t],
     }
     info = rs.report_info()
+    ident = identification(a.samplesheet, a.tumor, a.normal)
     return {
         'schema_version': SCHEMA_VERSION,
-        'ids': {'pair': a.pair, 'tumor': a.tumor, 'normal': a.normal, 'patient': a.patient,
+        'ids': {'pair': a.pair, 'tumor': a.tumor, 'normal': a.normal,
+                'patient': ident['patient']['patient'] or a.patient,
                 'run_name': a.run_name, 'date': date.today().isoformat()},
+        'identification': ident,
         'versions': {'pipeline': rs.pipeline_label(), 'sarek': rs.sarek_label(),
                      'rows': rs.version_rows(), 'tools': rs.sarek_tool_versions(),
                      'info': info},
@@ -558,7 +606,7 @@ def parse_args(argv=None):
                  'capture-bed', 'tumor-type', 'tumor-types', 'tmb', 'msi', 'ascat', 'hrd', 'cov-n', 'cov-t',
                  'cnv-somatic', 'cnv-gatk-somatic', 'cnv-germline-gatk', 'somatic-cnv-panel',
                  'sig-sbs96', 'sig-dbs', 'sig-id', 'gene-ctx', 'gene-cov-n', 'gene-cov-t',
-                 'germline-panel', 'somatic-panel', 'pharmaco', 'corr-json', 'corr-html'):
+                 'germline-panel', 'somatic-panel', 'pharmaco', 'corr-json', 'corr-html', 'samplesheet'):
         p.add_argument('--' + name, default='')
     p.add_argument('--out', required=True)
     return p.parse_args(argv)

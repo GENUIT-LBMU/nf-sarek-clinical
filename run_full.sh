@@ -11,7 +11,8 @@
 # Arguments:
 #   --run          Run identifier (e.g. 20260109_1229). Folder must exist at
 #                  ${RUNS_BASE}/<RUN_NAME> or will be created.
-#   --samplesheet  Path to nf-core/sarek CSV samplesheet (Phase 1 only).
+#   --samplesheet  Path to nf-core/sarek CSV samplesheet (Phase 1; with --skip-sarek optional:
+#                  its extra columns identify patient and specimens in the reports).
 #   --resume       Pass -resume to Nextflow for both phases (use cached tasks).
 #   --skip-sarek   Skip Phase 1; go straight to nf-sarek-clinical using the
 #                  sarek results already present in <RUN_DIR>/results.
@@ -139,6 +140,7 @@ nextflow run main.nf \
     -params-file "${PARAMS_FILE}" \
     ${NF_RESUME} \
     --sarek_outdir  "${SAREK_OUTDIR}" \
+    ${SAMPLESHEET:+--samplesheet "$(realpath "${SAMPLESHEET}")"} \
     --run_name      "${RUN_NAME}" \
     --outdir        "${RUN_DIR}/clinical_results"
 

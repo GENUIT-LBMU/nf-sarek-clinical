@@ -681,6 +681,24 @@ def render(m):
                  + clinical_trials_html(m['trials']) + "</section>\n")
     sections += "<section><h2>Test Methodology</h2>" + build_methodology_html(m) + "</section>\n"
     _ascat_alerts = m['alerts']['ascat']
+    # Patient / specimen identification (samplesheet extra columns, report model)
+    idn = m.get('identification') or {}
+    ident_html = ''
+    if idn.get('source'):
+        pt, tu, no = idn['patient'], idn['tumor'], idn['normal']
+        nv = lambda v: html.escape(v) if v else "<span style='opacity:.5'>Not provided</span>"
+        spec = lambda d: ' · '.join(x for x in (d.get('specimen_type'), d.get('specimen_site'), d.get('accession_id')) if x)
+        when = lambda d: ' / '.join(x or '—' for x in (d.get('collection_date'), d.get('received_date')))
+        items = [('Patient name', pt.get('patient_name')), ('Birth date', pt.get('birth_date')),
+                 ('Sex', pt.get('sex')), ('Medical record', pt.get('medical_record')),
+                 ('Diagnosis', pt.get('diagnosis')), ('Ordering physician', pt.get('ordering_physician')),
+                 ('Institution', pt.get('institution')),
+                 ('Tumor specimen', spec(tu)), ('Tumor collected / received', when(tu)),
+                 ('Tumor content (pathology)', (tu.get('tumor_content') + '%') if tu.get('tumor_content') else ''),
+                 ('Normal specimen', spec(no)), ('Normal collected / received', when(no))]
+        ident_html = ''.join("    <div><strong>" + k + ":</strong> " + nv(v) + "</div>\n" for k, v in items)
+    ident_html += ''.join("    <div style='color:#f59e0b'><strong>Samplesheet:</strong> " + html.escape(w) + "</div>\n"
+                          for w in idn.get('warnings', []))
     _pipeline_label = lambda: m['versions']['pipeline']
     _sarek_label = lambda: m['versions']['sarek']
     # ----
@@ -819,6 +837,7 @@ def render(m):
         '    <div><strong>Tumor:</strong> ' + html.escape(tumor) + '</div>\n'
         '    <div><strong>Normal:</strong> ' + html.escape(normal) + '</div>\n'
         '    <div><strong>Date:</strong> ' + ids['date'] + '</div>\n'
+    + ident_html +
         '    <div><strong>Pipeline:</strong> ' + html.escape(_pipeline_label()) + ' (' + html.escape(_sarek_label()) + ')</div>\n'
         '  </div>\n'
         '  <h2>Dashboard</h2>\n'
