@@ -199,6 +199,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Nextflow 26: the config no longer defines a function (`check_max` replaced by
+  `process.resourceLimits` from `--max_cpus / --max_memory / --max_time`; the trace file
+  suffix is a parameter). Minimum Nextflow is now 24.04.0. With Nextflow >= 26 the
+  classic parser is needed (`NXF_SYNTAX_PARSER=v1`, set by `run_full.sh` and in CI).
+- The reports record the germline CNV model (ploidy model, cohort model, intervals) and
+  the somatic GATK PoN among the resources.
 - CI: the pipeline test pointed to a test dataset that never existed (it failed on
   every run). Replaced by unit tests (`tests/`, pytest) and a `-stub` run on a fake
   sarek output (`tests/stub/make_fixture.sh`, `conf/test.config`) on Nextflow 23.04.0

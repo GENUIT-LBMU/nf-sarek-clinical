@@ -1130,7 +1130,7 @@ signature calls, CNV harmonisation, report helpers) and check that the report
 scripts load. The stub run executes the whole workflow with the `stub:` block of
 every module, which checks channels, joins and report inputs without tools or
 containers. CI (`.github/workflows/ci.yml`) runs both on every push, the stub run
-on Nextflow 23.04.0 (minimum) and the latest stable release.
+on Nextflow 24.04.0 (minimum) and the latest stable release.
 
 ## Troubleshooting
 

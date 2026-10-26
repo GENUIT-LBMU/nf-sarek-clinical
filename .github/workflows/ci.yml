@@ -39,7 +39,7 @@ jobs:
       fail-fast: false
       matrix:
         NXF_VER:
-          - "23.04.0"        # manifest.nextflowVersion
+          - "24.04.0"        # manifest.nextflowVersion
           - "latest-stable"
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +56,9 @@ jobs:
       - name: Build the fake sarek output
         run: bash tests/stub/make_fixture.sh
       - name: Stub run
+        # Nextflow >= 26 parses strict syntax by default; the pipeline uses the classic parser
+        env:
+          NXF_SYNTAX_PARSER: v1
         run: nextflow run . -profile test -stub --outdir results_test
       - name: Both reports produced
         run: |

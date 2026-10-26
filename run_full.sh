@@ -27,6 +27,8 @@ set -euo pipefail
 PIPELINE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNS_BASE="${RUNS_BASE:-$HOME/runs}"
 SAREK_REVISION="${SAREK_REVISION:-3.5.1}"   # pinned nf-core/sarek release (env-overridable)
+# Nextflow >= 26 parses strict syntax by default; this pipeline uses the classic parser
+export NXF_SYNTAX_PARSER="${NXF_SYNTAX_PARSER:-v1}"
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 RUN_NAME=""
