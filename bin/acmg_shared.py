@@ -895,3 +895,62 @@ from gene_sets import MMR_GENES, HRR_GENES  # noqa: E402,F401
 MMR_SBS_SIGNATURES = frozenset(_E('SIG_MMR_SBS', 'SBS6,SBS15,SBS20,SBS21,SBS26,SBS44').split(','))
 HRD_SBS_SIGNATURES = frozenset(_E('SIG_HRD_SBS', 'SBS3,SBS8').split(','))
 MMR_ID_SIGNATURES  = frozenset(_E('SIG_MMR_ID',  'ID1,ID2').split(','))
+
+# A signature is "detected" only with enough support (filters.signatures):
+#   share of the sample's assigned mutations >= SIG_MIN_FRACTION,
+#   >= SIG_MIN_COUNT mutations assigned to it, and a sample total of
+#   >= SIG_MIN_TOTAL_SBS (SBS) / SIG_MIN_TOTAL_ID (ID) mutations; below that
+#   total the sample is "not assessable" for that signature type.
+SIG_MIN_FRACTION  = float(_E('SIG_MIN_FRACTION', '0.10'))
+SIG_MIN_COUNT     = float(_E('SIG_MIN_COUNT', '10'))
+SIG_MIN_TOTAL_SBS = float(_E('SIG_MIN_TOTAL_SBS', '100'))
+SIG_MIN_TOTAL_ID  = float(_E('SIG_MIN_TOTAL_ID', '50'))
+
+
+def signature_calls(activities_path, sample, kind='SBS'):
+    """
+    SigProfiler Assignment_Solution_Activities.txt -> dict:
+      activities  {signature: mutations} (> 0) of the sample row
+      total       mutations assigned in the sample
+      assessable  total >= SIG_MIN_TOTAL_SBS / SIG_MIN_TOTAL_ID (kind 'SBS' / 'ID')
+      detected    signatures passing SIG_MIN_FRACTION and SIG_MIN_COUNT (empty
+                  when not assessable)
+    `sample` matches the row exactly or as the tumor of '<tumor>_vs_<normal>'.
+    """
+    import csv
+    out = {'activities': {}, 'total': 0.0, 'assessable': False, 'detected': set()}
+    if not activities_path or not _os.path.isfile(activities_path):
+        return out
+    with open(activities_path, newline='') as fh:
+        rows = list(csv.reader(fh, delimiter='\t'))
+    if len(rows) < 2:
+        return out
+    header = rows[0]
+    for row in rows[1:]:
+        name = row[0] if row else ''
+        if name != sample and not name.startswith(sample + '_vs_'):
+            continue
+        for i, sig in enumerate(header[1:], 1):
+            try:
+                v = float(row[i])
+            except (IndexError, ValueError, TypeError):
+                continue
+            if v > 0:
+                out['activities'][sig] = v
+        break
+    total = sum(out['activities'].values())
+    out['total'] = total
+    out['assessable'] = total >= (SIG_MIN_TOTAL_ID if kind == 'ID' else SIG_MIN_TOTAL_SBS)
+    if out['assessable']:
+        out['detected'] = {s for s, v in out['activities'].items()
+                           if v >= SIG_MIN_COUNT and v / total >= SIG_MIN_FRACTION}
+    return out
+
+
+def variant_label(get_field):
+    """HGVS.p, else HGVS.c, ignoring '.' placeholders ('' when neither)."""
+    for k in ('ANN[*].HGVS_P', 'ANN[*].HGVS_C'):
+        v = (get_field(k) or '').strip()
+        if v and v != '.':
+            return v
+    return ''

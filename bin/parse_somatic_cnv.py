@@ -249,8 +249,16 @@ def parse_ascat_loh(
     seg["nMinor"] = pd.to_numeric(seg["nMinor"], errors="coerce")
     seg["totCN"]  = seg["nMajor"] + seg["nMinor"]
 
+    # Male tumors (ASCAT sex XY): chrX / chrY are hemizygous, nMinor = 0 is the
+    # normal state and must not read as LOH (AR was reported as a second hit)
+    sex = str(metrics.get("sex", "")).strip().upper()
+    if not sex:
+        print("WARNING: ASCAT metrics without sex; chrX/chrY LOH kept (may be hemizygous)", file=sys.stderr)
+
     for chrom, segs in seg.groupby("chrom"):
         if chrom not in gene_coords:
+            continue
+        if chrom in ("X", "Y") and sex == "XY":
             continue
         gsub = gene_coords[chrom]
         for _, ar in segs.iterrows():

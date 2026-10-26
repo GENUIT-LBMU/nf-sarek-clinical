@@ -419,6 +419,7 @@ from acmg_shared import (
     gnomad_display,
     getter_for_dict,
     hgvs_display,
+    variant_label,
 )
 
 
@@ -1312,6 +1313,14 @@ PATHWAY_COLORS = {
 }
 
 
+def _sig_none(corr_data, kind):
+    """'none', or 'not assessable (n=…)' when too few mutations for signature calls."""
+    if corr_data and corr_data.get(f'sig_{kind}_assessable') is False:
+        unit = 'indels' if kind == 'id' else 'SBS'
+        return f"not assessable (n={int(corr_data.get(f'sig_{kind}_total') or 0)} {unit})"
+    return 'none'
+
+
 def _run_correlation_script(args, tmb_val, msi_val, hrd_prob_val):
     corr_json = getattr(args, 'corr_json', '') or ''
     if corr_json and os.path.isfile(corr_json):
@@ -1330,10 +1339,15 @@ def _run_correlation_script(args, tmb_val, msi_val, hrd_prob_val):
     tmp_json = args.out + '.corr.tmp.json'
     cmd = [
         sys.executable, script,
+        # same arguments as the module call (modules/local/clinical_pdf_report)
         '--germline',  getattr(args, 'germline', '') or '',
         '--somatic',   getattr(args, 'somatic', '') or '',
+        '--somatic-second-hit', getattr(args, 'somatic_second_hit', '') or '',
         '--cnv',       getattr(args, 'cnv_somatic', '') or '',
+        '--cnv-germline', getattr(args, 'cnv_germline_gatk', '') or '',
+        '--germline-panel', getattr(args, 'germline_panel', '') or '',
         '--sig',       getattr(args, 'sig_sbs96', '') or '',
+        '--sig-id',    getattr(args, 'sig_id', '') or '',
         '--tumor',     getattr(args, 'tumor', '') or '',
         '--tmb',       str(tmb_val),
         '--msi',       str(msi_val),
@@ -2205,8 +2219,8 @@ def build_correlation_section(corr_data, story):
         'Global biomarkers:  TMB=' + tmb_s + ' mut/Mb'
         + '  |  MSI=' + msi_s + '% (' + _msi_corr_status + ')'
         + '  |  HRD prob=' + hrd_s
-        + ('  |  MMR signatures: ' + ', '.join(mmr_found) if mmr_found else '  |  MMR signatures: none')
-        + ('  |  HRD signatures: ' + ', '.join(hrd_found) if hrd_found else '  |  HRD signatures: none')
+        + '  |  MMR signatures: ' + (', '.join(mmr_found) if mmr_found else _sig_none(corr_data, 'sbs'))
+        + '  |  HRD signatures: ' + (', '.join(hrd_found) if hrd_found else _sig_none(corr_data, 'sbs'))
     )
     story.append(Paragraph('<font size="7" color="#94a3b8">' + bio_line + '</font>',
                            styles['Normal']))
@@ -2307,8 +2321,10 @@ def build_correlation_section(corr_data, story):
         '<font size="6" color="#94a3b8">Methodology: ACMG/AMP 2015 classification using ClinVar, '
         'gnomAD, REVEL, SpliceAI, and SnpEff impact (MANE Select). Second hit detection from somatic SNV '
         '(Mutect2, HIGH/MODERATE) and ASCAT LOH events (cnLOH, HETDEL+LOH, HOMDEL). '
-        'Pathway biomarkers: MMR=TMB\u226510 mut/Mb or MSI\u22653.5% + SBS6/15/20/21/26/44; '
-        'HRR=HRD prob\u22650.5 + SBS3/SBS8. For decision support only &#8212; '
+        'Pathway biomarkers: MMR = MSI-high, or TMB\u226510 mut/Mb with an MMR signature '
+        '(SBS6/15/20/21/26/44 or ID1/ID2); HRR = HRD probability or SBS3/SBS8. '
+        'Signatures count only with \u226510% of the assigned mutations, \u226510 mutations and '
+        '\u2265100 SBS / 50 indels in the sample. For decision support only &#8212; '
         'must be reviewed by a certified clinical geneticist.</font>',
         styles['Normal']))
 
@@ -2447,7 +2463,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
                      f'&nbsp;&nbsp;({T("prob_lbl")}&nbsp;=&nbsp;{prob_str})')
         for g in hrr_germ:
             for v in germ_plp[g]:
-                hgvsp = v.get('ANN[*].HGVS_P', '') or v.get('ANN[*].HGVS_C', '') or ''
+                hgvsp = variant_label(v.get) or ''
                 ac    = v.get('_ACMG', '')
                 ac_c  = '#ef4444' if ac == 'P' else '#f97316'
                 lines.append(f'<b>{T("germ_hit_lbl")}</b> {g} '
@@ -2460,7 +2476,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
                     hits.append(T('homdel_hit'))
                 if g in som_by_gene:
                     for sv in som_by_gene[g][:2]:
-                        hp2 = sv.get('ANN[*].HGVS_P', '') or sv.get('ANN[*].HGVS_C', '') or 'variant'
+                        hp2 = variant_label(sv.get) or 'variant'
                         hits.append(f'{T("somatic_pfx")} {hp2[:30]}')
                 if hits:
                     lines.append(f'<b>{T("2nd_hits_lbl")}</b> ' + ' | '.join(hits[:3]))
@@ -2469,7 +2485,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
         if hrd_sigs:
             lines.append(f'<b>{T("hrd_sigs_lbl")}</b> {", ".join(hrd_sigs)}')
         else:
-            lines.append(f'<b>{T("hrd_sigs_lbl")}</b> <font color="#6b7280">{T("sbs3_not_det")}</font>')
+            lines.append(f'<b>{T("hrd_sigs_lbl")}</b> <font color="#6b7280">{xml_escape(_sig_none(corr_data, "sbs")) if _sig_none(corr_data, "sbs") != "none" else T("sbs3_not_det")}</font>')
         findings.append((T('find_hrd'), colors.HexColor('#0ea5e9'), lines))
 
     # ── Finding 2: MMR Deficiency ────────────────────────────────────────────
@@ -2491,7 +2507,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
             f'&nbsp;&nbsp;<b>TMB:</b> <font color="{tmb_c}">{tmb_s}</font>')
         for g in mmr_germ:
             for v in germ_plp[g]:
-                hgvsp = v.get('ANN[*].HGVS_P', '') or v.get('ANN[*].HGVS_C', '') or ''
+                hgvsp = variant_label(v.get) or ''
                 ac    = v.get('_ACMG', '')
                 ac_c  = '#ef4444' if ac == 'P' else '#f97316'
                 lines.append(f'<b>{T("germ_hit_lbl")}</b> {g} '
@@ -2502,7 +2518,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
                     hits.append(T('loh_det'))
                 if g in som_by_gene:
                     for sv in som_by_gene[g][:2]:
-                        hp2 = sv.get('ANN[*].HGVS_P', '') or sv.get('ANN[*].HGVS_C', '') or 'variant'
+                        hp2 = variant_label(sv.get) or 'variant'
                         hits.append(f'{T("somatic_pfx")} {hp2[:30]}')
                 if hits:
                     lines.append(f'<b>{T("2nd_hits_lbl")}</b> ' + ' | '.join(hits[:3]))
@@ -2524,18 +2540,18 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
         if mmr_som and not mmr_germ and not mmr_biallelic_som:
             for g in mmr_som:
                 for sv in som_by_gene[g][:2]:
-                    hp2  = sv.get('ANN[*].HGVS_P', '') or sv.get('ANN[*].HGVS_C', '') or ''
+                    hp2  = variant_label(sv.get) or ''
                     tier = sv.get('_AMP_TIER', 'III')
                     lines.append(f'<b>{T("somatic_var_lbl")}</b> {g} {hp2[:35]} [Tier {tier}]')
         # Separate SBS vs ID signature lines
         if mmr_sbs_sigs:
             lines.append(f'<b>{T("sbs_mmr_lbl")}</b> <font color="#ef4444">{", ".join(mmr_sbs_sigs)}</font>')
         else:
-            lines.append(f'<b>{T("sbs_mmr_lbl")}</b> <font color="#6b7280">{T("not_det_f")}</font>')
+            lines.append(f'<b>{T("sbs_mmr_lbl")}</b> <font color="#6b7280">{xml_escape(_sig_none(corr_data, "sbs")) if _sig_none(corr_data, "sbs") != "none" else T("not_det_f")}</font>')
         if mmr_id_sigs:
             lines.append(f'<b>{T("id_mmr_lbl")}</b> <font color="#ef4444">{", ".join(mmr_id_sigs)}</font>')
         else:
-            lines.append(f'<b>{T("id_mmr_lbl")}</b> <font color="#6b7280">{T("not_det_f")}</font>')
+            lines.append(f'<b>{T("id_mmr_lbl")}</b> <font color="#6b7280">{xml_escape(_sig_none(corr_data, "id")) if _sig_none(corr_data, "id") != "none" else T("not_det_f")}</font>')
         findings.append((T('find_mmr'), colors.HexColor('#6366f1'), lines))
 
     # ── Finding 3: Double Somatic Hits (only genes with biomarker support) ───
@@ -2554,7 +2570,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
         for g, vlist in sorted(double_hits.items()):
             descs = []
             for sv in vlist[:3]:
-                hp    = sv.get('ANN[*].HGVS_P', '') or sv.get('ANN[*].HGVS_C', '') or '?'
+                hp    = variant_label(sv.get) or '?'
                 tier  = sv.get('_AMP_TIER', 'III')
                 imp   = sv.get('ANN[*].IMPACT', '')
                 descs.append(f'{hp[:25]} (Tier {tier}, {imp})')
@@ -2582,7 +2598,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
     tiered.sort(key=lambda v: _amp.TIER_ORDER.get(v.get('_AMP_TIER', 'III'), 9))
     for v in tiered:
         gene = xml_escape(v.get('ANN[*].GENE', '') or '')
-        hp = xml_escape((v.get('ANN[*].HGVS_P', '') or v.get('ANN[*].HGVS_C', '') or '')[:30])
+        hp = xml_escape((variant_label(v.get) or '')[:30])
         civ_lines.append(f'<b>{gene} {hp}</b> [Tier {v["_AMP_TIER"]}]')
         summ = _amp.evidence_summary(v.get('_CIVIC_ALL', []), TUMOR_TERMS)
         for label, items in summ['groups']:
@@ -3064,7 +3080,9 @@ def build_methodology_section(story):
         '<b>SigProfilerMatrixGenerator</b> constructs SBS96, DBS and ID mutation matrices. '
         '<b>SigProfilerAssignment</b> performs constrained attribution of COSMIC reference '
         'signatures to the tumour spectrum. '
-        'Reported signatures: all signatures with activity >0.05 mutations/Mb. '
+        'All assigned signatures are listed; for the MMR / HRD findings a signature counts as detected '
+        'with \u226510% of the assigned mutations, \u226510 mutations and \u2265100 SBS / 50 indels in the '
+        'sample (fewer: not assessable). '
         'Aetiology annotations sourced from the COSMIC Mutational Signatures website '
         '(cancer.sanger.ac.uk/signatures).',
         STYLE_BODY))

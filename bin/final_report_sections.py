@@ -326,7 +326,8 @@ def build_methodology_html():
          'Signatures are derived using the SigProfiler framework (COSMIC v3.4). '
          '<b>SigProfilerMatrixGenerator</b> constructs SBS96, DBS, and ID mutation matrices from somatic VCFs. '
          '<b>SigProfilerAssignment</b> performs constrained attribution of COSMIC reference signatures. '
-         'Reported signatures have activity &gt;0.05 mut/Mb. '
+         'All assigned signatures are listed; for the MMR / HRD findings a signature counts as detected with '
+         '&ge;10% of the assigned mutations, &ge;10 mutations and &ge;100 SBS / 50 indels in the sample (fewer: not assessable). '
          'Aetiology annotations from COSMIC Mutational Signatures (cancer.sanger.ac.uk/signatures).'),
         ('ACMG/AMP Variant Classification (Germline)',
          'Germline variants are classified per ACMG/AMP 2015 standards (Richards et al., '

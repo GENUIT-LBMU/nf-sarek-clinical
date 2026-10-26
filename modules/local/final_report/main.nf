@@ -156,6 +156,7 @@ process FINAL_REPORT {
         --cnv-germline  "\${CNV_GERM_GATK}" \
         --germline-panel "${projectDir}/assets/gene_panels/germline_cancer_predisposition.txt" \
         --sig           "\${SIG_SBS96}" \
+        --sig-id        "\${SIG_ID}" \
         --tumor         "\${TUMOR}" \
         --tmb           "\${TMB_VAL}" \
         --msi           "\${MSI_VAL}" \

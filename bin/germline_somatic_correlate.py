@@ -37,7 +37,14 @@ from acmg_shared import (
     MMR_ID_SIGNATURES,
     acmg_class as _acmg_class_shared,
     getter_for_dict,
+    signature_calls,
 )
+
+
+def _hgvs(row, key):
+    """HGVS field without the '.' placeholder of SnpSift extractFields."""
+    v = (row.get(key) or '').strip()
+    return '' if v == '.' else v
 
 # Biomarker thresholds (specific to germline-somatic correlation, not ACMG)
 _E = os.environ.get
@@ -72,8 +79,8 @@ def load_germline_variants(path):
                 continue
             variants.append({
                 'gene':    gene,
-                'hgvs_c':  (row.get('ANN[*].HGVS_C') or '').strip(),
-                'hgvs_p':  (row.get('ANN[*].HGVS_P') or '').strip(),
+                'hgvs_c':  _hgvs(row, 'ANN[*].HGVS_C'),
+                'hgvs_p':  _hgvs(row, 'ANN[*].HGVS_P'),
                 'impact':  (row.get('ANN[*].IMPACT') or '').strip(),
                 'effect':  (row.get('ANN[*].EFFECT') or '').strip(),
                 'clnsig':  (row.get('ClinVar_sig') or row.get('dbNSFP_clinvar_clnsig') or '').strip(),
@@ -226,8 +233,8 @@ def load_somatic_snv_by_gene(path):
             if (row.get('POP_COMMON') or '').strip() == '1':
                 continue
             rec = {
-                'hgvs_c': (row.get('ANN[*].HGVS_C') or '').strip(),
-                'hgvs_p': (row.get('ANN[*].HGVS_P') or '').strip(),
+                'hgvs_c': _hgvs(row, 'ANN[*].HGVS_C'),
+                'hgvs_p': _hgvs(row, 'ANN[*].HGVS_P'),
                 'effect': (row.get('ANN[*].EFFECT') or '').strip(),
                 'impact': impact,
                 'vaf':    (row.get('GEN[1].AF') or '').strip(),
@@ -376,38 +383,6 @@ def find_somatic_biallelic(somatic_snv_by_gene, somatic_cnv_by_gene,
     return biallelic
 
 
-def load_detected_signatures(sig_sbs96_path, tumor_name):
-    detected = set()
-    if not sig_sbs96_path or not os.path.isfile(sig_sbs96_path):
-        return detected
-    with open(sig_sbs96_path, newline='') as fh:
-        reader = csv.reader(fh, delimiter='\t')
-        rows = list(reader)
-    if len(rows) < 2:
-        return detected
-    header = rows[0]
-    for data_row in rows[1:]:
-        sample = data_row[0] if data_row else ''
-        if sample == tumor_name or sample.startswith(tumor_name + '_vs_'):
-            for i, col in enumerate(header[1:], 1):
-                if i < len(data_row):
-                    try:
-                        if float(data_row[i]) > 0:
-                            detected.add(col)
-                    except (ValueError, TypeError):
-                        pass
-            break
-    return detected
-
-
-def load_detected_id_signatures(sig_id_path, tumor_name):
-    """Load detected ID (indel) signatures from SigProfiler assignment output.
-    Same format as SBS96 activities file: sample rows x signature columns.
-    Returns a set of detected signature names (e.g. {'ID2', 'ID7'}).
-    """
-    return load_detected_signatures(sig_id_path, tumor_name)
-
-
 # ---------------------------------------------------------------------------
 # Correlation engine
 # ---------------------------------------------------------------------------
@@ -439,7 +414,19 @@ def _fmt_second_hits(gene, somatic_snv_by_gene, somatic_cnv_by_gene):
     return hits
 
 
-def _pathway_biomarkers(pathway, tmb, msi, hrd_prob, detected_sigs):
+def _sig_status(calls, wanted, kind):
+    """('detected: SBS6' | 'not detected' | 'not assessable (n=12 indels)', found list, status)."""
+    if not calls['assessable']:
+        unit = 'indels' if kind == 'ID' else 'SBS'
+        return f"not assessable (n={calls['total']:.0f} {unit})", [], 'n/a'
+    found = sorted(wanted & calls['detected'])
+    return (('detected: ' + ', '.join(found)) if found else 'not detected'), found, ('HIGH' if found else 'absent')
+
+
+def _pathway_biomarkers(pathway, tmb, msi, hrd_prob, sbs_calls, id_calls):
+    """MMR: MSI-high, or TMB-high explained by an MMR signature (SBS or ID).
+    HRR: HRD probability, or an HRD SBS signature. Signatures count only when
+    detected by acmg_shared.signature_calls (enough mutations)."""
     items = []
     match = False
 
@@ -450,22 +437,21 @@ def _pathway_biomarkers(pathway, tmb, msi, hrd_prob, detected_sigs):
                       'threshold': '>= ' + str(TMB_HIGH)})
         items.append({'key': 'MSI',  'val': str(round(msi, 1)) + '%',        'status': msi_s,
                       'threshold': '>= ' + str(MSI_HIGH_PCT) + '%'})
-        found_mmr = sorted(MMR_SIGNATURES & detected_sigs)
-        sig_s = ('detected: ' + ', '.join(found_mmr)) if found_mmr else 'not detected'
-        items.append({'key': 'MMR signatures', 'val': sig_s,
-                      'status': 'HIGH' if found_mmr else 'absent',
-                      'threshold': 'SBS6/15/20/21/26/44'})
-        match = (tmb >= TMB_HIGH or msi >= MSI_HIGH_PCT) and bool(found_mmr)
+        sbs_v, sbs_found, sbs_s = _sig_status(sbs_calls, MMR_SIGNATURES, 'SBS')
+        items.append({'key': 'MMR SBS signatures', 'val': sbs_v, 'status': sbs_s,
+                      'threshold': '/'.join(sorted(MMR_SIGNATURES))})
+        id_v, id_found, id_s = _sig_status(id_calls, MMR_ID_SIGNATURES, 'ID')
+        items.append({'key': 'MMR ID signatures', 'val': id_v, 'status': id_s,
+                      'threshold': '/'.join(sorted(MMR_ID_SIGNATURES))})
+        match = msi >= MSI_HIGH_PCT or (tmb >= TMB_HIGH and bool(sbs_found or id_found))
 
     elif pathway == 'HRR':
         hrd_s = 'HIGH' if hrd_prob >= HRD_HIGH else ('borderline' if hrd_prob >= HRD_BORDER else 'low')
         items.append({'key': 'HRD probability', 'val': str(round(hrd_prob, 4)),
                       'status': hrd_s, 'threshold': '>= ' + str(HRD_HIGH)})
-        found_hrd = sorted(HRD_SIGNATURES & detected_sigs)
-        sig_s = ('detected: ' + ', '.join(found_hrd)) if found_hrd else 'not detected'
-        items.append({'key': 'HRD signatures', 'val': sig_s,
-                      'status': 'HIGH' if found_hrd else 'absent',
-                      'threshold': 'SBS3 / SBS8'})
+        sig_v, found_hrd, sig_s = _sig_status(sbs_calls, HRD_SIGNATURES, 'SBS')
+        items.append({'key': 'HRD signatures', 'val': sig_v, 'status': sig_s,
+                      'threshold': '/'.join(sorted(HRD_SIGNATURES))})
         match = hrd_prob >= HRD_HIGH or bool(found_hrd)
 
     else:
@@ -527,9 +513,8 @@ def run_correlation(args):
     for _g, _recs in load_somatic_snv_by_gene(args.somatic_second_hit).items():
         somatic_snv_by_gene.setdefault(_g, []).extend(_recs)
     somatic_cnv_by_gene = load_somatic_cnv_by_gene(args.cnv)
-    detected_sigs       = load_detected_signatures(args.sig, args.tumor)
-    detected_id_sigs    = load_detected_id_signatures(
-        getattr(args, 'sig_id', None) or '', args.tumor)
+    sbs_calls           = signature_calls(args.sig, args.tumor, 'SBS')
+    id_calls            = signature_calls(getattr(args, 'sig_id', None) or '', args.tumor, 'ID')
 
     results = []
     for v in germ_variants:
@@ -549,7 +534,7 @@ def run_correlation(args):
 
         # Biomarkers
         biomarker_items, biomarker_match = _pathway_biomarkers(
-            pathway, tmb, msi, hrd_prob, detected_sigs)
+            pathway, tmb, msi, hrd_prob, sbs_calls, id_calls)
 
         # Interpretation
         interp_key, interp_class, interp_label = _interpretation(
@@ -589,7 +574,7 @@ def run_correlation(args):
         already_reported_genes=reported_genes,
     )
 
-    return results, biallelic_somatic, detected_sigs, detected_id_sigs
+    return results, biallelic_somatic, sbs_calls, id_calls
 
 
 # ---------------------------------------------------------------------------
@@ -668,7 +653,8 @@ def _badge(text, style_key):
             + html_lib.escape(text) + '</span>')
 
 
-def build_html(results, detected_sigs, tmb, msi, hrd_prob, biallelic_results=None):
+def build_html(results, sbs_calls, tmb, msi, hrd_prob, biallelic_results=None):
+    detected_sigs = sbs_calls['detected']
     if biallelic_results is None:
         biallelic_results = []
     if not results and not biallelic_results:
@@ -701,8 +687,10 @@ def build_html(results, detected_sigs, tmb, msi, hrd_prob, biallelic_results=Non
                + pill('TMB', tmb_ok, str(round(tmb, 1)) + ' mut/Mb')
                + pill('MSI', msi_ok, str(round(msi, 1)) + '%')
                + pill('HRD prob', hrd_ok, str(round(hrd_prob, 4)))
-               + pill('MMR sigs', mmr_ok, ', '.join(mmr_sigs_found) if mmr_ok else 'none')
-               + pill('HRD sigs', hrr_ok, ', '.join(hrd_sigs_found) if hrr_ok else 'none')
+               + pill('MMR sigs', mmr_ok, ', '.join(mmr_sigs_found) if mmr_ok else
+                      ('none' if sbs_calls['assessable'] else 'n/a (' + str(int(sbs_calls['total'])) + ' SBS)'))
+               + pill('HRD sigs', hrr_ok, ', '.join(hrd_sigs_found) if hrr_ok else
+                      ('none' if sbs_calls['assessable'] else 'n/a (' + str(int(sbs_calls['total'])) + ' SBS)'))
                + '</div>')
 
     # --- legend ---
@@ -818,8 +806,10 @@ def build_html(results, detected_sigs, tmb, msi, hrd_prob, biallelic_results=Non
                    'predictors (REVEL, SpliceAI). '
                    'Second hit detection uses somatic SNV (Mutect2, HIGH/MODERATE impact) and CNV/LOH '
                    '(ASCAT segments: cnLOH, HETDEL+LOH, HOMDEL). '
-                   'Pathway biomarkers: MMR — TMB &ge; 10 mut/Mb, MSI &ge; 3.5%, SBS6/15/20/21/26/44; '
-                   'HRR — HRProfiler probability &ge; 0.45, SBS3/SBS8. '
+                   'Pathway biomarkers: MMR — MSI-high, or TMB &ge; 10 mut/Mb with an MMR signature '
+                   '(SBS6/15/20/21/26/44 or ID1/ID2); HRR — HRProfiler probability &ge; 0.45 or SBS3/SBS8. '
+                   'Signatures count only with &ge;10% of the assigned mutations, &ge;10 mutations and '
+                   '&ge;100 SBS / 50 indels in the sample. '
                    'This analysis is intended as a decision-support tool and must be reviewed by a '
                    'certified clinical geneticist.</div>')
 
@@ -911,10 +901,11 @@ def main():
     msi      = safe_float(args.msi)
     hrd_prob = safe_float(args.hrd)
 
-    results, biallelic_somatic, detected_sigs, detected_id_sigs = run_correlation(args)
+    results, biallelic_somatic, sbs_calls, id_calls = run_correlation(args)
+    detected_sigs, detected_id_sigs = sbs_calls['detected'], id_calls['detected']
 
     if args.html_out:
-        html_fragment = build_html(results, detected_sigs, tmb, msi, hrd_prob,
+        html_fragment = build_html(results, sbs_calls, tmb, msi, hrd_prob,
                                    biallelic_results=biallelic_somatic)
         with open(args.html_out, 'w') as fh:
             fh.write(html_fragment)
@@ -927,6 +918,9 @@ def main():
             'biallelic_somatic': biallelic_somatic,
             'detected_sigs':     sorted(detected_sigs),
             'detected_id_sigs':  sorted(detected_id_sigs),
+            # signature calls are only made with enough mutations (acmg_shared.signature_calls)
+            'sig_sbs_assessable': sbs_calls['assessable'], 'sig_sbs_total': sbs_calls['total'],
+            'sig_id_assessable':  id_calls['assessable'],  'sig_id_total':  id_calls['total'],
             'metrics':           {'tmb': tmb, 'msi': msi, 'hrd_prob': hrd_prob},
         }
         with open(args.json_out, 'w') as fh:

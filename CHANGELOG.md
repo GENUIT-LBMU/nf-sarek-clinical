@@ -156,6 +156,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Germline–somatic correlation, MMR: an MSI-high tumor matches the MMR pathway on
+  its own, and a TMB-high one when an MMR signature (SBS **or ID**) explains it;
+  before, an MSI-H carrier without an SBS MMR signature and without a second hit was
+  dropped from the correlation (ID signatures were never used).
+- Mutational signatures: a signature is detected only with >= 10% of the sample's
+  assigned mutations, >= 10 mutations and >= 100 SBS / 50 indels in the sample
+  (`filters.signatures.min_fraction`, `min_count`, `min_total_sbs`, `min_total_id`,
+  replacing the unused `min_activity`); below that the reports say "not
+  assessable (n=…)". Before, any activity > 0 counted (one SBS3 mutation activated
+  HRD; ID signatures from 1–3 indels in 871, IMAX1141, IMAX1278).
+- Male tumors (ASCAT sex XY): chrX / chrY are not reported as LOH (AR was a second
+  hit in 1128 and IMAX1141).
+- HGVS "." placeholder no longer shown ("Somatic HIGH: . VAF=0.696" for the MSH2
+  splice variant of 1128 now reads c.1386+1G>A): `acmg_shared.variant_label()`.
+- The HTML correlation passes `--sig-id` and the PDF fallback passes the same
+  arguments as the module call (CNV germline, germline panel, ID signatures,
+  second-hit track): HTML and PDF correlations agree.
 - GATK somatic CNV: segments without heterozygous SNPs (MINOR_AF NA) are
   classified by copy number instead of "UNKNOWN"; AMP+LOH counts as an
   amplification (IMAX1141: MYC CN >= 5 now reported) but not as LOH (a CN 3 gain has
