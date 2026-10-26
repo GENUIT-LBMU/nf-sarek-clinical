@@ -37,7 +37,7 @@ BIO_HRD_HIGH       = float(_E('BIO_HRD_HIGH', '0.45'))
 BIO_HRD_BORDERLINE = float(_E('BIO_HRD_BORDERLINE', '0.30'))
 QC_LOW_COV         = int(_E('QC_LOW_COV_THRESHOLD', '50'))
 SIG_MMR_SBS_SET    = set(_E('SIG_MMR_SBS', 'SBS6,SBS15,SBS20,SBS21,SBS26,SBS44').split(','))
-SIG_MMR_ID_SET     = set(_E('SIG_MMR_ID', 'ID1,ID2').split(','))
+SIG_MMR_ID_SET     = set(_E('SIG_MMR_ID', 'ID1,ID2,ID7').split(','))
 SIG_HRD_SBS_SET    = set(_E('SIG_HRD_SBS', 'SBS3,SBS8').split(','))
 
 # ---------------------------------------------------------------------------
@@ -146,6 +146,7 @@ _TR = {
     # MSI status strings
     'msi_detected': {'en': 'MSI detected',           'es': 'MSI detectada'},
     'msi_not_det':  {'en': 'MSI not detected (MSS)', 'es': 'MSI no detectada (MSS)'},
+    'msi_border':   {'en': 'MSI borderline',         'es': 'MSI limítrofe'},
     # Major findings — card titles
     'find_hrd':     {'en': 'HRD Pathway',               'es': 'V\u00eda HRD'},
     'find_mmr':     {'en': 'MMR Deficiency',            'es': 'Deficiencia MMR'},
@@ -420,6 +421,9 @@ from acmg_shared import (
     getter_for_dict,
     hgvs_display,
     variant_label,
+    msi_status,
+    MSI_HIGH_PCT,
+    MSI_BORDER_PCT,
 )
 
 
@@ -743,12 +747,12 @@ def build_cover_page(args, metrics, story):
     if is_low_cov:
         _msi_disp_pdf = _indet
     else:
-        try:
-            _msi_pf = float(_msi_raw_pdf)
-            _msi_st = T('msi_detected') if _msi_pf >= 5.0 else T('msi_not_det')
-            _msi_disp_pdf = _msi_st + '<br/>' + _msi_raw_pdf + '%'
-        except (ValueError, TypeError):
-            _msi_disp_pdf = _msi_raw_pdf
+        _st = msi_status(_msi_raw_pdf)
+        if _st == 'NA':
+            _msi_disp_pdf = 'NA'
+        else:
+            _msi_st = {'MSI-H': T('msi_detected'), 'MSI borderline': T('msi_border')}.get(_st, T('msi_not_det'))
+            _msi_disp_pdf = _msi_st + '<br/>' + str(_msi_raw_pdf) + '%'
 
     _hrd_prob_disp = _indet if is_low_cov else _fmt_hrd_prob(metrics.get('hrd_prob', 'NA'))
 
@@ -2212,13 +2216,10 @@ def build_correlation_section(corr_data, story):
     hrd_s  = _na(metrics.get('hrd_prob'), 4)
     mmr_found = [s for s in detected_sigs if s in SIG_MMR_SBS_SET]
     hrd_found = [s for s in detected_sigs if s in SIG_HRD_SBS_SET]
-    try:
-        _msi_corr_status = 'detected' if float(msi_s or 0) >= 5.0 else 'MSS'
-    except (ValueError, TypeError):
-        _msi_corr_status = ''
+    _msi_corr_status = msi_status(metrics.get('msi'))
     bio_line = (
         'Global biomarkers:  TMB=' + tmb_s + ('' if tmb_s == 'NA' else ' mut/Mb')
-        + '  |  MSI=' + msi_s + '% (' + _msi_corr_status + ')'
+        + '  |  MSI=' + (msi_s + '% (' + _msi_corr_status + ')' if msi_s != 'NA' else 'NA')
         + '  |  HRD prob=' + hrd_s
         + '  |  MMR signatures: ' + (', '.join(mmr_found) if mmr_found else _sig_none(corr_data, 'sbs'))
         + '  |  HRD signatures: ' + (', '.join(hrd_found) if hrd_found else _sig_none(corr_data, 'sbs'))
@@ -2323,7 +2324,7 @@ def build_correlation_section(corr_data, story):
         'gnomAD, REVEL, SpliceAI, and SnpEff impact (MANE Select). Second hit detection from somatic SNV '
         '(Mutect2, HIGH/MODERATE) and ASCAT LOH events (cnLOH, HETDEL+LOH, HOMDEL). '
         'Pathway biomarkers: MMR = MSI-high, or TMB\u226510 mut/Mb with an MMR signature '
-        '(SBS6/15/20/21/26/44 or ID1/ID2); HRR = HRD probability or SBS3/SBS8. '
+        '(SBS6/15/20/21/26/44 or ID1/ID2/ID7); HRR = HRD probability or SBS3/SBS8. '
         'Signatures count only with \u226510% of the assigned mutations, \u226510 mutations and '
         '\u2265100 SBS / 50 indels in the sample. For decision support only &#8212; '
         'must be reviewed by a certified clinical geneticist.</font>',
@@ -2492,7 +2493,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
     # ── Finding 2: MMR Deficiency ────────────────────────────────────────────
     mmr_germ = [g for g in germ_plp if g in _MMR_GENES]
     mmr_som  = [g for g in som_by_gene if g in _MMR_GENES]
-    msi_pos  = msi_val is not None and msi_val >= BIO_MSI_HIGH
+    msi_pos  = msi_status(msi_val) == 'MSI-H'
     # MMR biallelic somatic events (e.g. MSH2 somatic SNV + cnLOH)
     mmr_biallelic_som = [b for b in biallelic_somatic
                          if b.get('pathway') == 'MMR']
@@ -2500,11 +2501,11 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
         lines = []
         msi_s  = f'{msi_val:.1f}%' if msi_val is not None else 'NA'
         tmb_s  = f'{tmb_val:.1f} mut/Mb' if tmb_val is not None else 'NA'
-        msi_st = 'MSI-H' if (msi_val is not None and msi_val >= 5) else 'MSI-L/MSS'
-        msi_c  = '#ef4444' if (msi_val is not None and msi_val >= 5) else '#6b7280'
+        msi_st = msi_status(msi_val)
+        msi_c  = '#ef4444' if msi_st == 'MSI-H' else '#6b7280'
         tmb_c  = '#ef4444' if (tmb_val is not None and tmb_val >= 10) else '#6b7280'
         lines.append(
-            f'<b>MSI:</b> <font color="{msi_c}">{msi_s} ({msi_st})</font>'
+            f'<b>MSI:</b> <font color="{msi_c}">{msi_s + (" (" + msi_st + ")" if msi_st != "NA" else "")}</font>'
             f'&nbsp;&nbsp;<b>TMB:</b> <font color="{tmb_c}">{tmb_s}</font>')
         for g in mmr_germ:
             for v in germ_plp[g]:
@@ -2866,7 +2867,7 @@ def build_clinical_trials_section(corr_data, tmb_val, msi_val, hrd_status, story
     except (ValueError, TypeError):
         pass
     try:
-        if float(str(msi_val).replace('NA','0') or '0') >= 5.0:
+        if msi_status(msi_val) == 'MSI-H':
             query_genes.append('microsatellite instability MSI-H')
     except (ValueError, TypeError):
         pass
@@ -2986,7 +2987,7 @@ def build_methodology_section(story):
         ['Somatic SNVs',       'GATK Mutect2 v4 (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
         ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
         ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=' + str(FILT_GERMLINE_CNV_MIN_QA) + ' Phred quality; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded; GIAB low-mappability segments shown apart'],
-        ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold >=5%'],
+        ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    f'Score = % unstable microsatellite loci; MSI-H >= {MSI_HIGH_PCT:g}%, borderline >= {MSI_BORDER_PCT:g}%'],
         ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Consensus VCF input; SBS + ID + CN48 features; HRD+ threshold: probability >=0.45'],
         ['Mut. Signatures',    'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',   'Consensus VCF input; COSMIC v3.4 SBS96, DBS and ID signatures'],
@@ -3063,7 +3064,8 @@ def build_methodology_section(story):
         'MSIsensorPro compares microsatellite loci repeat-length distributions between '
         'tumor and matched normal samples using a T/N somatic approach. The MSI score '
         'represents the percentage of unstable microsatellite sites. '
-        '<b>MSI-High (MSI-H) threshold: score >=5%</b> (consistent with FDA guidelines). '
+        f'<b>MSI-High (MSI-H) threshold: score >= {MSI_HIGH_PCT:g}%</b> (MSIsensor tumor-normal exome cut-off, '
+        f'Niu et al. 2014); {MSI_BORDER_PCT:g}% to {MSI_HIGH_PCT:g}%: borderline. '
         'MSI-H tumors may benefit from immune checkpoint inhibitors (anti-PD-1/PD-L1).',
         STYLE_BODY))
 

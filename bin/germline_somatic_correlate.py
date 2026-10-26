@@ -819,7 +819,7 @@ def build_html(results, sbs_calls, tmb, msi, hrd_prob, biallelic_results=None):
                    'Second hit detection uses somatic SNV (Mutect2, HIGH/MODERATE impact) and CNV/LOH '
                    '(ASCAT segments: cnLOH, HETDEL+LOH, HOMDEL). '
                    'Pathway biomarkers: MMR — MSI-high, or TMB &ge; 10 mut/Mb with an MMR signature '
-                   '(SBS6/15/20/21/26/44 or ID1/ID2); HRR — HRProfiler probability &ge; 0.45 or SBS3/SBS8. '
+                   '(SBS6/15/20/21/26/44 or ID1/ID2/ID7); HRR — HRProfiler probability &ge; 0.45 or SBS3/SBS8. '
                    'Signatures count only with &ge;10% of the assigned mutations, &ge;10 mutations and '
                    '&ge;100 SBS / 50 indels in the sample. '
                    'This analysis is intended as a decision-support tool and must be reviewed by a '

@@ -13,6 +13,9 @@ to keep the heredoc small enough for the Groovy parser.
 
 import html
 import os
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from acmg_shared import msi_status, MSI_HIGH_PCT, MSI_BORDER_PCT  # noqa: E402
 import csv
 
 _GCNV_MIN_QA = str(int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA', '4')))
@@ -146,7 +149,7 @@ def fetch_clinical_trials_html(corr_json_path, tmb_val, msi_val, hrd_status):
     except (ValueError, TypeError):
         pass
     try:
-        if float(str(msi_val).replace('NA','0') or '0') >= 5.0:
+        if msi_status(msi_val) == 'MSI-H':
             query_terms.append('microsatellite instability MSI-H')
     except (ValueError, TypeError):
         pass
@@ -257,7 +260,7 @@ def build_methodology_html():
         ['Somatic SNVs',      'GATK Mutect2 v4 (tumor&ndash;normal mode)',        'GRCh38', 'FilterMutectCalls PASS; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); CIViC annotation; AMP/ASCO/CAP Tier IA&ndash;III'],
         ['Somatic CNVs',      'ASCAT v3 + CNVkit v0.9 (consensus)',               'GRCh38', 'HOMDEL (CN=0), AMP (CN&ge;5), 2nd-hit LOH; 38-gene somatic CNV panel'],
         ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;' + _GCNV_MIN_QA + ' Phred; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded; GIAB low-mappability segments shown apart'],
-        ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H threshold &ge;5%'],
+        ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H &ge;' + format(MSI_HIGH_PCT, 'g') + '%, borderline &ge;' + format(MSI_BORDER_PCT, 'g') + '%'],
         ['Somatic Consensus', 'bcftools isec (Mutect2 &cap; Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT preserved'],
         ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'Consensus VCF input; HRD+ threshold: probability &ge;0.45; SBS3/SBS8'],
         ['Mut. Signatures',   'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',  'Consensus VCF input; COSMIC v3.4 SBS96, DBS, ID signatures; &gt;0.05 mut/Mb'],
@@ -317,7 +320,8 @@ def build_methodology_html():
         ('MSI &mdash; Microsatellite Instability',
          'MSIsensorPro compares microsatellite repeat-length distributions between tumor and matched normal '
          'using a somatic T/N model. MSI score = % unstable microsatellite sites. '
-         '<b>MSI-High (MSI-H) threshold: &ge;5%.</b> '
+         '<b>MSI-High (MSI-H) threshold: &ge;' + format(MSI_HIGH_PCT, 'g') + '%</b> (MSIsensor tumor-normal exome cut-off, '
+         'Niu et al. 2014); ' + format(MSI_BORDER_PCT, 'g') + '% to ' + format(MSI_HIGH_PCT, 'g') + '%: borderline. '
          'MSI-H tumors may benefit from immune checkpoint inhibitors (anti-PD-1/PD-L1).'),
         ('HRD &mdash; Homologous Recombination Deficiency',
          'HRProfiler applies a logistic regression model trained on TCGA/PCAWG cohorts using '

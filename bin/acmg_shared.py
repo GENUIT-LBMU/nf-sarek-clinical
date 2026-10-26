@@ -838,7 +838,7 @@ from gene_sets import MMR_GENES, HRR_GENES  # noqa: E402,F401
 # =============================================================================
 MMR_SBS_SIGNATURES = frozenset(_E('SIG_MMR_SBS', 'SBS6,SBS15,SBS20,SBS21,SBS26,SBS44').split(','))
 HRD_SBS_SIGNATURES = frozenset(_E('SIG_HRD_SBS', 'SBS3,SBS8').split(','))
-MMR_ID_SIGNATURES  = frozenset(_E('SIG_MMR_ID',  'ID1,ID2').split(','))
+MMR_ID_SIGNATURES  = frozenset(_E('SIG_MMR_ID',  'ID1,ID2,ID7').split(','))
 
 # A signature is "detected" only with enough support (filters.signatures):
 #   share of the sample's assigned mutations >= SIG_MIN_FRACTION,
@@ -898,3 +898,27 @@ def variant_label(get_field):
         if v and v != '.':
             return v
     return ''
+
+
+# MSI status: one threshold for every report (filters.biomarkers.msi_high /
+# msi_borderline, MSIsensor-pro % unstable sites). None / NA = not available.
+MSI_HIGH_PCT   = float(_E('BIO_MSI_HIGH', '3.5'))
+MSI_BORDER_PCT = float(_E('BIO_MSI_BORDERLINE', '1.5'))
+
+
+def msi_value(raw):
+    """'12.7' / 12.7 -> 12.7; '', 'NA', None or text -> None (not available)."""
+    try:
+        return float(str(raw).strip().rstrip('%'))
+    except (TypeError, ValueError):
+        return None
+
+
+def msi_status(raw):
+    """'MSI-H' | 'MSI borderline' | 'MSS' | 'NA' for a raw MSI value."""
+    v = msi_value(raw)
+    if v is None:
+        return 'NA'
+    if v >= MSI_HIGH_PCT:
+        return 'MSI-H'
+    return 'MSI borderline' if v >= MSI_BORDER_PCT else 'MSS'

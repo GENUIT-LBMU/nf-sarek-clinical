@@ -180,6 +180,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- One MSI-H threshold everywhere: `filters.biomarkers.msi_high` (3.5%, MSIsensor
+  tumor-normal exome cut-off; borderline from `msi_borderline` 1.5%) for the
+  correlation, PDF (cover, MMR card, biomarker line, trials, methodology) and HTML;
+  before the reports used a fixed 5.0% (a 4% tumor was MSI-H in the correlation and
+  MSS on the cover). `acmg_shared.msi_status()`.
+- A missing MSI value is shown as NA instead of "MSS" / "MSI-L/MSS"; the
+  MSIsensor-pro result is found through symbolic links (`find -L`).
+- MMR indel signatures are ID1, ID2 and ID7 (COSMIC v3.4: ID7 defective mismatch
+  repair; 1128 now reports ID2, ID7). HTML ID aetiologies corrected (ID6 is HR
+  deficiency, not MMR; ID13 UV light, not APOBEC; ID11 / ID14 unknown).
 - A missing TMB, MSI or HRD value read as 0.0 ("low") in the germline–somatic
   correlation and reports: it is now "not available" and never matches a pathway.
 - `--skip_tmb` had no effect: TMB now runs only when not skipped.

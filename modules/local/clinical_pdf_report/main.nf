@@ -59,7 +59,7 @@ process CLINICAL_PDF_REPORT {
     SNV_TSO500="\$(staged "${snv_tso500_tsv}")"           # pan-tumor track (TSO500 outside the core)
     CIVIC_TSO500="\$(staged "${civic_tso500_tsv}")"
     TMB_FILE="\$(find \${OUT_DIR}/somatic/tmb                -name "\${PAIR}*.tmb.tsv"            2>/dev/null | head -1 || true)"
-    MSI_FILE="\$(find ${sarek_outdir}/variant_calling/msisensorpro -name "\${PAIR}" -type f       2>/dev/null | head -1 || true)"
+    MSI_FILE="\$(find -L ${sarek_outdir}/variant_calling/msisensorpro -name "\${PAIR}" -type f       2>/dev/null | head -1 || true)"
     COV_N="\$(find ${sarek_outdir}/reports/mosdepth          -name "\${NORMAL}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"
     COV_T="\$(find ${sarek_outdir}/reports/mosdepth          -name "\${TUMOR}*.mosdepth.summary.txt"  2>/dev/null | head -1 || true)"
     CNV_SOMATIC="\$(find \${OUT_DIR}/somatic/cnv/ascat_cnvkit  -name "\${PAIR}*_somatic_cnv_report.tsv" 2>/dev/null | head -1 || true)"

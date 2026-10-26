@@ -72,7 +72,7 @@ process FINAL_REPORT {
     PHARMACO="\$(find \${OUT_DIR}/germline/pharmaco -name "\${NORMAL}*.pharmaco.tsv" 2>/dev/null | head -1 || true)"
     GENE_COV_N="\$(find \${OUT_DIR}/qc/gene_coverage -name "\${NORMAL}*_gene_coverage.tsv" 2>/dev/null | head -1 || true)"
     GENE_COV_T="\$(find \${OUT_DIR}/qc/gene_coverage -name "\${TUMOR}*_gene_coverage.tsv" 2>/dev/null | head -1 || true)"
-    MSI_FILE="\$(find ${sarek_outdir}/variant_calling/msisensorpro -name "\${PAIR}" -type f 2>/dev/null | head -1 || true)"
+    MSI_FILE="\$(find -L ${sarek_outdir}/variant_calling/msisensorpro -name "\${PAIR}" -type f 2>/dev/null | head -1 || true)"
     COV_N="\$(find ${sarek_outdir}/reports/mosdepth -name "\${NORMAL}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"
     COV_T="\$(find ${sarek_outdir}/reports/mosdepth -name "\${TUMOR}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"
 
@@ -235,12 +235,11 @@ patient_id = "\${PATIENT_ID}"
 run_name   = "${run_name}"
 
 _msi_raw = "\${MSI_VAL}"
-try:
-    _msi_f = float(_msi_raw)
-    _msi_status = "MSI detected" if _msi_f >= 5.0 else "MSI not detected (MSS)"
-    _msi_disp   = _msi_status + " \u2014 " + _msi_raw + "%"
-except ValueError:
-    _msi_disp = _msi_raw
+import sys as _sys_msi; _sys_msi.path.insert(0, '${projectDir}/bin')
+from acmg_shared import msi_status as _msi_status_of
+_msi_st = _msi_status_of(_msi_raw)   # one threshold: filters.biomarkers.msi_high
+_msi_disp = 'NA' if _msi_st == 'NA' else {
+    'MSI-H': 'MSI detected', 'MSI borderline': 'MSI borderline'}.get(_msi_st, 'MSI not detected (MSS)') + " \u2014 " + _msi_raw + "%"
 
 metrics = {
     "TMB (mut/Mb)":       "\${TMB_VAL}",
@@ -807,15 +806,15 @@ SBS_ETIOLOGY_HTML = {
     "SBS90": ("Duocarmycin",         "#43a047"),
     "SBS92": ("Tobacco (bladder)",   "#5d4037"),
 }
-ID_ETIOLOGY_HTML = {
-    "ID1":  ("Clock-like / Replication slippage", "#4e79a7"),
-    "ID2":  ("Clock-like / Replication slippage", "#4e79a7"),
-    "ID3":  ("Tobacco smoking",                   "#9c755f"),
-    "ID6":  ("MMR deficiency",                    "#b07aa1"),
-    "ID7":  ("MMR deficiency",                    "#b07aa1"),
-    "ID11": ("Platinum agents",                   "#1b5e20"),
-    "ID13": ("APOBEC",                            "#f28e2b"),
-    "ID14": ("POLE/POLD1",                        "#ff9da7"),
+ID_ETIOLOGY_HTML = {   # COSMIC v3.4 proposed aetiologies (same as the PDF)
+    "ID1":  ("Replication slippage (MMR-related)", "#4e79a7"),
+    "ID2":  ("Replication slippage (MMR-related)", "#4e79a7"),
+    "ID3":  ("Tobacco smoking",                    "#9c755f"),
+    "ID6":  ("Homologous recombination deficiency", "#e15759"),
+    "ID7":  ("MMR deficiency",                     "#b07aa1"),
+    "ID8":  ("NHEJ repair / radiation",            "#76b7b2"),
+    "ID13": ("UV light exposure",                  "#f28e2b"),
+    "ID18": ("Colibactin (pks+ E. coli)",          "#5d4037"),
 }
 
 def sig_to_html(path, sample_name):

@@ -896,7 +896,7 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 | `tmb` | `min_alt_reads=3` | TMB ALT-supporting reads |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
 | `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, `ps1_score=4`, `pm5_score=2`, `pm1_score=2`, `pm1_sup_score=1`, `bs1_sup_score=-1`, `vcep_specs=true`, REVEL and SpliceAI cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
-| `biomarkers` | `tmb_high=10.0`, `msi_high=3.5`, `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds |
+| `biomarkers` | `tmb_high=10.0`, `msi_high=3.5` (`msi_borderline=1.5`), `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds, the same in the correlation, HTML and PDF |
 | `qc` | `low_cov_threshold=50` | Tumor coverage warning |
 | `signatures` | `min_fraction=0.10`, `min_count=10`, `min_total_sbs=100`, `min_total_id=50`, MMR/HRD signature lists | A signature counts as detected (MMR / HRD pathway evidence) only above these; fewer mutations: "not assessable" |
 | `consensus` | `min_callers=2` | Somatic consensus: intersection of Mutect2 + Strelka2 |
