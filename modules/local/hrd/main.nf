@@ -33,8 +33,8 @@ process HRD_PROFILER {
 
     stub:
     """
-    echo -e "sample\thrd.prob\tprediction" > ${pair}_hrd_predictions.tsv
-    echo -e "${pair}\t0.42\tHRD-"          >> ${pair}_hrd_predictions.tsv
+    echo -e "sample\thrd.prob\tprediction\tstatus" > ${pair}_hrd_predictions.tsv
+    echo -e "${pair}\t0.42\tHRD-\tok"           >> ${pair}_hrd_predictions.tsv
     mkdir -p hrd_results
     """
 
@@ -74,8 +74,8 @@ process HRD_PROFILER {
     echo "[HRD] ${pair}: \${n_vars} somatic variants in VCF"
     if [[ "\${n_vars}" -lt 5 ]]; then
         echo "[HRD] WARNING: \${n_vars} somatic variants (<5 required); emitting NA stub" >&2
-        echo -e "sample\\thrd.prob\\tprediction" > ${pair}_hrd_predictions.tsv
-        echo -e "${pair}\\tNA\\tNA"              >> ${pair}_hrd_predictions.tsv
+        echo -e "sample\\thrd.prob\\tprediction\\tstatus" > ${pair}_hrd_predictions.tsv
+        echo -e "${pair}\\tNA\\tNA\\tfewer than 5 somatic variants" >> ${pair}_hrd_predictions.tsv
         exit 0
     fi
 
@@ -91,20 +91,21 @@ process HRD_PROFILER {
         --organ      ${organ} \\
         --genome     ${genome} \\
         --cnv-file-type ASCAT \\
-        --hrd-threshold ${params.hrd_threshold} || true
+        --hrd-threshold ${params.filters.biomarkers.hrd_high} || true
 
     # Locate predictions output (filename varies by HRProfiler version)
     pred="\$(find hrd_results -maxdepth 4 -type f \\
         \\( -name "*hrd_predictions*" -o -name "*HRD_predictions*" -o -name "*prediction*" \\) \\
         2>/dev/null | grep -iv '\\.png' | head -1)"
 
+    # status column: "ok", or why there is no HRD probability (shown in the reports)
     if [[ -n "\$pred" ]]; then
-        cp "\$pred" ${pair}_hrd_predictions.tsv
+        awk 'BEGIN{FS=OFS="\\t"} NR==1{print \$0, "status"; next} {print \$0, "ok"}' "\$pred" > ${pair}_hrd_predictions.tsv
         echo "[HRD] ${pair}: predictions written to ${pair}_hrd_predictions.tsv"
     else
-        echo "[HRD] WARNING: no predictions file found in hrd_results/; emitting stub" >&2
-        echo -e "sample\\thrd.prob\\tprediction" > ${pair}_hrd_predictions.tsv
-        echo -e "${pair}\\tNA\\tNA"              >> ${pair}_hrd_predictions.tsv
+        echo "[HRD] WARNING: no predictions file found in hrd_results/ (HRProfiler failed); emitting stub" >&2
+        echo -e "sample\\thrd.prob\\tprediction\\tstatus" > ${pair}_hrd_predictions.tsv
+        echo -e "${pair}\\tNA\\tNA\\tHRProfiler failed" >> ${pair}_hrd_predictions.tsv
     fi
     """
 }

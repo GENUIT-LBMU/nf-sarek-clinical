@@ -180,6 +180,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- HRD: one threshold, `filters.biomarkers.hrd_high` (0.45), also given to HRProfiler
+  (`params.hrd_threshold` 0.5 removed: the published `prediction` and the reports
+  could disagree; the HTML had 0.45 hard-coded). The predictions TSV gains a `status`
+  column ("ok", "HRProfiler failed", "fewer than 5 somatic variants") and the reports
+  show "NA (reason)" instead of a silent NA. The HRD card also opens on HRR biallelic
+  somatic events (somatic SNV + LOH / HOMDEL), as the MMR card does. Methodology: the
+  real HRProfiler features (N[C>T]G, N[C>G]T, microhomology deletions, LOH and
+  heterozygous segments; not SBS3/SBS8/ID6) and that its models were validated in
+  breast and ovarian cancer only, applied to other tumor types without specific
+  validation.
 - Somatic LOH in the PDF listed only the genes with a germline P/LP or somatic variant,
   silently (1128: 1 LOH in the PDF, 4 in the HTML). The PDF keeps that clinical filter
   and states the LOH not shown ("3 LOH event(s) … not shown (ALK, EPCAM, MSH6)"); the

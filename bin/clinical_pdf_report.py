@@ -2437,7 +2437,9 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
     hrr_germ = [g for g in germ_plp if g in _HRR_GENES]
     hrr_som  = [g for g in som_by_gene if g in _HRR_GENES]
     hrd_pos  = hrd_prob is not None and hrd_prob >= BIO_HRD_HIGH
-    if hrd_pos or hrr_germ:
+    # HRR biallelic somatic events (somatic SNV + LOH / HOMDEL), as in the MMR card
+    hrr_biallelic_som = [b for b in biallelic_somatic if b.get('pathway') == 'HRR']
+    if hrd_pos or hrr_germ or hrr_biallelic_som:
         lines = []
         prob_str  = f'{hrd_prob:.3f}' if hrd_prob is not None else 'NA'
         stat_col  = '#ef4444' if hrd_pos else '#22c55e'
@@ -2464,6 +2466,19 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
                     lines.append(f'<b>{T("2nd_hits_lbl")}</b> ' + ' | '.join(hits[:3]))
                 else:
                     lines.append(f'<b>{T("2nd_hit_lbl")}</b> <font color="#6b7280">{T("not_detected")}</font>')
+        for b in hrr_biallelic_som:
+            snvs  = b.get('all_snvs', [])
+            hgvs  = (snvs[0].get('hgvs_p') or snvs[0].get('hgvs_c', '')) if snvs else ''
+            vaf_s = (' VAF=' + snvs[0]['vaf']) if snvs and snvs[0].get('vaf') not in ('', '.', None) else ''
+            lines.append(f'<font color="#ef4444"><b>{T("biallelic_lbl")}</b></font> '
+                         f'<b>{b.get("gene", "")}</b> {xml_escape(hgvs)}{vaf_s}')
+            lines.append(f'&nbsp;&nbsp;&nbsp;{T("2nd_hit_lbl")} {xml_escape(b.get("cnv_label", "") or b.get("snv_label", ""))}')
+        if hrr_som and not hrr_germ and not hrr_biallelic_som:
+            for g in hrr_som:
+                for sv in som_by_gene[g][:2]:
+                    hp2  = variant_label(sv.get) or ''
+                    tier = sv.get('_AMP_TIER', 'III')
+                    lines.append(f'<b>{T("somatic_var_lbl")}</b> {g} {xml_escape(hp2[:35])} [Tier {tier}]')
         if hrd_sigs:
             lines.append(f'<b>{T("hrd_sigs_lbl")}</b> {", ".join(hrd_sigs)}')
         else:
@@ -2969,7 +2984,7 @@ def build_methodology_section(story):
         ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=' + str(FILT_GERMLINE_CNV_MIN_QA) + ' Phred quality; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded; GIAB low-mappability segments shown apart'],
         ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    f'Score = % unstable microsatellite loci; MSI-H >= {MSI_HIGH_PCT:g}%, borderline >= {MSI_BORDER_PCT:g}%'],
         ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
-        ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Consensus VCF input; SBS + ID + CN48 features; HRD+ threshold: probability >=0.45'],
+        ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    f'Consensus VCF + ASCAT; SBS, microhomology deletions, LOH / CN features; HRD+ probability >= {BIO_HRD_HIGH:g} (models validated in breast / ovarian only)'],
         ['Mut. Signatures',    'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',   'Consensus VCF input; COSMIC v3.4 SBS96, DBS and ID signatures'],
         ['TMB',                'Consensus VCF / coding territory Mb',              'GRCh38', 'Non-synonymous consensus variants in capture \u2229 MANE CDS; TMB-H threshold >=10 mut/Mb'],
         ['Pharmacogenomics',   'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1 rsIDs; CPIC annotation'],
@@ -3051,10 +3066,14 @@ def build_methodology_section(story):
 
     story.append(Paragraph('HRD — Homologous Recombination Deficiency', STYLE_SUB))
     story.append(Paragraph(
-        'HRProfiler applies a logistic regression model trained on TCGA/PCAWG cohorts. '
-        'Input features include: COSMIC SBS3, SBS8 (HRD-associated substitution signatures), '
-        'ID6 (NHEJ deletion signature), and copy-number segment features. '
-        '<b>HRD+ threshold: probability >=0.45.</b> '
+        'HRProfiler (Chopra et al., 2024) is a logistic regression model on six features of the '
+        'consensus somatic variants and ASCAT segments: the fractions of N[C>T]G and N[C>G]T '
+        'substitutions, deletions >= 5 bp with microhomology, LOH segments of 1-40 Mb and '
+        'heterozygous segments (3-9 copies 10-40 Mb, 2-4 copies > 40 Mb). '
+        '<b>Its models were trained and validated in breast and ovarian cancer only</b>; for other '
+        'tumor types the breast (or ovarian) model is applied without specific validation, and the '
+        'probability should be read as supporting evidence. '
+        f'<b>HRD+ threshold: probability >= {BIO_HRD_HIGH:g}.</b> '
         'HRD+ tumors may benefit from PARP inhibitors (olaparib, rucaparib, niraparib, talazoparib). '
         'Supporting biomarkers: SBS3/SBS8 detection and HRD probability are reported jointly.',
         STYLE_BODY))
@@ -3199,11 +3218,13 @@ def main():
                 hrd_status_val = 'HRD-'
             else:
                 hrd_status_val = raw_pred if raw_pred else 'NA'
-            # Override with custom probability threshold (>= 0.45 = HRD+)
+            # Probability >= filters.biomarkers.hrd_high (the threshold also given to
+            # HRProfiler); without a probability, the reason from HRD_PROFILER (status)
             try:
                 hrd_status_val = 'HRD+' if float(hrd_prob_val) >= BIO_HRD_HIGH else 'HRD-'
             except (ValueError, TypeError):
-                pass
+                why = str(row0.get('status', '') or '').strip()
+                hrd_status_val = 'NA' + (f' ({why})' if why and why not in ('ok', 'NA') else '')
 
     metrics = {
         'tmb':        args.tmb_val    or 'NA',

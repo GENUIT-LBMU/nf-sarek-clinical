@@ -104,10 +104,12 @@ process FINAL_REPORT {
     # HRD predictions: the staged file of this pair
     HRD_FILE="\$(staged "${hrd_predictions}")"
     HRD_PROB="\$(tsv_val "\$HRD_FILE" hrd.prob)"
-    # HRD status: custom probability threshold >= 0.45 = HRD+ (overrides prediction column)
-    HRD_STATUS=\$(awk -v p="\${HRD_PROB}" 'BEGIN{
-        if (p == "" || p == "NA" || p == ".") print "NA"
-        else if (p+0 >= 0.45) print "HRD+"
+    # HRD status: probability >= filters.biomarkers.hrd_high (also given to HRProfiler);
+    # without a probability, the reason recorded by HRD_PROFILER (status column)
+    HRD_WHY="\$(tsv_val "\$HRD_FILE" status)"
+    HRD_STATUS=\$(awk -v p="\${HRD_PROB}" -v t="${params.filters.biomarkers.hrd_high}" -v why="\${HRD_WHY}" 'BEGIN{
+        if (p == "" || p == "NA" || p == ".") print "NA" ((why != "" && why != "NA" && why != "ok") ? " (" why ")" : "")
+        else if (p+0 >= t+0) print "HRD+"
         else print "HRD-"
     }')
 

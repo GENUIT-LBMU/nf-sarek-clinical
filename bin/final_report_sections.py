@@ -20,6 +20,7 @@ import csv
 
 _GCNV_MIN_QA = str(int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA', '4')))
 _GCNV_LOWMAP_PCT = str(int(round(float(os.environ.get('FILT_GERMLINE_CNV_LOWMAP_FRAC', '0.5')) * 100)))
+_HRD_HIGH = format(float(os.environ.get('BIO_HRD_HIGH', '0.45')), 'g')
 _SOM_MAX_POP_AF = str(float(os.environ.get('FILT_SOMATIC_MAX_POP_AF', '0.01')))
 
 # ---------------------------------------------------------------------------
@@ -262,7 +263,7 @@ def build_methodology_html():
         ['Germline CNVs',     'GATK gCNV (case mode)',                            'GRCh38', 'QA&ge;' + _GCNV_MIN_QA + ' Phred; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded; GIAB low-mappability segments shown apart'],
         ['MSI',               'MSIsensorPro v1.x (tumor&ndash;normal)',           'N/A',    'Score = % unstable microsatellite loci; MSI-H &ge;' + format(MSI_HIGH_PCT, 'g') + '%, borderline &ge;' + format(MSI_BORDER_PCT, 'g') + '%'],
         ['Somatic Consensus', 'bcftools isec (Mutect2 &cap; Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT preserved'],
-        ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'Consensus VCF input; HRD+ threshold: probability &ge;0.45; SBS3/SBS8'],
+        ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'Consensus VCF + ASCAT; HRD+ probability &ge;' + _HRD_HIGH + ' (models validated in breast / ovarian only); SBS3/SBS8'],
         ['Mut. Signatures',   'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',  'Consensus VCF input; COSMIC v3.4 SBS96, DBS, ID signatures; &gt;0.05 mut/Mb'],
         ['TMB',               'Consensus VCF / coding territory Mb',              'GRCh38', 'Non-synonymous consensus variants in capture &cap; MANE CDS; TMB-H &ge;10 mut/Mb'],
         ['Pharmacogenomics',  'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1, NUDT15, TPMT, CYP2D6, CYP2C19; CPIC guideline annotation'],
@@ -324,9 +325,13 @@ def build_methodology_html():
          'Niu et al. 2014); ' + format(MSI_BORDER_PCT, 'g') + '% to ' + format(MSI_HIGH_PCT, 'g') + '%: borderline. '
          'MSI-H tumors may benefit from immune checkpoint inhibitors (anti-PD-1/PD-L1).'),
         ('HRD &mdash; Homologous Recombination Deficiency',
-         'HRProfiler applies a logistic regression model trained on TCGA/PCAWG cohorts using '
-         'COSMIC SBS3, SBS8, ID6 signatures and copy-number features as inputs. '
-         '<b>HRD+ threshold: probability &ge;0.45.</b> '
+         'HRProfiler (Chopra et al., 2024) is a logistic regression model on six features of the consensus '
+         'somatic variants and ASCAT segments: the fractions of N[C&gt;T]G and N[C&gt;G]T substitutions, deletions '
+         '&ge;5 bp with microhomology, LOH segments of 1&ndash;40 Mb and heterozygous segments. '
+         '<b>Its models were trained and validated in breast and ovarian cancer only</b>; for other tumor types the '
+         'breast (or ovarian) model is applied without specific validation, and the probability should be read as '
+         'supporting evidence. '
+         '<b>HRD+ threshold: probability &ge;' + _HRD_HIGH + '.</b> '
          'HRD+ tumors may benefit from PARP inhibitors (olaparib, rucaparib, niraparib, talazoparib). '
          'Supporting biomarkers (SBS3/SBS8 detection, HRD probability) are reported jointly.'),
         ('Mutational Signatures',
@@ -363,7 +368,7 @@ def build_methodology_html():
          'The correlation module cross-references P/LP/VUS germline variants in cancer-predisposition genes '
          'with (1) somatic second-hit SNVs/indels in the same gene, '
          '(2) allele-specific copy-number loss/LOH (from ASCAT+CNVkit and GATK gCNV), and '
-         '(3) pathway-level biomarkers: HRD probability &ge;0.45 or SBS3/SBS8 for HRR genes; '
+         '(3) pathway-level biomarkers: HRD probability &ge;' + _HRD_HIGH + ' or SBS3/SBS8 for HRR genes; '
          'TMB &ge;10 mut/Mb, MSI &ge;3.5%, or SBS6/15/20/21/26/44 for MMR genes. '
          'Genes without a somatic second hit <i>and</i> without pathway biomarker support are excluded.'),
     ]

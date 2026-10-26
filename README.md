@@ -825,8 +825,7 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--hrd_organ` | `BREAST` | Organ model: `BREAST` or `OVARIAN` |
-| `--hrd_threshold` | `0.45` | Probability threshold for HRD+ classification |
+| `--hrd_organ` | `BREAST` | HRProfiler model: `BREAST` or `OVARIAN` (the only validated tumor types; the model is applied to any tumor type, as the report methodology states) |
 
 ### Module toggles
 
