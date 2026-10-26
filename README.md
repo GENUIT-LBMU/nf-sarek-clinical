@@ -142,7 +142,7 @@ clinical_results/
 | 6 | **Somatic SNVs** | Split into *Clinically Actionable* (CIViC Tier I/II) and *Other* (Tier III) tables; Callers column shows M+S (consensus) or M (Mutect2-only); low-VAF warning for AF < 5% |
 | 7 | **Somatic CNVs (ASCAT/CNVkit)** | HOMDEL / HETDEL / AMP / LOH on 38-gene actionable panel from sarek CNV outputs |
 | 8 | **Somatic CNVs (GATK)** | Allele-specific paired CNV (tumour + normal BAMs); MANE annotation; diagnostic plots |
-| 9 | **TMB** | Tumour Mutational Burden in mut/Mb from consensus VCF (Mutect2 ∩ Strelka2) over WES capture size |
+| 9 | **TMB** | Non-synonymous somatic variants (consensus Mutect2 ∩ Strelka2, DP ≥ 10, VAF ≥ 5%, ≥ 3 ALT reads; synonymous not counted) per Mb of coding territory (capture BED ∩ MANE Select CDS) |
 | 10 | **Mutational Signatures** | SigProfilerAssignment COSMIC v3.4 SBS96/DBS/ID83 from consensus VCF |
 | 11 | **HRD** | HRProfiler logistic model from consensus VCF (SBS + indel + CNV48 features) → probability + classification |
 | 12 | **Gene Coverage** | Per-gene mean/min/max depth from mosdepth (normal + tumour) |
@@ -806,7 +806,8 @@ Download the four zip files for hg38 (`alleles`, `loci`, `loci_gc`, `loci_rt`) a
 | `--somatic_snv_panel` | `assets/gene_panels/somatic_snv_panel.txt` | Gene list for somatic SNV filter |
 | `--second_hit_panel` | `assets/gene_panels/somatic_track_second_hit.txt` | Second-hit germline genes outside the core: somatic SNVs for the germline–somatic correlation only (`null` = off) |
 | `--tso500_panel` | `assets/gene_panels/somatic_track_tso500.txt` | TSO500 genes outside the core: pan-tumor somatic SNV track (`null` = off) |
-| `--panel_bed` | — | WES capture BED for TMB calculation (mut/Mb) |
+| `--panel_bed` | — | WES capture BED; TMB territory = capture ∩ `--mane_cds_bed` |
+| `--mane_cds_bed` | — | MANE Select CDS BED (`scripts/build_mane_exons.py --cds-bed`). Without it the TMB denominator is the whole capture (warning). Recommended |
 | `--gnomad_tsv` | — | Local gnomAD panel resource (`scripts/build_gnomad_panel.sh`); path or https URL. Recommended |
 | `--gnomad_regions` | `<gnomad_tsv>_regions.bed.gz` | Regions BED of that resource (only needed if renamed) |
 | `--snpeff_mane_data` | — | snpEff data dir with the MANE database; re-annotates germline and somatic Mutect2 with MANE Select. Recommended |
@@ -891,7 +892,8 @@ All variant filtering, ACMG classification, and clinical biomarker thresholds ar
 |---------|---------------|-------------|
 | `germline_snv` | `min_dp=5`, `vaf_min_high=0.20`, `vaf_min_moderate=0.20`, `vaf_floor_min_dp=20`, `vaf_max=0.75`, `multi_hit_distance=30`, `multi_hit_vaf=0.40`, `multi_hit_min_gq=20`, `gnomad_rescue_max=50`, `noncoding_splice=true` | Germline SNV depth, low-VAF floor, zygosity (`vaf_max`, not a filter), multi-hit nearby artefacts (low VAF, FILTER != PASS or low GQ), gnomAD API rescue, non-coding splice candidates (SpliceAI >= 0.2) |
 | `germline_cnv` | `min_qa=4`, `lowmap_min_frac=0.5`, `exclude_genes=AR,BRAF,CCND1,…` | Germline CNV quality; low-mappability fraction above which a segment is listed apart; panel genes left out of germline CNV (somatic oncogenes) |
-| `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10`, `max_pop_af=0.01` | Somatic SNV / TMB filtering; AMP Tier IV population frequency |
+| `somatic_snv` | `min_dp=10`, `min_af=0.05`, `min_alt_reads=10`, `max_pop_af=0.01` | Somatic SNV / TMB DP and VAF; signatures ALT reads; AMP Tier IV population frequency |
+| `tmb` | `min_alt_reads=3` | TMB ALT-supporting reads |
 | `somatic_cnv` | `amp_threshold=5` | CN >= 5 = amplification |
 | `acmg` | `frequency_metric='faf95'`, `ba1_af=0.05`, `pm2_af=0.001`, `bs1_af=0.01`, PVS1 / PM4 / PM2 / BS1 points, `pvs1_not_applicable`, `ps1_score=4`, `pm5_score=2`, `pm1_score=2`, `pm1_sup_score=1`, `bs1_sup_score=-1`, `vcep_specs=true`, REVEL and SpliceAI cut-offs, `score_p=10`, `score_lp=6`, `score_lb=-1`, `score_b=-7`, `clinvar_min_stars=2` | ACMG classification: see [ACMG points](#acmg-points) |
 | `biomarkers` | `tmb_high=10.0`, `msi_high=3.5`, `hrd_high=0.45` (+ borderline values) | Clinical biomarker thresholds |

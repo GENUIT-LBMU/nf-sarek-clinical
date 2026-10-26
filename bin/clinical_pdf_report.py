@@ -2206,9 +2206,10 @@ def build_correlation_section(corr_data, story):
     detected_sigs = sorted(corr_data.get('detected_sigs', []))
 
     # Biomarker summary line
-    tmb_s  = str(round(float(metrics.get('tmb', 0) or 0), 1))
-    msi_s  = str(round(float(metrics.get('msi', 0) or 0), 1))
-    hrd_s  = str(round(float(metrics.get('hrd_prob', 0) or 0), 4))
+    _na    = lambda v, nd: 'NA' if v is None else str(round(float(v), nd))   # None = not available
+    tmb_s  = _na(metrics.get('tmb'), 1)
+    msi_s  = _na(metrics.get('msi'), 1)
+    hrd_s  = _na(metrics.get('hrd_prob'), 4)
     mmr_found = [s for s in detected_sigs if s in SIG_MMR_SBS_SET]
     hrd_found = [s for s in detected_sigs if s in SIG_HRD_SBS_SET]
     try:
@@ -2216,7 +2217,7 @@ def build_correlation_section(corr_data, story):
     except (ValueError, TypeError):
         _msi_corr_status = ''
     bio_line = (
-        'Global biomarkers:  TMB=' + tmb_s + ' mut/Mb'
+        'Global biomarkers:  TMB=' + tmb_s + ('' if tmb_s == 'NA' else ' mut/Mb')
         + '  |  MSI=' + msi_s + '% (' + _msi_corr_status + ')'
         + '  |  HRD prob=' + hrd_s
         + '  |  MMR signatures: ' + (', '.join(mmr_found) if mmr_found else _sig_none(corr_data, 'sbs'))
@@ -2989,7 +2990,7 @@ def build_methodology_section(story):
         ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    'Consensus VCF input; SBS + ID + CN48 features; HRD+ threshold: probability >=0.45'],
         ['Mut. Signatures',    'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',   'Consensus VCF input; COSMIC v3.4 SBS96, DBS and ID signatures'],
-        ['TMB',                'Consensus VCF / effective capture Mb',             'GRCh38', 'Non-synonymous PASS variants from consensus; TMB-H threshold >=10 mut/Mb'],
+        ['TMB',                'Consensus VCF / coding territory Mb',              'GRCh38', 'Non-synonymous consensus variants in capture \u2229 MANE CDS; TMB-H threshold >=10 mut/Mb'],
         ['Pharmacogenomics',   'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1 rsIDs; CPIC annotation'],
         ['Germline–Somatic',   'Custom integration script (germline_somatic_correlate.py)', 'N/A', 'P/LP germline variants cross-referenced with somatic 2nd hits and HRD/MMR biomarkers'],
     ]
@@ -3046,12 +3047,15 @@ def build_methodology_section(story):
 
     story.append(Paragraph('TMB Calculation', STYLE_SUB))
     story.append(Paragraph(
-        'Tumor Mutational Burden (TMB) is calculated as the number of somatic PASS variants '
-        'with non-synonymous functional annotation (missense, nonsense, frameshift, splice) '
-        'divided by the effective captured exome size (in megabases). '
-        '<b>TMB-High (TMB-H) threshold: >=10 mut/Mb</b>, consistent with FDA-approved '
-        'pembrolizumab (KEYTRUDA) indication for solid tumors (KEYNOTE-158). '
-        'Variants in known germline polymorphism databases (gnomAD AF > 1%) are excluded.',
+        'Tumor Mutational Burden (TMB) is the number of somatic non-synonymous variants '
+        '(missense, nonsense, frameshift, in-frame indel, splice site, start / stop loss; synonymous '
+        'variants are not counted) passing in Mutect2 and Strelka2 (consensus), tumor DP >= 10, '
+        'VAF >= 5% and >= 3 ALT reads, inside the coding territory (capture BED \u2229 MANE Select CDS, '
+        'computed per run), divided by that territory in megabases (WES non-synonymous TMB). '
+        'Germline variants are removed by the matched normal (Mutect2). '
+        '<b>TMB-High (TMB-H) threshold: >=10 mut/Mb</b>, the cut-off of the FDA-approved '
+        'pembrolizumab indication (KEYNOTE-158, FoundationOne CDx); this WES definition is not '
+        'calibrated against FoundationOne CDx.',
         STYLE_BODY))
 
     story.append(Paragraph('MSI — Microsatellite Instability', STYLE_SUB))

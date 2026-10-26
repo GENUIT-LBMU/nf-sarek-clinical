@@ -261,7 +261,7 @@ def build_methodology_html():
         ['Somatic Consensus', 'bcftools isec (Mutect2 &cap; Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT preserved'],
         ['HRD',               'HRProfiler (logistic regression on SBS+ID+CN)',    'N/A',    'Consensus VCF input; HRD+ threshold: probability &ge;0.45; SBS3/SBS8'],
         ['Mut. Signatures',   'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',  'Consensus VCF input; COSMIC v3.4 SBS96, DBS, ID signatures; &gt;0.05 mut/Mb'],
-        ['TMB',               'Consensus VCF / captured Mb',                      'GRCh38', 'Non-synonymous PASS from consensus; TMB-H &ge;10 mut/Mb'],
+        ['TMB',               'Consensus VCF / coding territory Mb',              'GRCh38', 'Non-synonymous consensus variants in capture &cap; MANE CDS; TMB-H &ge;10 mut/Mb'],
         ['Pharmacogenomics',  'SnpSift extract from HaplotypeCaller gVCF',        'GRCh38', 'DPYD, UGT1A1, NUDT15, TPMT, CYP2D6, CYP2C19; CPIC guideline annotation'],
         ['Germline&ndash;Somatic', 'germline_somatic_correlate.py',               'N/A',    'P/LP/VUS x somatic 2nd hits; HRD/MMR pathway biomarkers'],
     ]
@@ -307,10 +307,13 @@ def build_methodology_html():
          'PIK3CA, PIK3R1, PMS2, POLD1, POLE, PTEN, RECQL4, RNF43, SDHA, SDHD, SMAD4, TP53, WRN'
          '</span>'),
         ('TMB Calculation',
-         'Tumor Mutational Burden (TMB) = number of somatic <b>PASS</b> non-synonymous variants '
-         '(missense, nonsense, frameshift, splice) divided by the effective captured exome size (Mb). '
-         '<b>TMB-High (TMB-H) threshold: &ge;10 mut/Mb</b> (FDA pembrolizumab indication, KEYNOTE-158). '
-         'Variants in gnomAD (AF&nbsp;&gt;&nbsp;1%) are excluded as likely germline.'),
+         'Tumor Mutational Burden (TMB) = somatic non-synonymous variants (missense, nonsense, frameshift, '
+         'in-frame indel, splice site, start / stop loss; synonymous variants are not counted) passing in Mutect2 '
+         'and Strelka2 (consensus), tumor DP &ge; 10, VAF &ge; 5% and &ge; 3 ALT reads, inside the coding territory '
+         '(capture BED &cap; MANE Select CDS, computed per run) / that territory in Mb (WES non-synonymous TMB). '
+         'Germline variants are removed by the matched normal. '
+         '<b>TMB-High (TMB-H) threshold: &ge;10 mut/Mb</b> (FDA pembrolizumab indication, KEYNOTE-158, '
+         'FoundationOne CDx); this WES definition is not calibrated against FoundationOne CDx.'),
         ('MSI &mdash; Microsatellite Instability',
          'MSIsensorPro compares microsatellite repeat-length distributions between tumor and matched normal '
          'using a somatic T/N model. MSI score = % unstable microsatellite sites. '

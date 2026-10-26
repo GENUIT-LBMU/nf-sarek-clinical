@@ -41,6 +41,21 @@ from acmg_shared import (
 )
 
 
+def _ge(value, threshold):
+    """value >= threshold; False when the biomarker is not available (None)."""
+    return value is not None and value >= threshold
+
+
+def _level(value, high, border):
+    if value is None:
+        return 'n/a'
+    return 'HIGH' if value >= high else ('borderline' if value >= border else 'low')
+
+
+def _fmt(value, nd, unit=''):
+    return 'not available' if value is None else str(round(value, nd)) + unit
+
+
 def _hgvs(row, key):
     """HGVS field without the '.' placeholder of SnpSift extractFields."""
     v = (row.get(key) or '').strip()
@@ -431,11 +446,9 @@ def _pathway_biomarkers(pathway, tmb, msi, hrd_prob, sbs_calls, id_calls):
     match = False
 
     if pathway == 'MMR':
-        tmb_s  = 'HIGH' if tmb  >= TMB_HIGH    else ('borderline' if tmb  >= TMB_BORDER  else 'low')
-        msi_s  = 'HIGH' if msi  >= MSI_HIGH_PCT else ('borderline' if msi  >= MSI_BORDER  else 'low')
-        items.append({'key': 'TMB',  'val': str(round(tmb, 1)) + ' mut/Mb', 'status': tmb_s,
+        items.append({'key': 'TMB',  'val': _fmt(tmb, 1, ' mut/Mb'), 'status': _level(tmb, TMB_HIGH, TMB_BORDER),
                       'threshold': '>= ' + str(TMB_HIGH)})
-        items.append({'key': 'MSI',  'val': str(round(msi, 1)) + '%',        'status': msi_s,
+        items.append({'key': 'MSI',  'val': _fmt(msi, 1, '%'),       'status': _level(msi, MSI_HIGH_PCT, MSI_BORDER),
                       'threshold': '>= ' + str(MSI_HIGH_PCT) + '%'})
         sbs_v, sbs_found, sbs_s = _sig_status(sbs_calls, MMR_SIGNATURES, 'SBS')
         items.append({'key': 'MMR SBS signatures', 'val': sbs_v, 'status': sbs_s,
@@ -443,16 +456,15 @@ def _pathway_biomarkers(pathway, tmb, msi, hrd_prob, sbs_calls, id_calls):
         id_v, id_found, id_s = _sig_status(id_calls, MMR_ID_SIGNATURES, 'ID')
         items.append({'key': 'MMR ID signatures', 'val': id_v, 'status': id_s,
                       'threshold': '/'.join(sorted(MMR_ID_SIGNATURES))})
-        match = msi >= MSI_HIGH_PCT or (tmb >= TMB_HIGH and bool(sbs_found or id_found))
+        match = _ge(msi, MSI_HIGH_PCT) or (_ge(tmb, TMB_HIGH) and bool(sbs_found or id_found))
 
     elif pathway == 'HRR':
-        hrd_s = 'HIGH' if hrd_prob >= HRD_HIGH else ('borderline' if hrd_prob >= HRD_BORDER else 'low')
-        items.append({'key': 'HRD probability', 'val': str(round(hrd_prob, 4)),
-                      'status': hrd_s, 'threshold': '>= ' + str(HRD_HIGH)})
+        items.append({'key': 'HRD probability', 'val': _fmt(hrd_prob, 4),
+                      'status': _level(hrd_prob, HRD_HIGH, HRD_BORDER), 'threshold': '>= ' + str(HRD_HIGH)})
         sig_v, found_hrd, sig_s = _sig_status(sbs_calls, HRD_SIGNATURES, 'SBS')
         items.append({'key': 'HRD signatures', 'val': sig_v, 'status': sig_s,
                       'threshold': '/'.join(sorted(HRD_SIGNATURES))})
-        match = hrd_prob >= HRD_HIGH or bool(found_hrd)
+        match = _ge(hrd_prob, HRD_HIGH) or bool(found_hrd)
 
     else:
         items.append({'key': 'Pathway', 'val': 'No specific biomarker panel for this gene',
@@ -480,7 +492,7 @@ def _interpretation(acmg, has_second_hit, biomarker_match, pathway):
 
 def run_correlation(args):
     # Parse metric float values safely
-    def safe_float(s, default=0.0):
+    def safe_float(s, default=None):   # missing biomarker = None (not available), never 0
         try:
             return float(str(s).strip())
         except (ValueError, TypeError):
@@ -668,9 +680,9 @@ def build_html(results, sbs_calls, tmb, msi, hrd_prob, biallelic_results=None):
     mmr_sigs_found = sorted(MMR_SIGNATURES & detected_sigs)
     hrd_sigs_found = sorted(HRD_SIGNATURES & detected_sigs)
 
-    tmb_ok  = tmb  >= TMB_HIGH
-    msi_ok  = msi  >= MSI_HIGH_PCT
-    hrd_ok  = hrd_prob >= HRD_HIGH
+    tmb_ok  = _ge(tmb, TMB_HIGH)
+    msi_ok  = _ge(msi, MSI_HIGH_PCT)
+    hrd_ok  = _ge(hrd_prob, HRD_HIGH)
     mmr_ok  = bool(mmr_sigs_found)
     hrr_ok  = bool(hrd_sigs_found)
 
@@ -684,9 +696,9 @@ def build_html(results, sbs_calls, tmb, msi, hrd_prob, biallelic_results=None):
                 + icon + ' ' + label + v + '</span>')
 
     bio_bar = ('<div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 18px;">'
-               + pill('TMB', tmb_ok, str(round(tmb, 1)) + ' mut/Mb')
-               + pill('MSI', msi_ok, str(round(msi, 1)) + '%')
-               + pill('HRD prob', hrd_ok, str(round(hrd_prob, 4)))
+               + pill('TMB', tmb_ok, _fmt(tmb, 1, ' mut/Mb'))
+               + pill('MSI', msi_ok, _fmt(msi, 1, '%'))
+               + pill('HRD prob', hrd_ok, _fmt(hrd_prob, 4))
                + pill('MMR sigs', mmr_ok, ', '.join(mmr_sigs_found) if mmr_ok else
                       ('none' if sbs_calls['assessable'] else 'n/a (' + str(int(sbs_calls['total'])) + ' SBS)'))
                + pill('HRD sigs', hrr_ok, ', '.join(hrd_sigs_found) if hrr_ok else
@@ -879,9 +891,9 @@ def parse_args():
     ap.add_argument('--sig',       default='',  help='SBS96 assignment activities TXT')
     ap.add_argument('--sig-id',    default='',  help='ID (indel) assignment activities TXT')
     ap.add_argument('--tumor',     default='',  help='Tumor sample name (for signature lookup)')
-    ap.add_argument('--tmb',       default='0', help='TMB value (mut/Mb)')
-    ap.add_argument('--msi',       default='0', help='MSI value (%)')
-    ap.add_argument('--hrd',       default='0', help='HRD probability (0-1)')
+    ap.add_argument('--tmb',       default='', help='TMB value (mut/Mb); empty / NA = not available')
+    ap.add_argument('--msi',       default='', help='MSI value (%%); empty / NA = not available')
+    ap.add_argument('--hrd',       default='', help='HRD probability (0-1); empty / NA = not available')
     ap.add_argument('--html-out',  default='',  help='Output HTML fragment file')
     ap.add_argument('--germline-panel', default='', help='Germline gene panel file (one gene per line)')
     ap.add_argument('--json-out',  default='',  help='Output JSON file for PDF')
@@ -891,7 +903,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    def safe_float(s, default=0.0):
+    def safe_float(s, default=None):   # missing biomarker = None (not available), never 0
         try:
             return float(str(s).strip())
         except (ValueError, TypeError):

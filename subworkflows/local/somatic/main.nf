@@ -216,18 +216,24 @@ workflow SOMATIC_POSTPROCESS {
     )
 
     // ── TMB (from consensus VCF when available) ─────────────────────────────
-    TMB_FILTER(
-        ch_biomarker_vcfs,
-        ch_snpsift_jar,
-        params.filters.somatic_snv.min_dp,
-        params.filters.somatic_snv.min_af,
-        params.filters.somatic_snv.min_alt_reads
-    )
+    // Non-synonymous variants in capture ∩ MANE Select CDS (--mane_cds_bed)
+    ch_tmb_tsv = Channel.empty()
+    if (!params.skip_tmb) {
+        TMB_FILTER(
+            ch_biomarker_vcfs,
+            ch_snpsift_jar,
+            params.filters.somatic_snv.min_dp,
+            params.filters.somatic_snv.min_af,
+            params.filters.tmb.min_alt_reads
+        )
 
-    TMB_CALCULATE(
-        TMB_FILTER.out.vcf,
-        ch_panel_bed ?: file('NO_FILE')
-    )
+        TMB_CALCULATE(
+            TMB_FILTER.out.vcf,
+            ch_panel_bed ?: file('NO_FILE'),
+            params.mane_cds_bed ? file(params.mane_cds_bed, checkIfExists: true) : file('NO_CDS')
+        )
+        ch_tmb_tsv = TMB_CALCULATE.out.tsv
+    }
 
     // ── Mutational Signatures (from consensus VCF when available) ───────────
     MUTSIG_FILTER(
@@ -270,7 +276,7 @@ workflow SOMATIC_POSTPROCESS {
     tso500_civic_tsv  = ch_tso500_civic       // [pair, tsv]
     cnv_tsv           = SOMATIC_CNV_INTERPRET.out.tsv
     cnv_txt           = SOMATIC_CNV_INTERPRET.out.txt
-    tmb_tsv           = TMB_CALCULATE.out.tsv
+    tmb_tsv           = ch_tmb_tsv
     signatures_dir    = ch_signatures
     hrd_tsv           = ch_hrd_tsv
     consensus_stats   = SOMATIC_CONSENSUS.out.stats

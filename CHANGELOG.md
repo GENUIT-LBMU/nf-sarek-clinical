@@ -72,6 +72,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variants of the panel (e.g. MSH2 c.942+3A>T) could never be reported.
 
 ### Changed
+- **TMB definition**: non-synonymous somatic variants (HIGH / MODERATE; synonymous
+  not counted) of the consensus with tumor DP >= 10, VAF >= 5% and >= 3 ALT reads
+  (`filters.tmb.min_alt_reads`; before > 10, shared with signatures), inside the
+  coding territory capture BED ∩ MANE Select CDS (`--mane_cds_bed`, built by
+  `scripts/build_mane_exons.py --cds-bed`, computed per run: 32.89 Mb for Agilent
+  S07604514), divided by that territory. Before: the whole capture (38.23 Mb, UTR and
+  flanks) as denominator. 1128: 54.0 -> 67.9 mut/Mb; IMAX1141: 2.4 -> 5.8 mut/Mb (same
+  categories). The report methodology states the definition and that it is not
+  calibrated against FoundationOne CDx; it no longer claims a gnomAD > 1% exclusion
+  that the pipeline never applied.
 - **dbNSFP removed from the pipeline** (`--dbnsfp`, `SNPSIFT_DBNSFP_GERMLINE`).
   With the local resources it decided nothing: ACMG PP3 / BP4 come from REVEL and
   SpliceAI, ClinVar and frequencies from the local releases; its only effect was
@@ -170,6 +180,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- A missing TMB, MSI or HRD value read as 0.0 ("low") in the germline–somatic
+  correlation and reports: it is now "not available" and never matches a pathway.
+- `--skip_tmb` had no effect: TMB now runs only when not skipped.
 - Germline–somatic correlation, MMR: an MSI-high tumor matches the MMR pathway on
   its own, and a TMB-high one when an MMR signature (SBS **or ID**) explains it;
   before, an MSI-H carrier without an SBS MMR signature and without a second hit was
