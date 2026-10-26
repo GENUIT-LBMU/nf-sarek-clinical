@@ -20,9 +20,15 @@ process CLINICAL_PDF_REPORT {
 
     input:
     tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv), path(civic_tsv),
-          path(snv_second_hit_tsv), path(snv_tso500_tsv), path(civic_tso500_tsv)
-    val sarek_outdir
+          path(snv_second_hit_tsv), path(snv_tso500_tsv), path(civic_tso500_tsv),
+          path(tmb_tsv), path(msi_file), path(cov_n_summary), path(cov_t_summary),
+          path(cnv_somatic_tsv), path(cnv_gatk_somatic_tsv), path(cnv_gatk_germline_tsv),
+          path(pharmaco_tsv), path(gene_cov_n_tsv), path(gene_cov_t_tsv),
+          path(sig_assignment, stageAs: 'sig/assignment'), path(sig_profiles, stageAs: 'sig/matrix_profiles')
     val run_name
+    val not_run     // analyses switched off in this run (comma-separated, bin/report_shared.py)
+    val report_info // JSON: pipeline version, commit, sarek release, resources (bin/report_shared.py)
+    path sarek_versions, stageAs: 'sarek_versions/*'
 
     output:
     tuple val(pair), path("${pair}_clinical_report.pdf"), emit: pdf
@@ -48,7 +54,6 @@ process CLINICAL_PDF_REPORT {
     fi
     PATIENT_ID="\${TUMOR%%_T*}"
 
-    OUT_DIR="${params.outdir}"
     RUN="${run_name}"
 
     # ── Locate input files ─────────────────────────────────────────────────────
@@ -58,16 +63,27 @@ process CLINICAL_PDF_REPORT {
     SNV_SECOND_HIT="\$(staged "${snv_second_hit_tsv}")"   # second-hit track: correlation only
     SNV_TSO500="\$(staged "${snv_tso500_tsv}")"           # pan-tumor track (TSO500 outside the core)
     CIVIC_TSO500="\$(staged "${civic_tso500_tsv}")"
-    TMB_FILE="\$(find \${OUT_DIR}/somatic/tmb                -name "\${PAIR}*.tmb.tsv"            2>/dev/null | head -1 || true)"
-    MSI_FILE="\$(find -L ${sarek_outdir}/variant_calling/msisensorpro -name "\${PAIR}" -type f       2>/dev/null | head -1 || true)"
-    COV_N="\$(find ${sarek_outdir}/reports/mosdepth          -name "\${NORMAL}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"
-    COV_T="\$(find ${sarek_outdir}/reports/mosdepth          -name "\${TUMOR}*.mosdepth.summary.txt"  2>/dev/null | head -1 || true)"
-    CNV_SOMATIC="\$(find \${OUT_DIR}/somatic/cnv/ascat_cnvkit  -name "\${PAIR}*_somatic_cnv_report.tsv" 2>/dev/null | head -1 || true)"
-    CNV_SOM_GATK="\$(find \${OUT_DIR}/somatic/cnv_gatk/annotated -name "\${TUMOR}_annotated.tsv"          2>/dev/null | head -1 || true)"
-    CNV_GERM_GATK="\$(find \${OUT_DIR}/germline/cnv_gatk/annotated -name "\${NORMAL}_segments_annotated.tsv" 2>/dev/null | head -1 || true)"
-    PHARMACO="\$(find \${OUT_DIR}/germline/pharmaco -name "\${NORMAL}*.pharmaco.tsv" 2>/dev/null | head -1 || true)"
-    GENE_COV_N="\$(find \${OUT_DIR}/qc/gene_coverage -name "\${NORMAL}*_gene_coverage.tsv" 2>/dev/null | head -1 || true)"
-    GENE_COV_T="\$(find \${OUT_DIR}/qc/gene_coverage -name "\${TUMOR}*_gene_coverage.tsv"  2>/dev/null | head -1 || true)"
+    TMB_FILE="\$(staged "${tmb_tsv}")"
+    MSI_FILE="\$(staged "${msi_file}")"
+    COV_N="\$(staged "${cov_n_summary}")"
+    COV_T="\$(staged "${cov_t_summary}")"
+    CNV_SOMATIC="\$(staged "${cnv_somatic_tsv}")"
+    CNV_SOM_GATK="\$(staged "${cnv_gatk_somatic_tsv}")"
+    CNV_GERM_GATK="\$(staged "${cnv_gatk_germline_tsv}")"
+    PHARMACO="\$(staged "${pharmaco_tsv}")"
+    GENE_COV_N="\$(staged "${gene_cov_n_tsv}")"
+    GENE_COV_T="\$(staged "${gene_cov_t_tsv}")"
+    # Signature activities inside the staged SigProfilerAssignment directory
+    sig_act() { [[ -d sig/assignment ]] && find -L sig/assignment -name "Assignment_Solution_Activities.txt" -path "*_\$1/Assignment_Solution/*" | head -1 || true; }
+    SIG_SBS96="\$(sig_act SBS96)"
+    SIG_DBS="\$(sig_act DBS)"
+    SIG_ID="\$(sig_act ID)"
+    export REPORT_NOT_RUN="${not_run}"
+    cat > report_info.json <<'INFOEOF'
+${report_info}
+INFOEOF
+    export REPORT_INFO="\$PWD/report_info.json"
+    export REPORT_SAREK_VERSIONS="\$(staged "${sarek_versions}")"
 
     # HRD predictions: the staged file of this pair
     HRD_FILE="\$(staged "${hrd_predictions}")"
@@ -107,9 +123,7 @@ process CLINICAL_PDF_REPORT {
     COV_N_MEAN="\$(cov_mean "\$COV_N")"
     COV_T_MEAN="\$(cov_mean "\$COV_T")"
 
-    # ── Correlation pre-computation (produces JSON consumed by PDF script) ─────
-    SIG_SBS96="\$(find \${OUT_DIR}/somatic/signatures/\${PAIR}/assignment -name "Assignment_Solution_Activities.txt" -path "*_SBS96/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
-    SIG_ID="\$(find \${OUT_DIR}/somatic/signatures/\${PAIR}/assignment    -name "Assignment_Solution_Activities.txt" -path "*_ID/Assignment_Solution/*"   2>/dev/null | head -1 || true)"
+    # ── Correlation (JSON consumed by the PDF script; a failure fails the task) ─
 
     python3 ${projectDir}/bin/germline_somatic_correlate.py \\
         --germline      "\${SNV_GERMLINE:-}"   \\
@@ -124,8 +138,7 @@ process CLINICAL_PDF_REPORT {
         --tmb           "\${TMB_VAL}"          \\
         --msi           "\${MSI_VAL}"          \\
         --hrd           "\$(tsv_val "\$HRD_FILE" hrd.prob)" \\
-        --json-out  correlation_section.json \\
-        2>&1 || true
+        --json-out  correlation_section.json
 
     # ── Call Python PDF generator ───────────────────────────────────────────────
     python3 ${projectDir}/bin/clinical_pdf_report.py \\

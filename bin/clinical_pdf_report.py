@@ -16,7 +16,6 @@ import argparse
 import csv
 import json
 import os
-import subprocess
 import sys
 from datetime import date
 from xml.sax.saxutils import escape as xml_escape
@@ -424,6 +423,8 @@ def read_tsv(path):
 # ACMG classification — delegates to bin/acmg_shared.py (single source of truth)
 # ---------------------------------------------------------------------------
 from cnv_shared import ascat_alerts, ploidy_note  # noqa: E402  (filters.ascat report alerts)
+from report_shared import (ANALYSES, unavailable_text, kpi_value,  # noqa: E402
+                           tool_label, pipeline_label, sarek_label, version_rows)
 from acmg_shared import (
     acmg_criteria_list as _acmg_criteria_list_shared,
     clinvar_display,
@@ -644,6 +645,7 @@ STYLE_DISCLAIMER = ParagraphStyle(
     spaceAfter=4,
     leading=10,
 )
+STYLE_META = ParagraphStyle('Meta', fontName='Helvetica', fontSize=8, leading=10)
 STYLE_WARN = ParagraphStyle(
     'warn',
     fontName='Helvetica-Oblique',
@@ -714,7 +716,8 @@ def build_cover_page(args, metrics, story):
     meta_rows = [
         [T('meta_run'),   args.run_name or 'N/A', T('meta_patient'), args.patient or 'N/A'],
         [T('meta_tumor'), args.tumor or 'N/A',    T('meta_normal'),  args.normal or 'N/A'],
-        [T('meta_date'),  date.today().strftime('%Y-%m-%d'), T('meta_pipeline'), 'nf-sarek-clinical'],
+        [T('meta_date'),  date.today().strftime('%Y-%m-%d'), T('meta_pipeline'), Paragraph(xml_escape(pipeline_label()), STYLE_META)],
+        ['', '', 'Upstream', Paragraph(xml_escape(sarek_label()), STYLE_META)],
     ]
     col_w = USABLE_W / 4
     meta_table = Table(meta_rows, colWidths=[col_w] * 4)
@@ -767,10 +770,10 @@ def build_cover_page(args, metrics, story):
     _hrd_prob_disp = _indet if is_low_cov else _fmt_hrd_prob(metrics.get('hrd_prob', 'NA'))
 
     global_kpis = [
-        (T('kpi_tmb'),      _indet if is_low_cov else metrics.get('tmb', 'N/A')),
+        (T('kpi_tmb'),      _indet if is_low_cov else kpi_value('tmb', metrics.get('tmb', 'N/A'))),
         (T('kpi_msi'),      _msi_disp_pdf),
-        (T('kpi_hrd_prob'), _hrd_prob_disp),
-        (T('kpi_hrd_stat'), _indet if is_low_cov else metrics.get('hrd_status', 'N/A')),
+        (T('kpi_hrd_prob'), kpi_value('hrd', _hrd_prob_disp)),
+        (T('kpi_hrd_stat'), _indet if is_low_cov else kpi_value('hrd', metrics.get('hrd_status', 'N/A'))),
     ]
     story.append(_build_kpi_table(global_kpis, ncols=4))
     story.append(Spacer(1, 0.4 * cm))
@@ -873,6 +876,18 @@ def build_quality_metrics_page(metrics, story):
 # ---------------------------------------------------------------------------
 # Table helper with alternating row colours and header
 # ---------------------------------------------------------------------------
+def section_unavailable(key, paths, story):
+    """Section heading + why it has no data (not run / no result); True when shown."""
+    msg = unavailable_text(key, *paths)
+    if not msg:
+        return False
+    story.append(Paragraph(ANALYSES[key][0], STYLE_H2))
+    story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
+    story.append(Paragraph(xml_escape(msg), STYLE_WARN))
+    story.append(Spacer(1, 0.3 * cm))
+    return True
+
+
 def build_variant_table(col_headers, col_widths, data_rows, colour_col_idx=None, colour_fn=None):
     """
     Build a ReportLab Table with styled header row and alternating body rows.
@@ -1356,49 +1371,15 @@ def _sig_none(corr_data, kind):
     return 'none'
 
 
-def _run_correlation_script(args, tmb_val, msi_val, hrd_prob_val):
+def _load_correlation(args):
+    """Correlation JSON written by germline_somatic_correlate.py in the same task.
+    Missing or unreadable is an error: the germline-somatic section and the
+    MMR / HRD findings would otherwise disappear without notice."""
     corr_json = getattr(args, 'corr_json', '') or ''
-    if corr_json and os.path.isfile(corr_json):
-        try:
-            with open(corr_json) as fh:
-                return json.load(fh)
-        except Exception:
-            pass
-
-    # Try to run the correlation script inline
-    script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          'germline_somatic_correlate.py')
-    if not os.path.isfile(script):
-        return None
-
-    tmp_json = args.out + '.corr.tmp.json'
-    cmd = [
-        sys.executable, script,
-        # same arguments as the module call (modules/local/clinical_pdf_report)
-        '--germline',  getattr(args, 'germline', '') or '',
-        '--somatic',   getattr(args, 'somatic', '') or '',
-        '--somatic-second-hit', getattr(args, 'somatic_second_hit', '') or '',
-        '--cnv',       getattr(args, 'cnv_somatic', '') or '',
-        '--cnv-germline', getattr(args, 'cnv_germline_gatk', '') or '',
-        '--germline-panel', getattr(args, 'germline_panel', '') or '',
-        '--sig',       getattr(args, 'sig_sbs96', '') or '',
-        '--sig-id',    getattr(args, 'sig_id', '') or '',
-        '--tumor',     getattr(args, 'tumor', '') or '',
-        '--tmb',       str(tmb_val),
-        '--msi',       str(msi_val),
-        '--hrd',       str(hrd_prob_val),
-        '--json-out',  tmp_json,
-    ]
-    try:
-        subprocess.run(cmd, check=True, capture_output=True)
-        if os.path.isfile(tmp_json):
-            with open(tmp_json) as fh:
-                data = json.load(fh)
-            os.unlink(tmp_json)
-            return data
-    except Exception as exc:
-        print('[WARN] Correlation script failed: ' + str(exc), file=sys.stderr)
-    return None
+    if not corr_json or not os.path.isfile(corr_json):
+        sys.exit(f'[ERROR] correlation JSON not found: {corr_json or "(not given)"}')
+    with open(corr_json) as fh:
+        return json.load(fh)
 
 
 def build_signature_plots_pdf(act_path, sig_type, story):
@@ -3013,12 +2994,12 @@ def build_methodology_section(story):
     story.append(Paragraph('Bioinformatics Pipeline Overview', STYLE_SUB))
     overview_headers = ['Report Section', 'Variant Caller / Tool', 'Genome Build', 'Key Parameters / Thresholds']
     overview_data = [
-        ['Germline SNVs',      'GATK HaplotypeCaller v4 (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); ACMG/AMP 2015 classification'],
-        ['Somatic SNVs',       'GATK Mutect2 v4 (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
-        ['Somatic CNVs',       'ASCAT v3 + CNVkit v0.9',                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
+        ['Germline SNVs',      tool_label('GATK HaplotypeCaller', 'gatk4') + ' (gVCF mode)',              'GRCh38', 'GATK Best Practices; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); ACMG/AMP 2015 classification'],
+        ['Somatic SNVs',       tool_label('GATK Mutect2', 'gatk4') + ' (tumor–normal mode)',              'GRCh38', 'FilterMutectCalls PASS; SnpEff HGVS on the transcript shown (MANE Select with --snpeff_mane_data; MANE Plus Clinical HGVS added when different); CIViC annotation; AMP/ASCO/CAP Tier IA–III'],
+        ['Somatic CNVs',       tool_label('ASCAT', 'ascat') + ' + ' + tool_label('CNVkit', 'cnvkit'),                           'GRCh38', 'Consensus HOMDEL (CN=0), AMP (CN>=5), 2nd-hit LOH; reported for 38-gene somatic CNV panel'],
         ['Germline CNVs',      'GATK gCNV (case mode)',                            'GRCh38', 'QA>=' + str(FILT_GERMLINE_CNV_MIN_QA) + ' Phred quality; deletions / duplications vs contig ploidy; germline panel genes, somatic oncogenes excluded; GIAB low-mappability segments shown apart'],
-        ['MSI',                'MSIsensorPro v1.x (tumor–normal)',                 'N/A',    f'Score = % unstable microsatellite loci; MSI-H >= {MSI_HIGH_PCT:g}%, borderline >= {MSI_BORDER_PCT:g}%'],
-        ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 Strelka2)',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
+        ['MSI',                tool_label('MSIsensor-pro', 'msisensor-pro') + ' (tumor–normal)',                 'N/A',    f'Score = % unstable microsatellite loci; MSI-H >= {MSI_HIGH_PCT:g}%, borderline >= {MSI_BORDER_PCT:g}%'],
+        ['Somatic Consensus',  'bcftools isec (Mutect2 \u2229 ' + tool_label('Strelka2', 'strelka') + ')',            'GRCh38', 'Intersection of PASS variants from both callers; Mutect2 FORMAT fields preserved'],
         ['HRD',                'HRProfiler (logistic regression model)',            'N/A',    f'Consensus VCF + ASCAT; SBS, microhomology deletions, LOH / CN features; HRD+ probability >= {BIO_HRD_HIGH:g} (models validated in breast / ovarian only)'],
         ['Mut. Signatures',    'SigProfilerMatrixGenerator + SigProfilerAssignment','N/A',   'Consensus VCF input; COSMIC v3.4 SBS96, DBS and ID signatures'],
         ['TMB',                'Consensus VCF / coding territory Mb',              'GRCh38', 'Non-synonymous consensus variants in capture \u2229 MANE CDS; TMB-H threshold >=10 mut/Mb'],
@@ -3039,6 +3020,20 @@ def build_methodology_section(story):
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
     story.append(t)
+
+    # ── Versions and resources (traceability) ────────────────────────────────
+    story.append(Paragraph('Versions and Resources', STYLE_SUB))
+    _vt = [[Paragraph('Component', STYLE_TH), Paragraph('Version / file', STYLE_TH)]]
+    _vt += [[Paragraph(xml_escape(k), STYLE_TC), Paragraph(xml_escape(str(v)), STYLE_TC)]
+            for k, v in version_rows()]
+    _vtab = Table(_vt, colWidths=[150, USABLE_W - 150], repeatRows=1)
+    _vtab.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), C_DARK_HEADER),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [C_WHITE, C_ROW_ALT]),
+        ('GRID', (0, 0), (-1, -1), 0.4, C_LIGHT_BORDER),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    story.append(_vtab)
 
     # ── Detailed subsections ──────────────────────────────────────────────────
     story.append(Paragraph('Gene Panels', STYLE_SUB))
@@ -3174,8 +3169,8 @@ def build_methodology_section(story):
 
     story.append(Spacer(1, 8))
     story.append(Paragraph(
-        '<i>This report was generated by the GENUIT nf-sarek-clinical pipeline based on '
-        'nf-core/sarek v3.x. All variant interpretations are for research/clinical '
+        '<i>This report was generated by ' + xml_escape(pipeline_label()) + ' on '
+        + xml_escape(sarek_label()) + '. All variant interpretations are for research/clinical '
         'investigational use. Results should be confirmed in a certified clinical laboratory '
         'before clinical decision-making. References: GATK Best Practices (Van der Auwera 2013), '
         'ACMG/AMP 2015 (Richards et al.), CPIC guidelines (cpicpgx.org), '
@@ -3352,16 +3347,7 @@ def main():
     doc.addPageTemplates([pt])
 
     # ── Germline-somatic correlation ──────────────────────────────────────────
-    def safe_float_m(s, default=0.0):
-        try:
-            return float(str(s).strip())
-        except (ValueError, TypeError):
-            return default
-
-    tmb_f      = safe_float_m(args.tmb_val)
-    msi_f      = safe_float_m(args.msi_val)
-    hrd_prob_f = safe_float_m(hrd_prob_val)
-    corr_data  = _run_correlation_script(args, tmb_f, msi_f, hrd_prob_f)
+    corr_data  = _load_correlation(args)
 
     # ── Language ──────────────────────────────────────────────────────────────
     set_lang(getattr(args, 'language', 'en') or 'en')
@@ -3375,38 +3361,45 @@ def main():
                                   corr_data, story, second_hit_variants=second_hit_variants)
     build_secondary_biomarkers(metrics, story)
     build_quality_metrics_page(metrics, story)
-    build_germline_section(germline_variants, story)
-    build_germline_cnv_section(args.cnv_germline_gatk, story,
-                               germline_panel_path=getattr(args, 'germline_panel', '') or '')
-    build_somatic_section(somatic_variants, story, gene_ctx=gene_ctx_data, pop_variants=pop_variants,
-                          tso500_vus=tso500_vus)
-    build_mutational_signatures_section(args, story)
-    build_somatic_cnv_section(
-        getattr(args, 'cnv_somatic', '') or '',
-        getattr(args, 'cnv_gatk_somatic', '') or '',
-        getattr(args, 'somatic_cnv_panel', '') or '',
-        getattr(args, 'germline_panel', '') or '',
-        story,
-        germline_snv_path=args.germline or '',
-        somatic_snv_path=args.somatic or '',
-        is_low_cov=metrics.get('is_low_cov', False),
-        second_hit_snv_path=args.somatic_second_hit or '',
-        ploidy_text=ploidy_note(metrics),
-    )
+    if not section_unavailable('germline_snv', [args.germline], story):
+        build_germline_section(germline_variants, story)
+    if not section_unavailable('germline_cnv', [args.cnv_germline_gatk], story):
+        build_germline_cnv_section(args.cnv_germline_gatk, story,
+                                   germline_panel_path=getattr(args, 'germline_panel', '') or '')
+    if not section_unavailable('somatic_snv', [args.somatic], story):
+        build_somatic_section(somatic_variants, story, gene_ctx=gene_ctx_data, pop_variants=pop_variants,
+                              tso500_vus=tso500_vus)
+    if not section_unavailable('signatures', [args.sig_sbs96, args.sig_id], story):
+        build_mutational_signatures_section(args, story)
+    if not section_unavailable('somatic_cnv', [args.cnv_somatic, args.cnv_gatk_somatic], story):
+        build_somatic_cnv_section(
+            getattr(args, 'cnv_somatic', '') or '',
+            getattr(args, 'cnv_gatk_somatic', '') or '',
+            getattr(args, 'somatic_cnv_panel', '') or '',
+            getattr(args, 'germline_panel', '') or '',
+            story,
+            germline_snv_path=args.germline or '',
+            somatic_snv_path=args.somatic or '',
+            is_low_cov=metrics.get('is_low_cov', False),
+            second_hit_snv_path=args.somatic_second_hit or '',
+            ploidy_text=ploidy_note(metrics),
+        )
     build_correlation_section(corr_data, story)
     # Pharmacogenomics with CPIC dose recommendations
-    build_pharmaco_section(getattr(args, 'pharmaco', '') or '', story)
+    if not section_unavailable('pharmaco', [args.pharmaco], story):
+        build_pharmaco_section(getattr(args, 'pharmaco', '') or '', story)
     # Clinical Trials — recruiting studies for identified variants/biomarkers
     build_clinical_trials_section(corr_data, metrics.get('tmb', 'NA'),
                                    metrics.get('msi', 'NA'), metrics.get('hrd_status', 'NA'), story)
     # Sequencing Quality
-    build_sequencing_quality_section(
-        getattr(args, 'gene_cov_n', '') or '',
-        getattr(args, 'gene_cov_t', '') or '',
-        args.normal, args.tumor, story,
-        germline_panel_path=getattr(args, 'germline_panel', '') or '',
-        somatic_panel_path=getattr(args, 'somatic_panel', '') or '',
-    )
+    if not section_unavailable('coverage', [args.gene_cov_n, args.gene_cov_t], story):
+        build_sequencing_quality_section(
+            getattr(args, 'gene_cov_n', '') or '',
+            getattr(args, 'gene_cov_t', '') or '',
+            args.normal, args.tumor, story,
+            germline_panel_path=getattr(args, 'germline_panel', '') or '',
+            somatic_panel_path=getattr(args, 'somatic_panel', '') or '',
+        )
     # Methodology section — always last
     build_methodology_section(story)
 

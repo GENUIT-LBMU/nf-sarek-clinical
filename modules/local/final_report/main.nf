@@ -27,9 +27,15 @@ process FINAL_REPORT {
 
     input:
     tuple val(pair), path(ascat_metrics), path(hrd_predictions), path(snv_germline_tsv), path(snv_somatic_tsv), path(civic_tsv),
-          path(snv_second_hit_tsv), path(snv_tso500_tsv), path(civic_tso500_tsv)
-    val sarek_outdir
+          path(snv_second_hit_tsv), path(snv_tso500_tsv), path(civic_tso500_tsv),
+          path(tmb_tsv), path(msi_file), path(cov_n_summary), path(cov_t_summary),
+          path(cnv_somatic_tsv), path(cnv_gatk_somatic_tsv), path(cnv_gatk_germline_tsv),
+          path(pharmaco_tsv), path(gene_cov_n_tsv), path(gene_cov_t_tsv),
+          path(sig_assignment, stageAs: 'sig/assignment'), path(sig_profiles, stageAs: 'sig/matrix_profiles')
     val run_name
+    val not_run     // analyses switched off in this run (comma-separated, bin/report_shared.py)
+    val report_info // JSON: pipeline version, commit, sarek release, resources (bin/report_shared.py)
+    path sarek_versions, stageAs: 'sarek_versions/*'
 
     output:
     tuple val(pair), path("${pair}_molecular_report.html"), emit: html
@@ -57,33 +63,38 @@ process FINAL_REPORT {
     fi
     PATIENT_ID="\${TUMOR%%_T*}"
 
-    OUT_DIR="${params.outdir}"
     RUN="${run_name}"
 
-    # Collect input paths with fallbacks (|| true prevents pipefail on missing dirs)
+    # Report inputs (staged; empty when the placeholder NO_* was given)
     SNV_GERMLINE="\$(staged "${snv_germline_tsv}")"
     SNV_SOMATIC="\$(staged "${snv_somatic_tsv}")"
     CIVIC_TSV="\$(staged "${civic_tsv}")"
     SNV_SECOND_HIT="\$(staged "${snv_second_hit_tsv}")"   # second-hit track: correlation only
     SNV_TSO500="\$(staged "${snv_tso500_tsv}")"           # pan-tumor track (TSO500 outside the core)
     CIVIC_TSO500="\$(staged "${civic_tso500_tsv}")"
-    CNV_SOMATIC="\$(find \${OUT_DIR}/somatic/cnv/ascat_cnvkit -name "\${PAIR}*_somatic_cnv_report.tsv" 2>/dev/null | head -1 || true)"
-    TMB_FILE="\$(find \${OUT_DIR}/somatic/tmb -name "\${PAIR}*.tmb.tsv" 2>/dev/null | head -1 || true)"
-    PHARMACO="\$(find \${OUT_DIR}/germline/pharmaco -name "\${NORMAL}*.pharmaco.tsv" 2>/dev/null | head -1 || true)"
-    GENE_COV_N="\$(find \${OUT_DIR}/qc/gene_coverage -name "\${NORMAL}*_gene_coverage.tsv" 2>/dev/null | head -1 || true)"
-    GENE_COV_T="\$(find \${OUT_DIR}/qc/gene_coverage -name "\${TUMOR}*_gene_coverage.tsv" 2>/dev/null | head -1 || true)"
-    MSI_FILE="\$(find -L ${sarek_outdir}/variant_calling/msisensorpro -name "\${PAIR}" -type f 2>/dev/null | head -1 || true)"
-    COV_N="\$(find ${sarek_outdir}/reports/mosdepth -name "\${NORMAL}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"
-    COV_T="\$(find ${sarek_outdir}/reports/mosdepth -name "\${TUMOR}*.mosdepth.summary.txt" 2>/dev/null | head -1 || true)"
+    TMB_FILE="\$(staged "${tmb_tsv}")"
+    MSI_FILE="\$(staged "${msi_file}")"
+    COV_N="\$(staged "${cov_n_summary}")"
+    COV_T="\$(staged "${cov_t_summary}")"
+    CNV_SOMATIC="\$(staged "${cnv_somatic_tsv}")"
+    CNV_SOM_GATK="\$(staged "${cnv_gatk_somatic_tsv}")"
+    CNV_GERM_GATK="\$(staged "${cnv_gatk_germline_tsv}")"
+    PHARMACO="\$(staged "${pharmaco_tsv}")"
+    GENE_COV_N="\$(staged "${gene_cov_n_tsv}")"
+    GENE_COV_T="\$(staged "${gene_cov_t_tsv}")"
+    # Signature activities inside the staged SigProfilerAssignment directory
+    sig_act() { [[ -d sig/assignment ]] && find -L sig/assignment -name "Assignment_Solution_Activities.txt" -path "*_\$1/Assignment_Solution/*" | head -1 || true; }
+    SIG_SBS96="\$(sig_act SBS96)"
+    SIG_DBS="\$(sig_act DBS)"
+    SIG_ID="\$(sig_act ID)"
+    export REPORT_NOT_RUN="${not_run}"
+    cat > report_info.json <<'INFOEOF'
+${report_info}
+INFOEOF
+    export REPORT_INFO="\$PWD/report_info.json"
+    export REPORT_SAREK_VERSIONS="\$(staged "${sarek_versions}")"
 
-    # Mutational signature activity files
-    SIG_SBS96="\$(find \${OUT_DIR}/somatic/signatures/\${PAIR}/assignment -name "Assignment_Solution_Activities.txt" -path "*_SBS96/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
-    SIG_DBS="\$(find \${OUT_DIR}/somatic/signatures/\${PAIR}/assignment -name "Assignment_Solution_Activities.txt" -path "*_DBS/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
-    SIG_ID="\$(find \${OUT_DIR}/somatic/signatures/\${PAIR}/assignment -name "Assignment_Solution_Activities.txt" -path "*_ID/Assignment_Solution/*" 2>/dev/null | head -1 || true)"
 
-    # GATK CNV files
-    CNV_GERM_GATK="\$(find \${OUT_DIR}/germline/cnv_gatk/annotated -name "\${NORMAL}_segments_annotated.tsv" 2>/dev/null | head -1 || true)"
-    CNV_SOM_GATK="\$(find \${OUT_DIR}/somatic/cnv_gatk/annotated -name "\${TUMOR}_annotated.tsv" 2>/dev/null | head -1 || true)"
 
     # Extract dashboard metrics
     tsv_val() { local f="\$1" col="\$2"; [[ -s "\$f" ]] && awk -F'\\t' -v c="\$col" 'NR==1{for(i=1;i<=NF;i++) if(tolower(\$i)==tolower(c)) col=i} NR==2{print \$col}' "\$f" || echo "NA"; }
@@ -150,7 +161,7 @@ process FINAL_REPORT {
       done
     } > ${pair}_molecular_report.txt
 
-    # Germline-somatic correlation (produces HTML fragment)
+    # Germline-somatic correlation (HTML fragment + JSON; a failure fails the task)
     python3 ${projectDir}/bin/germline_somatic_correlate.py \
         --germline      "\${SNV_GERMLINE}" \
         --somatic       "\${SNV_SOMATIC}" \
@@ -165,8 +176,7 @@ process FINAL_REPORT {
         --msi           "\${MSI_VAL}" \
         --hrd           "\${HRD_PROB}" \
         --html-out  correlation_section.html \
-        --json-out  correlation_section.json \
-        2>&1 || true   # never fail the report if correlation errors
+        --json-out  correlation_section.json
 
     # Build HTML (embed all data, generate KPI dashboard)
     python3 - <<PYEOF
@@ -244,8 +254,18 @@ _msi_st = _msi_status_of(_msi_raw)   # one threshold: filters.biomarkers.msi_hig
 _msi_disp = 'NA' if _msi_st == 'NA' else {
     'MSI-H': 'MSI detected', 'MSI borderline': 'MSI borderline'}.get(_msi_st, 'MSI not detected (MSS)') + " \u2014 " + _msi_raw + "%"
 
+# Analyses switched off in this run (REPORT_NOT_RUN) and sections without data
+import sys as _sys_rs; _sys_rs.path.insert(0, '${projectDir}/bin')
+from report_shared import unavailable_text as _unavail_text, kpi_value as _kpi_value
+from report_shared import pipeline_label as _pipeline_label, sarek_label as _sarek_label
+from datetime import date as _date
+def _unavail(key, *paths):
+    # '<p class=warn>why there is no data</p>', or '' when an input exists
+    m = _unavail_text(key, *paths)
+    return ("<p class='warn'>" + html.escape(m) + "</p>") if m else ''
+
 metrics = {
-    "TMB (mut/Mb)":       "\${TMB_VAL}",
+    "TMB (mut/Mb)":       _kpi_value('tmb', "\${TMB_VAL}"),
     "MSI":                 _msi_disp,
     "LOH":                 "\${LOH_VAL}",
     "Genomic Instability": "\${GI_VAL}",
@@ -254,8 +274,8 @@ metrics = {
     "Tumor Purity (%)":    "\${PURITY_PCT}",
     "Coverage Normal (X)": "\${COV_N_MEAN}",
     "Coverage Tumor (X)":  "\${COV_T_MEAN}",
-    "HRD Probability":     "\${HRD_PROB}",
-    "HRD Status":          "\${HRD_STATUS}",
+    "HRD Probability":     _kpi_value('hrd', "\${HRD_PROB}"),
+    "HRD Status":          _kpi_value('hrd', "\${HRD_STATUS}"),
 }
 
 # ASCAT fit quality and ploidy notes (filters.ascat; bin/cnv_shared.py, shared with the PDF)
@@ -1069,10 +1089,10 @@ def build_coverage_quality_html(path_n, path_t, normal_name, tumor_name):
 sections = ""
 
 # Germline SNVs — specialized table with ACMG
-sections += "<section><h2>Germline SNVs</h2>" + tsv_to_html_germline(files['Germline SNVs']) + "</section>\\n"
+sections += "<section><h2>Germline SNVs</h2>" + (_unavail('germline_snv', files['Germline SNVs']) or tsv_to_html_germline(files['Germline SNVs'])) + "</section>\\n"
 
 # Somatic SNVs — specialized table with AMP tier
-sections += "<section><h2>Somatic SNVs</h2>" + tsv_to_html_somatic(files['Somatic SNVs'], civic_index, files['Somatic SNVs (TSO500)']) + "</section>\\n"
+sections += "<section><h2>Somatic SNVs</h2>" + (_unavail('somatic_snv', files['Somatic SNVs']) or tsv_to_html_somatic(files['Somatic SNVs'], civic_index, files['Somatic SNVs (TSO500)'])) + "</section>\\n"
 
 # Remaining generic sections (skip gene coverage and handled tables)
 generic_skip = {'Germline SNVs', 'Somatic SNVs', 'CIViC annotation', 'Somatic SNVs (TSO500)', 'CIViC annotation (TSO500)', 'Somatic SNVs (second hit)',
@@ -1081,27 +1101,29 @@ generic_skip = {'Germline SNVs', 'Somatic SNVs', 'CIViC annotation', 'Somatic SN
 for title, path in files.items():
     if title in generic_skip:
         continue
-    sections += "<section><h2>" + html.escape(title) + "</h2>" + tsv_to_html(path, title) + "</section>\\n"
+    _key = {'TMB': 'tmb', 'HRD Predictions': 'hrd'}.get(title)
+    sections += "<section><h2>" + html.escape(title) + "</h2>" + ((_key and _unavail(_key, path)) or tsv_to_html(path, title)) + "</section>\\n"
 
 # Pharmacogenomics -- specialized CPIC-annotated table
 sections += ("<section><h2>Pharmacogenomics (PGx) &#8212; CPIC Dose Recommendations</h2>"
-             + tsv_to_html_pharmaco(files.get('Pharmacogenomics', ''))
+             + (_unavail('pharmaco', files.get('Pharmacogenomics', '')) or tsv_to_html_pharmaco(files.get('Pharmacogenomics', '')))
              + "</section>\\n")
 
 # Sequencing Quality — dedicated per-gene coverage page
 sections += (
     "<section><h2>Sequencing Quality &#8212; Per-Gene Coverage</h2>"
-    + build_coverage_quality_html(
+    + (_unavail('coverage', files.get('Gene Coverage (N)', ''), files.get('Gene Coverage (T)', ''))
+       or build_coverage_quality_html(
         files.get('Gene Coverage (N)', ''),
         files.get('Gene Coverage (T)', ''),
-        normal, tumor)
+        normal, tumor))
     + "</section>\\n"
 )
 
 # Mutational signature sections — table + profile/assignment plots
 sections += ("<section><h2>Mutational Signatures &#8212; SBS96</h2>"
-             + sig_to_html(sig_sbs96, pair)
-             + sig_plots_to_html(sig_sbs96, 'SBS96')
+             + (_unavail('signatures', sig_sbs96)
+                or (sig_to_html(sig_sbs96, pair) + sig_plots_to_html(sig_sbs96, 'SBS96')))
              + "</section>\\n")
 if sig_dbs and os.path.isfile(sig_dbs):
     sections += ("<section><h2>Mutational Signatures &#8212; DBS</h2>"
@@ -1120,18 +1142,19 @@ if os.path.isfile(_corr_path):
     with open(_corr_path) as _cf:
         _corr_html = _cf.read()
 else:
-    _corr_html = "<p class='warn'>Correlation analysis not available (script output missing)</p>"
+    raise SystemExit('[ERROR] correlation_section.html not written by germline_somatic_correlate.py')
 sections += '<section><h2>Germline&#8211;Somatic Correlation</h2>' + _corr_html + '</section>\\n'
 
 # CNV sections
 # Germline: GATK gCNV — constitutional CN changes in normal sample (unchanged)
-sections += "<section><h2>Germline CNVs (GATK) &#8212; deletions / duplications</h2>" + tsv_to_html_germline_cnv(cnv_germ_gatk, _load_panel(_GERMLINE_PANEL)) + "</section>\\n"
+sections += "<section><h2>Germline CNVs (GATK) &#8212; deletions / duplications</h2>" + (_unavail('germline_cnv', cnv_germ_gatk) or tsv_to_html_germline_cnv(cnv_germ_gatk, _load_panel(_GERMLINE_PANEL))) + "</section>\\n"
 # Somatic: unified HOMDEL / AMP / LOH from CNVkit+ASCAT+GATK
 sections += ("<section><h2>Somatic CNVs &#8212; Reportable Events</h2>"
              + (("<p class='warn'>" + html.escape(_ploidy_txt) + "</p>") if _ploidy_txt else "")
-             + build_unified_cnv_html(files.get('Somatic CNVs', ''), cnv_som_gatk,
+             + (_unavail('somatic_cnv', files.get('Somatic CNVs', ''), cnv_som_gatk)
+                or build_unified_cnv_html(files.get('Somatic CNVs', ''), cnv_som_gatk,
                                       _loh_relevant_genes(files.get('Germline SNVs', ''),
-                                                          [files.get('Somatic SNVs', ''), files.get('Somatic SNVs (second hit)', '')]))
+                                                          [files.get('Somatic SNVs', ''), files.get('Somatic SNVs (second hit)', '')])))
              + "</section>\\n")
 
 # Clinical Trials -- ClinicalTrials.gov query for identified findings
@@ -1195,9 +1218,8 @@ _css = (
     '.badge-path { background:#0f766e; color:#fff; font-size:.65rem; }'
     '.badge-cgc  { background:#1e40af; color:#fff; font-size:.65rem; }'
     '.ctx-p { margin:4px 0; font-size:.76rem; color:#cbd5e1; line-height:1.45; }'
-    '.print-btn { position:fixed; bottom:24px; right:24px; padding:10px 20px; background:var(--accent); color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:.9rem; font-weight:600; z-index:999; }'
     '@media print {'
-    '  .filter-bar, .print-btn { display:none !important; }'
+    '  .filter-bar { display:none !important; }'
     '  body { background:#fff !important; color:#111 !important; font-size:9pt; }'
     '  .kpi-grid { grid-template-columns:repeat(4,1fr) !important; }'
     '  .kpi { background:#f8fafc !important; border:1px solid #e2e8f0 !important; }'
@@ -1258,11 +1280,6 @@ _js = (
     "    b.classList.toggle('active', b.dataset.filter === show);"
     "  });"
     "}"
-    "function printClinical() {"
-    "  filterGermline('plpvus');"
-    "  filterSomatic('ti-tii');"
-    "  window.print();"
-    "}"
     "document.addEventListener('DOMContentLoaded', function() {"
     "  filterGermline('all');"
     "  filterSomatic('all');"
@@ -1286,6 +1303,8 @@ page = (
     '    <div><strong>Patient:</strong> ' + html.escape(patient_id) + '</div>\\n'
     '    <div><strong>Tumor:</strong> ' + html.escape(tumor) + '</div>\\n'
     '    <div><strong>Normal:</strong> ' + html.escape(normal) + '</div>\\n'
+    '    <div><strong>Date:</strong> ' + _date.today().isoformat() + '</div>\\n'
+    '    <div><strong>Pipeline:</strong> ' + html.escape(_pipeline_label()) + ' (' + html.escape(_sarek_label()) + ')</div>\\n'
     '  </div>\\n'
     '  <h2>Dashboard</h2>\\n'
     '  <div class="kpi-grid">\\n    ' + kpi_cards + '\\n  </div>\\n'
@@ -1293,7 +1312,6 @@ page = (
     '  ' + sections + '\\n'
     '  <p style="margin-top:40px;font-size:.75rem;opacity:.6;">Generated by nf-sarek-clinical \\u00b7 GENUIT</p>\\n'
     '</div>\\n'
-    '<button class="print-btn" onclick="printClinical()">&#128424; Reporte Cl&#237;nico</button>\\n'
     + _js + '\\n'
     '</body>\\n</html>\\n'
 )

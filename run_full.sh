@@ -91,6 +91,12 @@ EOF
     # If tools were only in conf/sarek.config, MUTECT2_PAIRED would not get
     # --f1r2-tar-gz, causing LearnReadOrientationModel to produce no output and the
     # downstream join (failOnMismatch:true) to throw "Join mismatch" at FilterMutectCalls.
+    # Launched from the run directory: a nextflow.config in the launch directory
+    # is loaded too, and the one of this repository would reach sarek
+    # (resource labels, manifest, parameters).
+    SAMPLESHEET="$(realpath "${SAMPLESHEET}")"
+    PARAMS_FILE="$(realpath "${PARAMS_FILE}")"
+    cd "${RUN_DIR}"
     nextflow run nf-core/sarek \
         -r "${SAREK_REVISION}" \
         -profile docker \
@@ -101,6 +107,10 @@ EOF
         --input    "${SAMPLESHEET}" \
         --outdir   "${RUN_DIR}/results" \
         --tools    "haplotypecaller,mutect2,strelka,manta,cnvkit,ascat,msisensorpro,snpeff"
+
+    # Release recorded next to sarek's outputs (read by the reports, also with --skip-sarek)
+    echo "${SAREK_REVISION}" > "${RUN_DIR}/results/pipeline_info/sarek_release.txt"
+    cd "${PIPELINE_DIR}"
 
     echo ""
     echo "  Phase 1 complete → ${RUN_DIR}/results"

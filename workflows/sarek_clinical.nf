@@ -170,6 +170,14 @@ workflow SAREK_CLINICAL {
 
     // Tumor sample names (for mutsig tumor column detection)
 
+    // MSIsensor-pro result (file named as the pair) and mosdepth summary per sample (reports)
+    ch_msi = Channel.fromPath(
+        "${sarek_out}/variant_calling/msisensorpro/*/*", checkIfExists: false
+    ).filter { f -> f.name == f.parent.name }.map { f -> [f.name, f] }
+    ch_mosdepth_summary = Channel.fromPath(
+        "${sarek_out}/reports/mosdepth/*/*.mosdepth.summary.txt", checkIfExists: false
+    ).map { f -> [f.parent.name, f] }
+
     // mosdepth regions BED per sample
     ch_mosdepth = Channel.fromPath(
         "${sarek_out}/reports/mosdepth/**/*.recal.regions.bed.gz"
@@ -352,84 +360,133 @@ workflow SAREK_CLINICAL {
         )
     }
 
-    // ── ALL-UPSTREAM-DONE GATE ────────────────────────────────────────────────
-    // Ensures FINAL_REPORT and CLINICAL_PDF_REPORT run only after every
-    // upstream process (germline SNVs, somatic SNVs, signatures, GATK CNVs,
-    // gene coverage) has finished writing its output files.
-    // Each active subworkflow contributes a trigger element; collect() waits
-    // for all of them, then maps to a single 'ready' value for combine().
-    def ch_gate = Channel.of('base')
-
-    if (!params.skip_germline_snv || !params.skip_pharmaco) {
-        ch_gate = ch_gate.mix(GERMLINE_POSTPROCESS.out.snv_tsv.map { 'g' })
-    }
-    if (!params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures || !params.skip_hrd) {
-        ch_gate = ch_gate.mix(SOMATIC_POSTPROCESS.out.somatic_snv_tsv.map { 's' })
-        if (!params.skip_signatures) {
-            ch_gate = ch_gate.mix(SOMATIC_POSTPROCESS.out.signatures_dir.map { 'sig' })
-        }
-    }
-    if (!params.skip_germline_cnv) {
-        // Use annotated_tsv (not segments_vcf) so the gate fires AFTER
-        // MANE_ANNOTATE_GERMLINE_CNV publishes its output to disk.
-        // Using segments_vcf caused a race condition where FINAL_REPORT
-        // started before the annotated TSV was available.
-        ch_gate = ch_gate.mix(CNV_GERMLINE_GATK.out.annotated_tsv.map { 'gcnv' })
-    }
-    if (!params.skip_somatic_cnv_gatk) {
-        ch_gate = ch_gate.mix(CNV_SOMATIC_GATK.out.annotated_tsv.map { 'scnv' })
-    }
-    if (!params.skip_coverage) {
-        ch_gate = ch_gate.mix(GENE_COVERAGE.out.tsv.map { 'cov' })
-    }
-
-    ch_all_done = ch_gate.collect().map { 'ready' }
-
     // ── REPORT INPUTS: one tuple per pair, every file looked up by its key ───
     // Pairs come from Mutect2 and ASCAT. Each lookup channel is collected
-    // into a map (key -> file) so a missing file becomes a placeholder and a
-    // normal shared by two tumors is found for both. The germline TSV is
-    // keyed by the normal sample (the part of the pair after "_vs_").
+    // into a map (key -> file), so the reports start once every upstream
+    // result exists, a missing file becomes a placeholder (NO_*) and a normal
+    // shared by two tumors is found for both. Keys: pair, tumor or normal sample.
+    // Every report input is staged, so -resume reruns a report when any of
+    // its inputs changes (no lookup in --outdir).
     def somatic_ran  = !params.skip_somatic_snv || !params.skip_somatic_cnv || !params.skip_tmb || !params.skip_signatures || !params.skip_hrd
     def germline_ran = !params.skip_germline_snv || !params.skip_pharmaco
     def by_key = { ch -> ch.toList().map { l -> [l.collectEntries { [(it[0]): it[1]] }] } }
+    def som    = { name -> somatic_ran ? SOMATIC_POSTPROCESS.out."${name}" : Channel.empty() }
 
     ch_pairs = ch_mutect2_vcfs.map { pair, _vcf -> pair }
         .mix(ch_ascat_metrics.map { pair, _met -> pair })
         .unique()
 
-    ch_lookup = by_key(ch_ascat_metrics)
-        .combine(by_key(ch_hrd_tsv))
-        .combine(by_key(germline_ran ? GERMLINE_POSTPROCESS.out.snv_tsv : Channel.empty()))
-        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.somatic_snv_tsv : Channel.empty()))
-        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.civic_tsv : Channel.empty()))
-        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.second_hit_tsv : Channel.empty()))
-        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.tso500_tsv : Channel.empty()))
-        .combine(by_key(somatic_ran  ? SOMATIC_POSTPROCESS.out.tso500_civic_tsv : Channel.empty()))
+    def lookups = [
+        ascat:     ch_ascat_metrics,
+        hrd:       ch_hrd_tsv,
+        germ:      germline_ran ? GERMLINE_POSTPROCESS.out.snv_tsv : Channel.empty(),
+        som:       som('somatic_snv_tsv'),
+        civic:     som('civic_tsv'),
+        som2:      som('second_hit_tsv'),
+        tso:       som('tso500_tsv'),
+        tso_civic: som('tso500_civic_tsv'),
+        tmb:       som('tmb_tsv'),
+        msi:       ch_msi,
+        mosdepth:  ch_mosdepth_summary,
+        cnv:       som('cnv_tsv'),
+        cnv_gatk:  params.skip_somatic_cnv_gatk ? Channel.empty()
+                       : CNV_SOMATIC_GATK.out.annotated_tsv.map { _pid, tumor, tsv -> [tumor, tsv] },
+        gcnv:      params.skip_germline_cnv ? Channel.empty() : CNV_GERMLINE_GATK.out.annotated_tsv,
+        pgx:       germline_ran ? GERMLINE_POSTPROCESS.out.pharmaco : Channel.empty(),
+        gene_cov:  params.skip_coverage ? Channel.empty() : GENE_COVERAGE.out.tsv,
+        sig:       som('signatures_dir'),
+        sig_prof:  som('signatures_profiles'),
+    ]
+    def names = lookups.keySet() as List
+    ch_lookup = names.drop(1).inject(by_key(lookups[names[0]])) { acc, n -> acc.combine(by_key(lookups[n])) }
+        .map { maps -> [names, maps].transpose().collectEntries() }
 
     ch_report_input = ch_pairs
         .combine(ch_lookup)
-        .combine(ch_all_done)
-        .map { pair, ascat, hrd, germ, som, civic, som2, tso, tso_civic, _ready ->
+        .map { pair, m ->
+            def tumor  = pair.contains('_vs_') ? pair.split('_vs_')[0] : pair
             def normal = pair.contains('_vs_') ? pair.split('_vs_')[1] : ''
-            if (!ascat[pair]) log.warn "${pair}: no ASCAT metrics, the report shows NA for purity, ploidy, LOH, GI and WGD"
+            if (!m.ascat[pair]) log.warn "${pair}: no ASCAT metrics, the report shows NA for purity, ploidy, LOH, GI and WGD"
             [pair,
-             ascat[pair]  ?: file('NO_ASCAT'),
-             hrd[pair]    ?: file('NO_HRD'),
-             germ[normal] ?: file('NO_GERMLINE'),
-             som[pair]    ?: file('NO_SOMATIC'),
-             civic[pair]  ?: file('NO_CIVIC'),
-             som2[pair]   ?: file('NO_SECOND_HIT'),
-             tso[pair]    ?: file('NO_TSO500'),
-             tso_civic[pair] ?: file('NO_TSO500_CIVIC')]
+             m.ascat[pair]        ?: file('NO_ASCAT'),
+             m.hrd[pair]          ?: file('NO_HRD'),
+             m.germ[normal]       ?: file('NO_GERMLINE'),
+             m.som[pair]          ?: file('NO_SOMATIC'),
+             m.civic[pair]        ?: file('NO_CIVIC'),
+             m.som2[pair]         ?: file('NO_SECOND_HIT'),
+             m.tso[pair]          ?: file('NO_TSO500'),
+             m.tso_civic[pair]    ?: file('NO_TSO500_CIVIC'),
+             m.tmb[pair]          ?: file('NO_TMB'),
+             m.msi[pair]          ?: file('NO_MSI'),
+             m.mosdepth[normal]   ?: file('NO_COV_N'),
+             m.mosdepth[tumor]    ?: file('NO_COV_T'),
+             m.cnv[pair]          ?: file('NO_CNV_SOMATIC'),
+             m.cnv_gatk[tumor]    ?: file('NO_CNV_GATK_SOMATIC'),
+             m.gcnv[normal]       ?: file('NO_CNV_GATK_GERMLINE'),
+             m.pgx[normal]        ?: file('NO_PHARMACO'),
+             m.gene_cov[normal]   ?: file('NO_GENE_COV_N'),
+             m.gene_cov[tumor]    ?: file('NO_GENE_COV_T'),
+             m.sig[pair]          ?: file('NO_SIG'),
+             m.sig_prof[pair]     ?: file('NO_SIG_PROFILES')]
         }
+
+    // Versions and resources shown in both reports (bin/report_shared.py).
+    // code_md5 covers the scripts and assets the reports read from projectDir,
+    // which are not part of the task hash: a change reruns the reports on -resume.
+    def git = { List a ->
+        try { (['git', '-C', projectDir.toString()] + a).execute().text.trim() } catch (e) { '' }
+    }
+    def commit = workflow.commitId ? workflow.commitId.take(7) : git(['rev-parse', '--short', 'HEAD'])
+    def dirty  = !workflow.commitId && git(['status', '--porcelain', '--untracked-files=no'])
+    def code_files = (files("${projectDir}/bin/*.{py,R}") + files("${projectDir}/assets/**/*.{txt,tsv}"))
+        .sort { it.toString() }
+    def base = { p -> p ? file(p.toString()).name : null }
+    def sarek_release = file("${sarek_out}/pipeline_info/sarek_release.txt")   // written by run_full.sh
+    def report_info = groovy.json.JsonOutput.toJson([
+        pipeline:  "${workflow.manifest.name} ${workflow.manifest.version}".toString(),
+        commit:    commit ? (dirty ? "${commit} + local changes".toString() : commit) : 'unknown',
+        sarek:     params.sarek_version ?: (sarek_release.exists() ? sarek_release.text.trim() : ''),
+        nextflow:  nextflow.version.toString(),
+        resources: [
+            'gnomAD':                 base(params.gnomad_tsv),
+            'ClinVar':                base(params.clinvar_tsv),
+            'ClinVar protein index':  base(params.clinvar_protein_index),
+            'REVEL':                  base(params.revel_tsv),
+            'CIViC (civicpy cache)':  base(params.civic_cache),
+            'snpEff database (MANE)': params.snpeff_mane_db ?: null,
+            'MANE exons':             base(params.gcnv_mane_txt),
+            'MANE CDS (TMB)':         base(params.mane_cds_bed),
+            'Capture BED':            base(params.panel_bed),
+            'COSMIC signatures':      'COSMIC v3.4 (SigProfilerAssignment)',
+        ],
+        code_md5:  code_files.collect { it.text }.join('\n').md5(),
+    ])
+    def sarek_versions = file("${sarek_out}/pipeline_info/nf_core_sarek_software_mqc_versions.yml")
+    if (!sarek_versions.exists()) sarek_versions = file('NO_SAREK_VERSIONS')
+
+    // Analyses switched off in this run: the reports say "not analysed"
+    // instead of "no result" (bin/report_shared.py)
+    def not_run = [
+        germline_snv:     params.skip_germline_snv,
+        pharmaco:         !germline_ran || params.skip_pharmaco,
+        germline_cnv:     params.skip_germline_cnv,
+        somatic_snv:      !somatic_ran,
+        somatic_cnv:      !somatic_ran,
+        somatic_cnv_gatk: params.skip_somatic_cnv_gatk,
+        tmb:              !somatic_ran || params.skip_tmb,
+        signatures:       !somatic_ran || params.skip_signatures,
+        hrd:              !somatic_ran || params.skip_hrd,
+        coverage:         params.skip_coverage,
+    ].findAll { it.value }.keySet().join(',')
 
     // ── FINAL REPORT ─────────────────────────────────────────────────────────
     if (!params.skip_report) {
         FINAL_REPORT(
             ch_report_input,
-            params.sarek_outdir,
-            params.run_name
+            params.run_name,
+            not_run,
+            report_info,
+            sarek_versions
         )
     }
 
@@ -437,8 +494,10 @@ workflow SAREK_CLINICAL {
     if (!params.skip_pdf_report) {
         CLINICAL_PDF_REPORT(
             ch_report_input,
-            params.sarek_outdir,
-            params.run_name
+            params.run_name,
+            not_run,
+            report_info,
+            sarek_versions
         )
     }
 }

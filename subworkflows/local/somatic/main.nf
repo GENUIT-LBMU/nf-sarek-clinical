@@ -242,12 +242,14 @@ workflow SOMATIC_POSTPROCESS {
     )
 
     ch_signatures = Channel.empty()
+    ch_sig_profiles = Channel.empty()
     if (!params.skip_signatures) {
         MUTSIG_SIGPROFILER(
             MUTSIG_FILTER.out.vcf,
             params.genome_build
         )
         ch_signatures = MUTSIG_SIGPROFILER.out.assignment
+        ch_sig_profiles = MUTSIG_SIGPROFILER.out.profiles
     }
 
     // ── HRD Profiler ─────────────────────────────────────────────────────────
@@ -278,6 +280,7 @@ workflow SOMATIC_POSTPROCESS {
     cnv_txt           = SOMATIC_CNV_INTERPRET.out.txt
     tmb_tsv           = ch_tmb_tsv
     signatures_dir    = ch_signatures
+    signatures_profiles = ch_sig_profiles   // [pair, matrix_profiles/]
     hrd_tsv           = ch_hrd_tsv
     consensus_stats   = SOMATIC_CONSENSUS.out.stats
 }
