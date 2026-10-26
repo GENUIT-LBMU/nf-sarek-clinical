@@ -356,7 +356,8 @@ workflow SAREK_CLINICAL {
     if (!params.skip_coverage) {
         GENE_COVERAGE(
             ch_mosdepth,
-            ch_germline_panel
+            ch_germline_panel,
+            params.gcnv_mane_txt ? file(params.gcnv_mane_txt) : file('NO_MANE')
         )
     }
 

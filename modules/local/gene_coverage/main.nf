@@ -17,6 +17,7 @@ process GENE_COVERAGE {
     input:
     tuple val(sample), path(regions_bed_gz)
     path genes_list
+    path mane_txt      // MANE exons (chr, start, end, gene_symbol, ...), or NO_MANE
 
     output:
     tuple val(sample), path("${sample}_gene_coverage.tsv"), emit: tsv
@@ -42,16 +43,36 @@ process GENE_COVERAGE {
     # Load mosdepth BED: chrom, start, end, name (gene), coverage
     bed <- fread(bed_file, header=FALSE, sep="\\t",
                  col.names=c("chrom","start","end","gene","coverage"))
+    bed[["gene"]] <- toupper(bed[["gene"]])
 
     # Load gene list
     genes_of_interest <- readLines(genes_file)
     genes_of_interest <- trimws(genes_of_interest[!grepl("^#", genes_of_interest)])
     genes_of_interest <- toupper(genes_of_interest[nchar(genes_of_interest) > 0])
 
-    bed[["gene"]] <- toupper(bed[["gene"]])
-
-    # Filter and summarise
+    # Filter and summarise: capture regions named after the gene
     bed_filt <- bed[gene %in% genes_of_interest]
+
+    # Panel genes the capture names otherwise (e.g. RAD51D as RAD51L3-RFFL):
+    # the capture regions overlapping their MANE exons
+    mane_file <- "${mane_txt}"
+    missing <- setdiff(genes_of_interest, unique(bed_filt[["gene"]]))
+    if (length(missing) > 0 && file.exists(mane_file) && !startsWith(basename(mane_file), "NO_")) {
+      mane <- fread(mane_file, sep="\\t", select=1:4, col.names=c("chrom","start","end","gene"))
+      mane <- mane[toupper(gene) %in% missing]
+      mane[, gene := toupper(gene)]
+      if (nrow(mane) > 0) {
+        setkey(mane, chrom, start, end)
+        hits <- foverlaps(bed[, .(chrom, start, end, coverage)], mane, nomatch=0L)
+        hits <- unique(hits[, .(chrom, start=i.start, end=i.end, gene, coverage)])
+        if (nrow(hits) > 0) {
+          message("By MANE exon coordinates: ", paste(unique(hits[["gene"]]), collapse=", "))
+          bed_filt <- rbind(bed_filt, hits)
+        }
+      }
+    }
+    still <- setdiff(genes_of_interest, unique(bed_filt[["gene"]]))
+    if (length(still) > 0) message("WARNING: no capture region for: ", paste(still, collapse=", "))
 
     if (nrow(bed_filt) == 0) {
       message("WARNING: No regions matched genes of interest in ", bed_file)

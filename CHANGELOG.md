@@ -180,6 +180,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- Per-gene coverage: a panel gene the capture BED names otherwise is found by its
+  MANE exon coordinates (RAD51D, named RAD51L3-RFFL in the capture, was missing from
+  the coverage tables: 104 of 105 genes). Genes without any capture region are logged.
+- CI image build: sigprofiler tag 0.1.8, the one the pipeline uses.
 - GATK somatic CNV annotation (SC8): a failing `annotate_cnvs_complete_fixed.R` no
   longer passes with a warning, and the raw `called.seg` (other columns, no genes, no
   purity correction) is no longer used as the annotated table. The R script writes a
