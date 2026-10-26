@@ -252,6 +252,15 @@ def set_lang(lang):
     _LANG = (lang or 'en').lower()
 
 
+def _ascat_field(path, name):
+    """One column of the ASCAT metrics TSV ('NA' when missing)."""
+    if path and os.path.isfile(path):
+        _, rows = read_tsv(path)
+        if rows:
+            return str(rows[0].get(name, 'NA') or 'NA').strip()
+    return 'NA'
+
+
 def _fmt_hrd_prob(val):
     """Format HRD probability: '<0.01' if very small, else 2 decimal places."""
     try:
@@ -414,6 +423,7 @@ def read_tsv(path):
 # ---------------------------------------------------------------------------
 # ACMG classification — delegates to bin/acmg_shared.py (single source of truth)
 # ---------------------------------------------------------------------------
+from cnv_shared import ascat_alerts, ploidy_note  # noqa: E402  (filters.ascat report alerts)
 from acmg_shared import (
     acmg_criteria_list as _acmg_criteria_list_shared,
     clinvar_display,
@@ -796,6 +806,26 @@ def build_cover_page(args, metrics, story):
         story.append(_warn_tbl)
         story.append(Spacer(1, 0.3 * cm))
 
+    # ── ASCAT fit quality (filters.ascat) ───────────────────────────────────
+    _alerts = ascat_alerts(metrics)
+    if _alerts:
+        _qc_s = ParagraphStyle('AscatWarn', fontName='Helvetica', fontSize=7.5,
+                               textColor=colors.HexColor('#7c2d12'), leading=11)
+        _qc_tbl = Table([[Paragraph(
+            '<font size="9"><b>\u26a0 Copy-number fit quality (ASCAT)</b></font>'
+            + ''.join(f'<br/>&nbsp;&nbsp;\u2022 {xml_escape(a)}' for a in _alerts), _qc_s)]],
+            colWidths=[USABLE_W])
+        _qc_tbl.setStyle(TableStyle([
+            ('BACKGROUND',   (0, 0), (-1, -1), colors.HexColor('#fef3c7')),
+            ('TOPPADDING',   (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING',(0, 0), (-1, -1), 8),
+            ('LEFTPADDING',  (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#f59e0b')),
+        ]))
+        story.append(_qc_tbl)
+        story.append(Spacer(1, 0.3 * cm))
+
     # Story continues immediately with Major Clinical Findings (no PageBreak).
 
 
@@ -812,7 +842,8 @@ def build_secondary_biomarkers(metrics, story):
         (T('kpi_wgd'),    metrics.get('wgd',    'N/A')),
         (T('kpi_gi'),     metrics.get('gi',     'N/A')),
         (T('kpi_loh'),    metrics.get('loh',    'N/A')),
-        (T('kpi_ploidy'), metrics.get('ploidy', 'N/A')),
+        (T('kpi_ploidy'), str(metrics.get('ploidy', 'N/A'))
+                          + (' (WGD)' if str(metrics.get('wgd', '')).strip() in ('1', 'True', 'TRUE') else '')),
     ]
     story.append(_build_kpi_table(secondary_kpis, ncols=4))
     story.append(Spacer(1, 0.5 * cm))
@@ -1656,7 +1687,7 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
                                somatic_panel_path, germline_panel_path, story,
                                amp_threshold=5,
                                germline_snv_path='', somatic_snv_path='',
-                               is_low_cov=False, second_hit_snv_path=''):
+                               is_low_cov=False, second_hit_snv_path='', ploidy_text=''):
     # Unified somatic CNV section: HOMDEL, AMP, LOH
     story.append(PageBreak())
     story.append(Paragraph(T('sect_som_cnv'), STYLE_H2))
@@ -1683,6 +1714,10 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
 
     data = _harmonize_cnv_pdf(ascat_cnvkit_path, gatk_somatic_path,
                                somatic_panel_path, germline_panel_path, amp_threshold)
+    if ploidy_text:
+        story.append(Paragraph(f'<font size="7" color="#b45309"><b>{xml_escape(ploidy_text)}</b></font>',
+                               styles['Normal']))
+        story.append(Spacer(1, 0.15 * cm))
 
     # ── LOH: only genes with a germline P/LP or a somatic variant (core panel or
     #    second-hit track); the others are counted in a note (all in the HTML) ──
@@ -3234,6 +3269,7 @@ def main():
         'wgd':        args.wgd_val    or 'NA',
         'ploidy':     args.ploidy_val or 'NA',
         'purity':     args.purity_val or 'NA',
+        'gof':        _ascat_field(args.ascat, 'goodness_of_fit'),
         'cov_n':      args.cov_n_val  or 'NA',
         'cov_t':      args.cov_t_val  or 'NA',
         'hrd_prob':   hrd_prob_val,
@@ -3355,6 +3391,7 @@ def main():
         somatic_snv_path=args.somatic or '',
         is_low_cov=metrics.get('is_low_cov', False),
         second_hit_snv_path=args.somatic_second_hit or '',
+        ploidy_text=ploidy_note(metrics),
     )
     build_correlation_section(corr_data, story)
     # Pharmacogenomics with CPIC dose recommendations

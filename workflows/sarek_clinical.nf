@@ -339,7 +339,8 @@ workflow SAREK_CLINICAL {
             cram_fasta,
             cram_fai,
             cram_dict,
-            file(params.gcnv_mane_txt)
+            file(params.gcnv_mane_txt),
+            ch_ascat_metrics.map { pair, met -> [pair.split('_vs_')[0], met] }   // [tumor, metrics]
         )
     }
 

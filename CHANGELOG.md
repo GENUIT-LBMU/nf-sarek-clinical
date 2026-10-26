@@ -180,6 +180,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   B/LB from 22 to 27 (ClinVar keeps their class in the pipeline).
 
 ### Fixed
+- GATK somatic CNV uses the ASCAT purity of the tumor (`--ascat_metrics`;
+  `PURITY_SOURCE` column) instead of its own LOH-based estimate (IMAX1141: 0.52
+  instead of 0.44; 1229 had no estimate and uncorrected copy numbers). The ASCAT
+  ploidy is not used: with it IMAX1278 (ploidy 4.08) gained 12 amplifications that
+  ASCAT does not support.
+- Report alerts on the ASCAT fit (`filters.ascat`): purity < 20% or goodness of fit
+  < 90% (IMAX1141: 87%). The ploidy shows "(WGD)", and whole-genome-doubled or
+  high-ploidy tumors (> 2.7) get a note on the absolute AMP threshold in the CNV
+  section. Shared logic in `bin/cnv_shared.py`.
 - HRD: one threshold, `filters.biomarkers.hrd_high` (0.45), also given to HRProfiler
   (`params.hrd_threshold` 0.5 removed: the published `prediction` and the reports
   could disagree; the HTML had 0.45 hard-coded). The predictions TSV gains a `status`

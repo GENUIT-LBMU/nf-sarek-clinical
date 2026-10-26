@@ -30,6 +30,8 @@ option_list <- list(
               help="Umbral para amplificación (Log2CR > threshold)"),
   make_option(c("--log2cr_del"), type="numeric", default=-0.3,
               help="Umbral para deleción (Log2CR < threshold)"),
+  make_option(c("--ascat_metrics"), type="character", default=NULL,
+              help="ASCAT metrics of the tumor: its purity is used instead of the LOH-based estimate (the ASCAT ploidy is not used: GATK copy ratios do not follow the tumor mean ploidy)"),
   make_option(c("--genes"), type="character", default=NULL,
               help="Gene list (one HGNC symbol per line, # comments): germline + somatic CNV panels from assets/gene_panels/genes.tsv"),
   make_option(c("--diploid_cn"), type="numeric", default=2,
@@ -83,6 +85,17 @@ if (is.null(opt$genes) || !file.exists(opt$genes)) {
 genes_list <- trimws(readLines(opt$genes))
 genes_list <- unique(genes_list[genes_list != "" & !startsWith(genes_list, "#")])
 cat("Genes de interés:", length(genes_list), "(", opt$genes, ")\n")
+
+# Pureza de ASCAT (opcional)
+ascat_info <- NULL
+if (!is.null(opt$ascat_metrics) && file.exists(opt$ascat_metrics)) {
+  am <- read.delim(opt$ascat_metrics, sep = "\t", header = TRUE, stringsAsFactors = FALSE)
+  if (nrow(am) >= 1 && "purity" %in% names(am) &&
+      !is.na(suppressWarnings(as.numeric(am$purity[1])))) {
+    ascat_info <- list(purity = as.numeric(am$purity[1]))
+    cat("ASCAT: pureza", ascat_info$purity, "\n")
+  }
+}
 
 # ============================================================
 # FUNCIÓN PARA CLASIFICAR EVENTOS BASADA EN CN ABSOLUTO
@@ -258,10 +271,18 @@ for (i in seq_along(input_files)) {
     stringsAsFactors = FALSE
   )
   
-  # Estimar pureza tumoral
-  cat("  - Estimando pureza tumoral...\n")
+  # Pureza: la de ASCAT del tumor cuando hay --ascat_metrics; si no, la estimada
+  # por LOH. La ploidía de ASCAT no se usa: con ella (IMAX1278, ploidía 4.08) GATK
+  # daba 12 amplificaciones que ASCAT no confirma.
   purity_info <- estimate_purity(seg_data)
   sample_purity <- purity_info$purity
+  purity_source <- "GATK_LOH_estimate"
+  if (!is.null(ascat_info)) {
+    sample_purity <- ascat_info$purity
+    purity_source <- "ASCAT"
+    purity_info$method <- "ASCAT"
+  }
+  cat("  - Pureza:", sample_purity, " fuente:", purity_source, "\n")
   
   # Guardar información de pureza
   purity_results[[i]] <- data.frame(
@@ -293,6 +314,7 @@ for (i in seq_along(input_files)) {
       LOG2CR = LOG2_COPY_RATIO_POSTERIOR_50,
       MINOR_AF = MINOR_ALLELE_FRACTION_POSTERIOR_50,
       PURITY = sample_purity,
+      PURITY_SOURCE = purity_source,
       # Primero: Calcular CN absoluto corregido por pureza
       CN_ABSOLUTE = calculate_absolute_cn(LOG2CR, sample_purity, opt$diploid_cn),
       # Segundo: Clasificar evento basándose en CN_ABSOLUTE

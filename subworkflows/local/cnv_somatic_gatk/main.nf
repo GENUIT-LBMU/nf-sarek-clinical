@@ -42,6 +42,7 @@ workflow CNV_SOMATIC_GATK {
     ch_cram_fai         // path: its .fai
     ch_cram_dict        // path: its .dict
     ch_mane_txt         // path: exons_mane.txt
+    ch_ascat_metrics    // channel: [ val(tumor), path(ASCAT metrics) ]: purity for the CN (may be empty)
     // annotate_cnvs_complete_fixed.R is bundled in bin/ (from FlorPio/gatk-cnv-somatic)
 
     main:
@@ -160,6 +161,11 @@ workflow CNV_SOMATIC_GATK {
         .join(GATK_MODEL_SEGMENTS.out.hets_tsv,            by: [0, 1])
         .join(GATK_CALL_COPY_RATIO_SEGMENTS.out.called_seg, by: [0, 1])
         // → [patient_id, tumor, modelFinal.seg, cr.seg, hets.tsv, called.seg]
+        // + the ASCAT metrics of the tumor (purity), or a placeholder
+        .map { row -> [row[1]] + row }
+        .join(ch_ascat_metrics, by: 0, remainder: true)
+        .filter { row -> row.size() > 2 && row[1] != null }      // tumors with GATK output
+        .map { row -> row[1..6] + [row.size() > 7 && row[7] ? row[7] : file('NO_ASCAT_MET')] }
 
     MANE_ANNOTATE_SOMATIC_CNV(
         ch_annotate_input,

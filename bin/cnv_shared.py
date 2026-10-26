@@ -133,3 +133,47 @@ def loh_relevant_genes(germline_tsv='', somatic_tsvs=()):
                         genes.add((row.get('ANN[*].GENE') or '').strip().upper())
     genes.discard('')
     return genes
+
+
+
+# ── ASCAT fit quality and ploidy notes for the reports (filters.ascat) ───────
+QC_ASCAT_MIN_PURITY  = float(os.environ.get('QC_ASCAT_MIN_PURITY', '0.20'))
+QC_ASCAT_MIN_GOF     = float(os.environ.get('QC_ASCAT_MIN_GOF', '90'))
+QC_ASCAT_PLOIDY_NOTE = float(os.environ.get('QC_ASCAT_PLOIDY_NOTE', '2.7'))
+
+
+def _num_or_none(v):
+    try:
+        return float(str(v).strip().rstrip('%'))
+    except (TypeError, ValueError):
+        return None
+
+
+def ascat_alerts(metrics):
+    """Report alerts from the ASCAT fit: low purity, low goodness of fit.
+    metrics: {'purity': fraction or %, 'gof': %}."""
+    out = []
+    pur = _num_or_none(metrics.get('purity'))
+    if pur is not None and pur > 1.5:      # reports carry purity in %
+        pur /= 100.0
+    gof = _num_or_none(metrics.get('gof'))
+    if pur is not None and pur < QC_ASCAT_MIN_PURITY:
+        out.append(f'Tumor purity {pur * 100:.0f}% (< {QC_ASCAT_MIN_PURITY * 100:.0f}%): copy number, LOH, '
+                   'HRD and TMB may be underestimated and low-VAF variants missed.')
+    if gof is not None and gof < QC_ASCAT_MIN_GOF:
+        out.append(f'ASCAT goodness of fit {gof:.1f}% (< {QC_ASCAT_MIN_GOF:g}%): purity, ploidy and '
+                   'copy-number results are less reliable.')
+    return out
+
+
+def ploidy_note(metrics):
+    """Note for whole-genome-doubled / high-ploidy tumors ('' otherwise).
+    metrics: {'ploidy': float, 'wgd': 0/1}."""
+    pl = _num_or_none(metrics.get('ploidy'))
+    wgd = str(metrics.get('wgd', '')).strip() in ('1', 'True', 'TRUE', 'yes')
+    if pl is None or (not wgd and pl <= QC_ASCAT_PLOIDY_NOTE):
+        return ''
+    what = 'whole-genome doubling' if wgd else 'high ploidy'
+    return (f'Ploidy {pl:.2f} ({what}): the amplification threshold (CN >= 5) is an absolute copy number; '
+            'in a near-tetraploid tumor CN 5 is only a low-level gain, and losses relative to the ploidy '
+            'can have CN >= 2.')

@@ -328,7 +328,8 @@ process MANE_ANNOTATE_SOMATIC_CNV {
           path(model_final_seg),   // ${tumor}.modelFinal.seg
           path(cr_seg),            // ${tumor}.cr.seg
           path(hets_tsv),          // ${tumor}.hets.tsv
-          path(called_seg)         // ${tumor}.called.seg
+          path(called_seg),        // ${tumor}.called.seg
+          path(ascat_metrics)      // ASCAT metrics of the tumor (its purity), or NO_ASCAT_MET
     path  mane_txt                 // exons_mane.txt
     path  cnv_genes                // genes to annotate (germline + somatic CNV panels)
 
@@ -350,6 +351,7 @@ process MANE_ANNOTATE_SOMATIC_CNV {
         --input_dir seg_input \\
         --mane      ${mane_txt} \\
         --genes     ${cnv_genes} \\
+        ${ascat_metrics.name.startsWith('NO_') ? '' : "--ascat_metrics ${ascat_metrics}"} \\
         --output_dir output || echo "WARNING: R annotation script exited non-zero (files may still be present)" >&2
 
     # Use find to locate annotated output safely (find exits 0 even with no matches,
