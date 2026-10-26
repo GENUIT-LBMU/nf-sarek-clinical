@@ -18,12 +18,14 @@
 #
 # Environment variables:
 #   RUNS_BASE      Base directory for run outputs (default: $HOME/runs).
+#   SAREK_REVISION nf-core/sarek release to run (default: 3.5.1).
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 PIPELINE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNS_BASE="${RUNS_BASE:-$HOME/runs}"
+SAREK_REVISION="${SAREK_REVISION:-3.5.1}"   # pinned nf-core/sarek release (env-overridable)
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 RUN_NAME=""
@@ -90,6 +92,7 @@ EOF
     # --f1r2-tar-gz, causing LearnReadOrientationModel to produce no output and the
     # downstream join (failOnMismatch:true) to throw "Join mismatch" at FilterMutectCalls.
     nextflow run nf-core/sarek \
+        -r "${SAREK_REVISION}" \
         -profile docker \
         -c "${RUN_DIR}/run.config" \
         -c "${PIPELINE_DIR}/conf/sarek.config" \
