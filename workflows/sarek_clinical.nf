@@ -25,6 +25,7 @@ include { SOMATIC_POSTPROCESS   } from '../subworkflows/local/somatic/main'
 include { CNV_GERMLINE_GATK     } from '../subworkflows/local/cnv_germline_gatk/main'
 include { CNV_SOMATIC_GATK      } from '../subworkflows/local/cnv_somatic_gatk/main'
 include { GENE_COVERAGE         } from '../modules/local/gene_coverage/main'
+include { REPORT_MODEL          } from '../modules/local/report_model/main'
 include { FINAL_REPORT          } from '../modules/local/final_report/main'
 include { CLINICAL_PDF_REPORT   } from '../modules/local/clinical_pdf_report/main'
 
@@ -489,25 +490,21 @@ workflow SAREK_CLINICAL {
         coverage:         params.skip_coverage,
     ].findAll { it.value }.keySet().join(',')
 
-    // ── FINAL REPORT ─────────────────────────────────────────────────────────
-    if (!params.skip_report) {
-        FINAL_REPORT(
+    // ── REPORT MODEL → laboratory HTML + clinical PDF ────────────────────────
+    // One model per pair holds every value and interpretation; the two reports
+    // only render it (bin/report_model.py), so they cannot diverge.
+    if (!params.skip_report || !params.skip_pdf_report) {
+        REPORT_MODEL(
             ch_report_input,
             params.run_name,
             not_run,
             report_info,
             sarek_versions
         )
-    }
-
-    // ── CLINICAL PDF REPORT ───────────────────────────────────────────────────
-    if (!params.skip_pdf_report) {
-        CLINICAL_PDF_REPORT(
-            ch_report_input,
-            params.run_name,
-            not_run,
-            report_info,
-            sarek_versions
-        )
+        // the renderers also need the signature directories (plots)
+        def ch_render_input = REPORT_MODEL.out.model
+            .join(ch_report_input.map { row -> [row[0], row[-2], row[-1]] })
+        if (!params.skip_report)     FINAL_REPORT(ch_render_input)
+        if (!params.skip_pdf_report) CLINICAL_PDF_REPORT(ch_render_input)
     }
 }

@@ -13,6 +13,7 @@ Dependencies: reportlab (Platypus layout engine)
 """
 
 import argparse
+from types import SimpleNamespace
 import csv
 import json
 import os
@@ -252,15 +253,6 @@ def set_lang(lang):
     _LANG = (lang or 'en').lower()
 
 
-def _ascat_field(path, name):
-    """One column of the ASCAT metrics TSV ('NA' when missing)."""
-    if path and os.path.isfile(path):
-        _, rows = read_tsv(path)
-        if rows:
-            return str(rows[0].get(name, 'NA') or 'NA').strip()
-    return 'NA'
-
-
 def _make_kpi_cell(label, value):
     """Create a KPI Paragraph: small grey label above large coloured value.
     HRD+ gets red, HRD- gets green; everything else gets orange.
@@ -419,10 +411,27 @@ def read_tsv(path):
 # ---------------------------------------------------------------------------
 # ACMG classification — delegates to bin/acmg_shared.py (single source of truth)
 # ---------------------------------------------------------------------------
-from cnv_shared import ascat_alerts, ploidy_note  # noqa: E402  (filters.ascat report alerts)
-from report_shared import (ANALYSES, unavailable_text, kpi_value, fmt_hrd_prob,  # noqa: E402
-                           ACTIONABLE_TIERS, trial_queries, clinical_trials,
-                           tool_label, pipeline_label, sarek_label, version_rows)
+from report_shared import ANALYSES, kpi_value, fmt_hrd_prob  # noqa: E402
+
+# The report model (bin/report_model.py): the only data source of this renderer
+MODEL = {}
+
+
+def pipeline_label():
+    return MODEL['versions']['pipeline']
+
+
+def sarek_label():
+    return MODEL['versions']['sarek']
+
+
+def version_rows():
+    return MODEL['versions']['rows']
+
+
+def tool_label(name, key):
+    ver = MODEL['versions']['tools'].get(key, '')
+    return f'{name} {ver}' if ver else name
 from acmg_shared import (
     acmg_criteria_list as _acmg_criteria_list_shared,
     clinvar_display,
@@ -445,34 +454,6 @@ def _hgvs_cells(v, n_c=60, n_p=60):
     return Paragraph(cell_c, STYLE_CELL), Paragraph(cell_p, STYLE_CELL)
 
 
-def classify_acmg_with_criteria(row):
-    """Classify a germline variant row dict into (cls, criteria_list)."""
-    return _acmg_criteria_list_shared(getter_for_dict(row))
-
-
-def classify_acmg(row):
-    """Thin wrapper — returns only the classification string (P/LP/VUS/LB/B)."""
-    cls, _ = classify_acmg_with_criteria(row)
-    return cls
-
-
-def load_germline_variants(path):
-    """
-    Read germline TSV, run ACMG classification, and return list of
-    dicts for variants classified as P, LP, or VUS only.
-    Each dict gains '_ACMG' (classification) and '_ACMG_CRITERIA' (list of codes).
-    """
-    _, rows = read_tsv(path)
-    results = []
-    for row in rows:
-        cls, criteria = classify_acmg_with_criteria(row)
-        if cls in ('P', 'LP', 'VUS'):
-            row['_ACMG'] = cls
-            row['_ACMG_CRITERIA'] = criteria
-            results.append(row)
-    return results
-
-
 # ---------------------------------------------------------------------------
 # AMP tier classification
 # ---------------------------------------------------------------------------
@@ -481,27 +462,6 @@ import amp_tier as _amp
 # Tumor-type disease terms for this report (set in main from --tumor-type/--tumor-types)
 TUMOR_TERMS = set()
 TUMOR_LABEL = ''
-
-
-def load_somatic_variants(somatic_path, civic_path):
-    """
-    Read somatic TSV, classify each variant with AMP tiers (IV = common
-    population polymorphism, see amp_tier.variant_tier).
-    Returns list of variant dicts with '_AMP_TIER' and '_CIVIC' keys.
-    """
-    _, rows = read_tsv(somatic_path)
-    civic_index = _amp.load_civic(civic_path)
-    results = []
-    for row in rows:
-        key = (str(row.get('CHROM', '')), str(row.get('POS', '')),
-               str(row.get('REF', '')), str(row.get('ALT', '')))
-        records = civic_index.get(key, [])
-        tier, civic_rec = _amp.variant_tier(records, TUMOR_TERMS, row.get)
-        row['_AMP_TIER'] = tier
-        row['_CIVIC'] = civic_rec or {}
-        row['_CIVIC_ALL'] = records
-        results.append(row)
-    return results
 
 
 # ---------------------------------------------------------------------------
@@ -740,13 +700,11 @@ def build_cover_page(args, metrics, story):
     story.append(Spacer(1, 0.5 * cm))
 
     # ── Determine low-coverage flag ────────────────────────────────────────────
-    _LOW_COV_THRESHOLD = QC_LOW_COV
     try:
         _cov_t_f = float(metrics.get('cov_t', 'NA'))
     except (ValueError, TypeError):
         _cov_t_f = None
-    is_low_cov = _cov_t_f is not None and _cov_t_f < _LOW_COV_THRESHOLD
-    metrics['is_low_cov'] = is_low_cov   # propagate to other sections
+    is_low_cov = bool(metrics.get('is_low_cov'))   # report model: tumor coverage < QC_LOW_COV_THRESHOLD
 
     # ── Global Biomarkers (4-column) ──────────────────────────────────────────
     story.append(Paragraph(T('sect_global_bm'), STYLE_H2))
@@ -808,7 +766,7 @@ def build_cover_page(args, metrics, story):
         story.append(Spacer(1, 0.3 * cm))
 
     # ── ASCAT fit quality (filters.ascat) ───────────────────────────────────
-    _alerts = ascat_alerts(metrics)
+    _alerts = MODEL['alerts']['ascat']
     if _alerts:
         _qc_s = ParagraphStyle('AscatWarn', fontName='Helvetica', fontSize=7.5,
                                textColor=colors.HexColor('#7c2d12'), leading=11)
@@ -871,9 +829,9 @@ def build_quality_metrics_page(metrics, story):
 # ---------------------------------------------------------------------------
 # Table helper with alternating row colours and header
 # ---------------------------------------------------------------------------
-def section_unavailable(key, paths, story):
+def section_unavailable(key, story):
     """Section heading + why it has no data (not run / no result); True when shown."""
-    msg = unavailable_text(key, *paths)
+    msg = MODEL['unavailable'].get(key, '')
     if not msg:
         return False
     story.append(Paragraph(ANALYSES[key][0], STYLE_H2))
@@ -1153,7 +1111,7 @@ def _tso500_vus_table(tso500_vus, story):
 
 
 def _tert_note(story):
-    note = _amp.tert_promoter_note(CAPTURE_BED)
+    note = MODEL['alerts']['tert_promoter']
     if note:
         story.append(Spacer(1, 0.2 * cm))
         story.append(Paragraph(f'<font size="7" color="#b45309"><b>{xml_escape(note)}</b></font>', styles['Normal']))
@@ -1368,17 +1326,6 @@ def _sig_none(corr_data, kind):
     return 'none'
 
 
-def _load_correlation(args):
-    """Correlation JSON written by germline_somatic_correlate.py in the same task.
-    Missing or unreadable is an error: the germline-somatic section and the
-    MMR / HRD findings would otherwise disappear without notice."""
-    corr_json = getattr(args, 'corr_json', '') or ''
-    if not corr_json or not os.path.isfile(corr_json):
-        sys.exit(f'[ERROR] correlation JSON not found: {corr_json or "(not given)"}')
-    with open(corr_json) as fh:
-        return json.load(fh)
-
-
 def build_signature_plots_pdf(act_path, sig_type, story):
     """Embed signature plots into PDF story.
 
@@ -1487,135 +1434,29 @@ def build_signature_plots_pdf(act_path, sig_type, story):
 # ---------------------------------------------------------------------------
 # Mutational Signatures section
 # ---------------------------------------------------------------------------
-_SIG_AETIOLOGY = {
-    # SBS signatures (COSMIC v3.4)
-    'SBS1':  'Deamination of 5-methylcytosine (ageing / clock-like)',
-    'SBS2':  'APOBEC cytidine deaminase activity',
-    'SBS3':  'Defective homologous recombination DNA repair (HRD)',
-    'SBS4':  'Tobacco smoking mutagen exposure',
-    'SBS5':  'Clock-like (unknown mechanism, correlates with age)',
-    'SBS6':  'Mismatch repair deficiency (MMR-d)',
-    'SBS7a': 'UV light exposure (C>T at dipyrimidines)',
-    'SBS7b': 'UV light exposure (T>A at CC dinucleotides)',
-    'SBS7c': 'UV light exposure',
-    'SBS7d': 'UV light exposure',
-    'SBS8':  'Defective homologous recombination / unknown',
-    'SBS9':  'AID / somatic hypermutation (lymphoid)',
-    'SBS10a': 'POLE exonuclease domain mutation',
-    'SBS10b': 'POLE exonuclease domain mutation',
-    'SBS10c': 'POLE exonuclease domain mutation',
-    'SBS10d': 'POLE exonuclease domain mutation',
-    'SBS11': 'Temozolomide alkylating chemotherapy',
-    'SBS12': 'Unknown aetiology (found in liver cancer)',
-    'SBS13': 'APOBEC cytidine deaminase activity',
-    'SBS14': 'MMR deficiency + POLE exonuclease domain mutation',
-    'SBS15': 'MMR deficiency (associated with MLH1 silencing)',
-    'SBS16': 'Unknown aetiology (found in liver cancer)',
-    'SBS17a': 'Unknown (found in oesophagus/stomach cancer)',
-    'SBS17b': 'Unknown (found in oesophagus/stomach cancer)',
-    'SBS18': 'Reactive oxygen species (ROS) DNA damage',
-    'SBS19': 'Unknown aetiology',
-    'SBS20': 'MMR deficiency + POLD1 exonuclease domain mutation',
-    'SBS21': 'MMR deficiency (MSI-H tumours)',
-    'SBS22': 'Aristolochic acid exposure',
-    'SBS23': 'Unknown aetiology',
-    'SBS24': 'Aflatoxin exposure',
-    'SBS25': 'Chemotherapy (unknown agent)',
-    'SBS26': 'Mismatch repair deficiency',
-    'SBS28': 'Unknown aetiology',
-    'SBS29': 'Tobacco chewing (gutkha / betel quid)',
-    'SBS30': 'Defective base excision repair (NTHL1 biallelic)',
-    'SBS31': 'Platinum chemotherapy (cisplatin)',
-    'SBS32': 'Azathioprine immunosuppression',
-    'SBS33': 'Unknown aetiology',
-    'SBS34': 'Unknown aetiology',
-    'SBS35': 'Platinum chemotherapy (cisplatin)',
-    'SBS36': 'Defective base excision repair (MUTYH biallelic)',
-    'SBS37': 'Unknown aetiology',
-    'SBS38': 'UV light exposure (indirect)',
-    'SBS39': 'Unknown aetiology',
-    'SBS40': 'Unknown (clock-like, correlates with age)',
-    'SBS41': 'Unknown aetiology',
-    'SBS42': 'Haloalkane exposure (occupational)',
-    'SBS44': 'Mismatch repair deficiency',
-    'SBS84': 'AID activity (lymphoid)',
-    'SBS85': 'AID activity (lymphoid)',
-    'SBS86': 'Unknown chemotherapy',
-    'SBS87': 'Thiopurine chemotherapy',
-    'SBS88': 'Colibactin (pks+ E. coli)',
-    'SBS89': 'Unknown aetiology',
-    'SBS90': 'Duocarmycin exposure',
-    'SBS92': 'Tobacco smoking',
-    'SBS93': 'Unknown aetiology',
-    'SBS94': 'Unknown aetiology',
-    # ID signatures
-    'ID1':   'Replication slippage at T homopolymers (clock-like)',
-    'ID2':   'Replication slippage at T homopolymers — MMR-related',
-    'ID3':   'Tobacco smoking',
-    'ID4':   'Unknown aetiology',
-    'ID5':   'Unknown aetiology',
-    'ID6':   'Homologous recombination deficiency (HRD)',
-    'ID7':   'Replication slippage at microsatellites — MMR-related',
-    'ID8':   'Non-homologous end joining (NHEJ) repair',
-    'ID9':   'Unknown aetiology',
-    'ID10':  'Unknown aetiology',
-    'ID11':  'Unknown aetiology',
-    'ID12':  'Unknown aetiology',
-    'ID13':  'UV light exposure',
-    'ID14':  'Unknown aetiology',
-    'ID17':  'Unknown aetiology',
-    'ID18':  'Colibactin (pks+ E. coli)',
-}
-
-
-def build_mutational_signatures_section(args, story):
+def build_mutational_signatures_section(story):
     """Mutational Signatures section: detected-signature summary table + spectrum plots."""
     story.append(CondPageBreak(7 * cm))
     story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('sect_mutsig'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
 
-    sig_sbs96 = getattr(args, 'sig_sbs96', None) or ''
-    sig_id    = getattr(args, 'sig_id', None) or ''
-
-    def _read_activities(act_path):
-        """Return list of (sig_name, activity_int) for detected sigs (activity > 0)."""
-        if not act_path or not os.path.isfile(act_path):
-            return []
-        _, rows = read_tsv(act_path)
-        if not rows:
-            return []
-        # One SigProfiler task per pair: pick this pair's row, never another sample's
-        match = [r for r in rows if (r.get('Samples') or '') == args.pair]
-        if not match:
-            print(f'[WARN] {args.pair} not found in {act_path}', file=sys.stderr)
-            return []
-        row = match[0]
-        detected = []
-        for col, val in row.items():
-            if not col or col.lower() in ('samples', 'sample', ''):
-                continue
-            try:
-                v = float(val)
-            except (ValueError, TypeError):
-                continue
-            if v > 0:
-                detected.append((col, int(round(v))))
-        return sorted(detected, key=lambda x: -x[1])
-
-    sbs_activities = _read_activities(sig_sbs96)
-    id_activities  = _read_activities(sig_id)
+    # Assigned signatures (activity > 0) and aetiologies from the report model
+    sigs      = MODEL['signatures']
+    sig_sbs96 = (sigs.get('SBS96') or {}).get('path', '')
+    sig_id    = (sigs.get('ID') or {}).get('path', '')
+    _aet      = {s['signature']: s['aetiology'] for k in ('SBS96', 'ID') for s in (sigs.get(k) or {}).get('assigned', [])}
+    sbs_activities = [(s['signature'], s['count']) for s in (sigs.get('SBS96') or {}).get('assigned', [])]
+    id_activities  = [(s['signature'], s['count']) for s in (sigs.get('ID') or {}).get('assigned', [])]
 
     if sbs_activities or id_activities:
         col_headers = ['Signature', 'Type', 'Mutations Attributed', 'COSMIC Aetiology']
         col_widths  = [USABLE_W * w for w in [0.13, 0.07, 0.20, 0.60]]
         rows_data   = []
         for sig, act in sbs_activities:
-            rows_data.append([sig, 'SBS', str(act),
-                               _SIG_AETIOLOGY.get(sig, 'Unknown aetiology (see COSMIC v3.4)')])
+            rows_data.append([sig, 'SBS', str(act), _aet[sig]])
         for sig, act in id_activities:
-            rows_data.append([sig, 'ID', str(act),
-                               _SIG_AETIOLOGY.get(sig, 'Unknown aetiology (see COSMIC v3.4)')])
+            rows_data.append([sig, 'ID', str(act), _aet[sig]])
         tbl = build_variant_table(col_headers, col_widths, rows_data)
         story.append(tbl)
         story.append(Spacer(1, 0.3 * cm))
@@ -1645,34 +1486,7 @@ def _conf_colour(conf):
     return colors.HexColor('#1d4ed8') if str(conf) == 'HIGH' else colors.HexColor('#6b7280')
 
 
-def _load_cnv_panel(path):
-    genes = set()
-    if not path or not os.path.isfile(path):
-        return genes
-    with open(path) as fh:
-        for line in fh:
-            g = line.strip()
-            if g and not g.startswith('#'):
-                genes.add(g.upper())
-    return genes
-
-
-# ---------------------------------------------------------------------------
-# LOH filter helpers
-# ---------------------------------------------------------------------------
-def _harmonize_cnv_pdf(ascat_cnvkit_path, gatk_somatic_path,
-                       somatic_panel_path, germline_panel_path, amp_threshold=5):
-    # Single implementation in bin/cnv_shared.py (shared with the HTML report)
-    from cnv_shared import harmonize_cnv
-    return harmonize_cnv(ascat_cnvkit_path, gatk_somatic_path,
-                         somatic_panel_path, germline_panel_path, amp_threshold)
-
-
-def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
-                               somatic_panel_path, germline_panel_path, story,
-                               amp_threshold=5,
-                               germline_snv_path='', somatic_snv_path='',
-                               is_low_cov=False, second_hit_snv_path='', ploidy_text=''):
+def build_somatic_cnv_section(story, amp_threshold=5, is_low_cov=False, ploidy_text=''):
     # Unified somatic CNV section: HOMDEL, AMP, LOH
     story.append(CondPageBreak(7 * cm))
     story.append(Spacer(1, 0.5 * cm))
@@ -1698,8 +1512,9 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
         story.append(_indet_tbl)
         return
 
-    data = _harmonize_cnv_pdf(ascat_cnvkit_path, gatk_somatic_path,
-                               somatic_panel_path, germline_panel_path, amp_threshold)
+    # Harmonised HOMDEL / AMP / LOH from the report model (cnv_shared.harmonize_cnv)
+    cnv  = MODEL['somatic_cnv']
+    data = {'homdel': cnv['homdel'], 'amp': cnv['amp'], 'loh': cnv['loh']}
     if ploidy_text:
         story.append(Paragraph(f'<font size="7" color="#b45309"><b>{xml_escape(ploidy_text)}</b></font>',
                                styles['Normal']))
@@ -1707,16 +1522,8 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
 
     # ── LOH: only genes with a germline P/LP or a somatic variant (core panel or
     #    second-hit track); the others are counted in a note (all in the HTML) ──
-    loh_hidden = []
-    if germline_snv_path or somatic_snv_path:
-        from cnv_shared import loh_relevant_genes
-        relevant = loh_relevant_genes(germline_snv_path or '',
-                                      [somatic_snv_path or '', second_hit_snv_path or ''])
-        loh_hidden = sorted(r['gene'] for r in data['loh'] if r['gene'] not in relevant)
-        data['loh'] = [r for r in data['loh'] if r['gene'] in relevant]
-        if loh_hidden:
-            print(f'[INFO] LOH filter: {len(data["loh"])} shown, {len(loh_hidden)} without germline P/LP '
-                  f'or somatic variant not shown: {", ".join(loh_hidden)}', file=sys.stderr)
+    loh_hidden  = list(cnv['loh_hidden'])
+    data['loh'] = [r for r in data['loh'] if r['gene'] in set(cnv['loh_relevant'])]
 
     note_s = ParagraphStyle('CnvNote', parent=styles['Normal'],
                              fontSize=6, textColor=colors.Color(0.6, 0.7, 0.8))
@@ -1826,7 +1633,7 @@ def build_somatic_cnv_section(ascat_cnvkit_path, gatk_somatic_path,
         note_s))
 
 
-def build_germline_cnv_section(path, story, germline_panel_path=''):
+def build_germline_cnv_section(gcnv, story):
     """Append GATK germline CNV section: segments with ALT <DEL>/<DUP>.
 
     Only germline panel genes (somatic oncogenes excluded upstream) are reported.
@@ -1839,85 +1646,9 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
     story.append(Paragraph(T('sect_germ_cnv'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
     MIN_QA = FILT_GERMLINE_CNV_MIN_QA
-
-    # Load panel genes
-    panel_genes = set()
-    if germline_panel_path and os.path.isfile(germline_panel_path):
-        with open(germline_panel_path) as _pf:
-            for _line in _pf:
-                g = _line.strip().split('\t')[0].strip()
-                if g and not g.startswith('#'):
-                    panel_genes.add(g)
-
-    if not path or not os.path.isfile(path):
-        story.append(Paragraph('Germline CNV (GATK) file not found.', STYLE_WARN))
-        return
-
-    import csv as _csv
-    with open(path) as fh:
-        rows = list(_csv.DictReader(fh, delimiter='\t'))
-
-    # Group by segment (CHROM, POS, END); events are ALT <DEL>/<DUP>, which
-    # gCNV sets against the contig ploidy (male chrX: 1 copy is reference).
-    # Old tables without ALT fall back to CN != 2.
-    def _is_event(row):
-        if 'ALT' in row:
-            return (row.get('ALT') or '').strip() in ('<DEL>', '<DUP>')
-        try:
-            return int((row.get('CN') or '2').strip()) != 2
-        except ValueError:
-            return False
-
-    # LOWMAP_SEG: fraction of the segment's panel exon bp in low-mappability
-    # regions; None for old tables without the column.
-    def _lowmap(row):
-        try:
-            return float((row.get('LOWMAP_SEG') or '').strip())
-        except ValueError:
-            return None
-
-    segments = {}
-    seg_order = []
-    for row in rows:
-        if not _is_event(row):
-            continue
-        key = (row.get('CHROM', ''), row.get('POS', ''), row.get('END', ''))
-        if key not in segments:
-            segments[key] = {
-                'chrom': row.get('CHROM', ''),
-                'pos':   row.get('POS', ''),
-                'end':   row.get('END', ''),
-                'alt':   row.get('ALT', '.'),
-                'cn':    row.get('CN', '.'),
-                'np':    row.get('NP', '.'),
-                'qa':    row.get('QA', '0'),
-                'qs':    row.get('QS', '.'),
-                'lowmap': _lowmap(row),
-                'genes': [],
-            }
-            seg_order.append(key)
-        gene = row.get('gen', '').strip()
-        if gene and gene not in segments[key]['genes']:
-            segments[key]['genes'].append(gene)
-
-    # Filter: only panel genes with QA >= MIN_QA
-    filtered = []
-    for key in seg_order:
-        seg = segments[key]
-        try:
-            qa_val = int(float(seg.get('qa') or ''))
-        except (ValueError, TypeError, OverflowError):
-            continue  # non-numeric QA: treated as below threshold
-        if qa_val < MIN_QA:
-            continue
-        # Keep only panel genes in the segment
-        panel_hits = [g for g in seg['genes'] if g in panel_genes]
-        if panel_hits:
-            seg['genes'] = panel_hits
-            filtered.append(seg)
-    LOWMAP_FRAC = FILT_GERMLINE_CNV_LOWMAP_FRAC
-    lowmap_segs = [s for s in filtered if s['lowmap'] is not None and s['lowmap'] >= LOWMAP_FRAC]
-    filtered = [s for s in filtered if s not in lowmap_segs]
+    # Segments grouped and filtered in the report model (report_model.germline_cnv)
+    filtered    = gcnv.get('segments', [])
+    lowmap_segs = gcnv.get('lowmap', [])
 
     if not filtered:
         # Styled callout box
@@ -2013,7 +1744,7 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
             '<b>Low-mappability regions (pseudogenes / paralogs) \u2014 not reportable without '
             'orthogonal confirmation</b>', styles['Normal']))
         story.append(Paragraph(
-            str(len(lowmap_segs)) + ' segment(s) with \u2265 ' + str(int(round(LOWMAP_FRAC * 100)))
+            str(len(lowmap_segs)) + ' segment(s) with \u2265 ' + str(int(round(MODEL['thresholds']['germline_cnv_lowmap_frac'] * 100)))
             + '% of their panel exon bases in GIAB low-mappability regions. Read counts there are '
             'unreliable (reads map to the pseudogene with low MAPQ); confirm by MLPA or another '
             'orthogonal method before clinical use. Not used in the germline\u2013somatic correlation.',
@@ -2023,35 +1754,12 @@ def build_germline_cnv_section(path, story, germline_panel_path=''):
             colour_col_idx=7, colour_fn=lambda val: colors.grey))
 
 
-def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, story,
-                                     germline_panel_path='', somatic_panel_path=''):
+def build_sequencing_quality_section(cov, normal_name, tumor_name, story):
     # Per-gene mean coverage as justified grid: gene name + colored value, two subsections.
     story.append(CondPageBreak(7 * cm))
     story.append(Spacer(1, 0.5 * cm))
     story.append(Paragraph(T('sect_seqq'), STYLE_H2))
     story.append(HRFlowable(width=USABLE_W, thickness=1, color=C_ACCENT, spaceAfter=4))
-
-    def load_panel(path):
-        genes = []
-        if not path or not os.path.isfile(path):
-            return genes
-        with open(path) as fh:
-            for line in fh:
-                g = line.strip()
-                if g and not g.startswith('#'):
-                    genes.append(g.split()[0])
-        return genes
-
-    def load_cov(path):
-        data = {}
-        if not path or not os.path.isfile(path):
-            return data
-        _, rows = read_tsv(path)
-        for row in rows:
-            gene = (row.get('gene') or '').strip()
-            if gene:
-                data[gene] = row
-        return data
 
     def cov_color_rl(val_str):
         try:
@@ -2152,8 +1860,8 @@ def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, st
     ))
 
     # ── Germline panel ──────────────────────────────────────────────────────
-    cov_n = load_cov(path_n)
-    germline_genes = load_panel(germline_panel_path)
+    cov_n = {g: {'mean_coverage': r['mean']} for g, r in cov['normal'].items()}
+    germline_genes = list(cov['germline_panel'])
     if not germline_genes:
         germline_genes = sorted(cov_n.keys())
 
@@ -2166,13 +1874,13 @@ def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, st
         subhdr,
     ))
     germ_pairs = [(g, cov_n[g].get('mean_coverage', '-')) for g in germline_genes if g in cov_n]
-    render_grid(germ_pairs, path_n or 'normal')
+    render_grid(germ_pairs, 'normal')
 
     story.append(Spacer(1, 0.3 * cm))
 
     # ── Somatic panel ───────────────────────────────────────────────────────
-    cov_t = load_cov(path_t)
-    somatic_genes = load_panel(somatic_panel_path)
+    cov_t = {g: {'mean_coverage': r['mean']} for g, r in cov['tumor'].items()}
+    somatic_genes = list(cov['somatic_panel'])
     if not somatic_genes:
         somatic_genes = sorted(cov_t.keys())
 
@@ -2181,7 +1889,7 @@ def build_sequencing_quality_section(path_n, path_t, normal_name, tumor_name, st
         subhdr,
     ))
     som_pairs = [(g, cov_t[g].get('mean_coverage', '-')) for g in somatic_genes if g in cov_t]
-    render_grid(som_pairs, path_t or 'tumor')
+    render_grid(som_pairs, 'tumor')
 
     story.append(Spacer(1, 0.2 * cm))
     story.append(Paragraph(
@@ -2437,12 +2145,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
             som_by_gene.setdefault(g, []).append(v)
 
     # CNV data for second hits
-    cnv_data = _harmonize_cnv_pdf(
-        getattr(args, 'cnv_somatic', '') or '',
-        getattr(args, 'cnv_gatk_somatic', '') or '',
-        getattr(args, 'somatic_cnv_panel', '') or '',
-        getattr(args, 'germline_panel', '') or '',
-    )
+    cnv_data = MODEL['somatic_cnv']   # all harmonised events (LOH not filtered)
     loh_genes    = {r['gene'] for r in cnv_data['loh']}
     homdel_genes = {r['gene'] for r in cnv_data['homdel']}
 
@@ -2618,7 +2321,7 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
         gene = xml_escape(v.get('ANN[*].GENE', '') or '')
         hp = xml_escape((variant_label(v.get) or '')[:30])
         civ_lines.append(f'<b>{gene} {hp}</b> [Tier {v["_AMP_TIER"]}]')
-        summ = _amp.evidence_summary(v.get('_CIVIC_ALL', []), TUMOR_TERMS)
+        summ = v.get('_EVIDENCE') or {'groups': [], 'not_supporting': [], 'n_submitted': 0}
         for label, items in summ['groups']:
             colour = '#ef4444' if label == 'Resistance' else '#16a34a' if label.startswith('Sensitivity') else '#334155'
             more = f' (+{len(items) - 3})' if len(items) > 3 else ''
@@ -2678,15 +2381,6 @@ def build_major_findings_section(args, metrics, germline_variants, somatic_varia
 # ---------------------------------------------------------------------------
 # CPIC Pharmacogenomics table
 # ---------------------------------------------------------------------------
-_CPIC_TABLE = {
-    'rs3918290':   {'gene':'DPYD',    'allele':'*2A (c.1905+1G>A)',        'activity':'0',       'phenotype':'No Function — Poor Metabolizer',         'drugs':'5-FU, Capecitabine, Tegafur',                         'recommendation':'Avoid fluoropyrimidines. If unavoidable, reduce starting dose by ≥50% and perform therapeutic drug monitoring (TDM). Risk of severe/fatal toxicity.',                     'alert':'HIGH'},
-    'rs55886062':  {'gene':'DPYD',    'allele':'*13 (c.1679T>G, p.Ile560Ser)', 'activity':'0',   'phenotype':'No Function — Poor Metabolizer',         'drugs':'5-FU, Capecitabine, Tegafur',                         'recommendation':'Avoid fluoropyrimidines. If unavoidable, reduce starting dose by ≥50% and perform TDM.',                                                                                'alert':'HIGH'},
-    'rs67376798':  {'gene':'DPYD',    'allele':'c.2846A>T (p.Asp949Val)',   'activity':'0.5',    'phenotype':'Decreased Function — Intermediate Met.', 'drugs':'5-FU, Capecitabine, Tegafur',                         'recommendation':'Reduce starting dose by 25–50%; titrate based on toxicity and pharmacokinetics. Monitor for hematologic and gastrointestinal toxicity.',                              'alert':'MODERATE'},
-    'rs56038477':  {'gene':'DPYD',    'allele':'HapB3 (c.1236G>A, E412E)', 'activity':'0.5',    'phenotype':'Decreased Function — Intermediate Met.', 'drugs':'5-FU, Capecitabine, Tegafur',                         'recommendation':'Reduce starting dose by 25–50%; titrate based on toxicity and pharmacokinetics.',                                                                                     'alert':'MODERATE'},
-    'rs4148323':   {'gene':'UGT1A1',  'allele':'*28 ([TA]7)',               'activity':'Reduced','phenotype':'Reduced UGT1A1 Activity',                'drugs':'Irinotecan, Belinostat, Nilotinib',                    'recommendation':'*28/*28 homozygous: reduce irinotecan starting dose by ≥30%. *1/*28 heterozygous: standard dose acceptable; monitor for diarrhea and neutropenia.',                  'alert':'MODERATE'},
-    'rs3064744':   {'gene':'UGT1A1',  'allele':'*28 TA7 repeat',           'activity':'Reduced','phenotype':'Reduced UGT1A1 Activity',                'drugs':'Irinotecan',                                          'recommendation':'Consider reduced irinotecan starting dose; monitor for SN-38-related toxicity.',                                                                                    'alert':'MODERATE'},
-}
-
 C_PGX_HIGH     = colors.HexColor('#dc2626')
 C_PGX_MODERATE = colors.HexColor('#d97706')
 C_PGX_LOW      = colors.HexColor('#22c55e')
@@ -2696,7 +2390,7 @@ C_PGX_ROW_M    = colors.HexColor('#fffbeb')
 C_PGX_ROW_N    = colors.HexColor('#f0fdf4')
 
 
-def build_pharmaco_section(pharmaco_path, story):
+def build_pharmaco_section(story):
     """Pharmacogenomics section: CPIC rsID → phenotype → dose-modification table."""
     story.append(CondPageBreak(7 * cm))
     story.append(Spacer(1, 0.5 * cm))
@@ -2706,25 +2400,7 @@ def build_pharmaco_section(pharmaco_path, story):
                                            textColor=C_DARK_HEADER, spaceAfter=6)))
     story.append(HRFlowable(width='100%', thickness=1, color=C_ACCENT, spaceAfter=8))
 
-    # ── Read pharmaco TSV and look up each rsID in CPIC table ─────────────────
-    cpic_rows = []
-    if pharmaco_path and os.path.isfile(pharmaco_path):
-        import csv as _csv
-        with open(pharmaco_path) as fh:
-            reader = _csv.DictReader(fh, delimiter='\t')
-            for row in reader:
-                rsid = (row.get('ID') or '').strip()
-                if not rsid or rsid == '.':
-                    continue
-                # rsID may be semicolon-separated (SnpSift multi-annotation)
-                for r in rsid.split(';'):
-                    r = r.strip()
-                    cpic = _CPIC_TABLE.get(r)
-                    if cpic:
-                        gt  = (row.get('GEN[0].GT') or '').strip()
-                        dp  = (row.get('GEN[0].DP') or row.get('DP') or '').strip()
-                        hgvs_c = (row.get('ANN[*].HGVS_C') or '').strip()
-                        cpic_rows.append({**cpic, 'rsid': r, 'gt': gt, 'dp': dp, 'hgvs_c': hgvs_c})
+    cpic_rows = MODEL['pharmaco']   # CPIC matches (report_model.CPIC_TABLE)
 
     STYLE_H = ParagraphStyle('PGH', parent=getSampleStyleSheet()['Normal'],
                               fontSize=7, fontName='Helvetica-Bold', textColor=C_WHITE)
@@ -2810,7 +2486,7 @@ def build_pharmaco_section(pharmaco_path, story):
 # ---------------------------------------------------------------------------
 # Clinical Trials section
 # ---------------------------------------------------------------------------
-def build_clinical_trials_section(corr_data, tmb_val, msi_val, hrd_status, story, somatic_variants=None):
+def build_clinical_trials_section(story):
     """Clinical Trials section: query ClinicalTrials.gov for relevant recruiting trials."""
     story.append(CondPageBreak(7 * cm))
     story.append(Spacer(1, 0.5 * cm))
@@ -2828,22 +2504,18 @@ def build_clinical_trials_section(corr_data, tmb_val, msi_val, hrd_status, story
                                fontSize=6.5, fontName='Helvetica', textColor=C_TEXT,
                                leading=8)
 
-    # One query plan for both reports (report_shared.trial_queries)
-    _msi_st = msi_status(msi_val)
-    actionable = [v.get('ANN[*].GENE', '') for v in (somatic_variants or [])
-                  if v.get('_AMP_TIER') in ACTIONABLE_TIERS]
-    queries = trial_queries(corr_data, actionable, tmb_val, _msi_st, hrd_status, TUMOR_LABEL)
-    if not queries:
+    # Queried once in the report model (report_shared.trial_queries / clinical_trials)
+    ct_res = MODEL['trials']
+    if not ct_res:
         story.append(Paragraph(
             'No reportable germline/somatic variants or elevated biomarkers identified '
             'to drive clinical trial queries.',
             ParagraphStyle('Warn', parent=getSampleStyleSheet()['Normal'],
                            fontSize=8, textColor=C_SLATE)))
         return
-    ct_res     = clinical_trials(queries, _msi_st)
-    all_trials = ct_res['trials']
-    api_ok     = ct_res['error'] is None or bool(all_trials)
-    query_genes = [q[0] for q in queries]
+    all_trials  = ct_res['trials']
+    api_ok      = ct_res['error'] is None or bool(all_trials)
+    query_genes = ct_res['queries']
 
     if not api_ok:
         callout_data = [[Paragraph(
@@ -3126,144 +2798,40 @@ def build_methodology_section(story):
 # ---------------------------------------------------------------------------
 def parse_args():
     p = argparse.ArgumentParser(
-        description='Generate GENUIT clinical PDF report for nf-sarek-clinical pipeline.'
-    )
-    p.add_argument('--pair',       required=True,  help='TUMOR_vs_NORMAL string')
-    p.add_argument('--run-name',   required=True,  help='Run/batch identifier')
-    p.add_argument('--patient',    required=True,  help='Patient ID')
-    p.add_argument('--tumor',      required=True,  help='Tumor sample name')
-    p.add_argument('--normal',     required=True,  help='Normal sample name')
-    p.add_argument('--germline',   default='',     help='Germline SNV TSV')
-    p.add_argument('--somatic',    default='',     help='Somatic SNV TSV')
-    p.add_argument('--civic',      default='',     help='CIViC exploded TSV')
-    p.add_argument('--somatic-second-hit', default='', help='Somatic SNV TSV, second-hit track (germline-somatic findings only)')
-    p.add_argument('--somatic-tso500',     default='', help='Somatic SNV TSV, pan-tumor TSO500 track (genes outside the core panel)')
-    p.add_argument('--civic-tso500',       default='', help='CIViC exploded TSV of the TSO500 track')
-    p.add_argument('--capture-bed',        default='', help='Capture BED (panel_bed): TERT promoter assessability note')
-    p.add_argument('--tumor-type', default='',     help="Run-wide tumor type: CIViC disease terms joined by '|'")
-    p.add_argument('--tumor-types', default='',    help='TSV id<TAB>terms (patient, tumor or pair), overrides --tumor-type')
-    p.add_argument('--tmb',        default='',     help='TMB TSV')
-    p.add_argument('--ascat',      default='',     help='ASCAT metrics TSV')
-    p.add_argument('--hrd',        default='',     help='HRD predictions TSV')
-    p.add_argument('--cnv-somatic',        default='', help='Somatic CNV report TSV (parse_somatic_cnv output)')
-    p.add_argument('--cnv-gatk-somatic',  default='', help='GATK somatic CNV annotated TSV (MANE_ANNOTATE_SOMATIC_CNV output)')
-    p.add_argument('--cnv-germline-gatk', default='', help='Germline CNV GATK annotated TSV (segments_annotated.tsv)')
-    p.add_argument('--somatic-cnv-panel', default='', help='Somatic 38-gene CNV panel (somatic_38_oncogenes.txt)')
-    p.add_argument('--sig-sbs96',  default='', help='SBS96 assignment activities TXT')
-    p.add_argument('--sig-id',     default='', help='ID assignment activities TXT')
-    p.add_argument('--corr-json',  default='',     help='Pre-computed correlation JSON (from germline_somatic_correlate.py)')
-    p.add_argument('--gene-ctx',   default='',     help='Gene context TSV (somatic_gene_context.tsv)')
-    p.add_argument('--gene-cov-n',       default='', help='Gene coverage TSV for normal sample')
-    p.add_argument('--gene-cov-t',       default='', help='Gene coverage TSV for tumor sample')
-    p.add_argument('--germline-panel',   default='', help='Germline gene panel list (one gene per line)')
-    p.add_argument('--somatic-panel',    default='', help='Somatic gene panel list (one gene per line)')
-    p.add_argument('--pharmaco',   default='',     help='Pharmacogenomics TSV (DPYD/UGT1A1 variants)')
-    p.add_argument('--out',        required=True,  help='Output PDF path')
-    p.add_argument('--language',   default='en',   help='Report language: en (default) or es (Spanish)')
-    # Pre-computed metric strings (passed from bash awk extractions)
-    p.add_argument('--tmb-val',    default='NA',   help='TMB value string')
-    p.add_argument('--msi-val',    default='NA',   help='MSI value string')
-    p.add_argument('--loh-val',    default='NA',   help='LOH value string')
-    p.add_argument('--gi-val',     default='NA',   help='GI value string')
-    p.add_argument('--wgd-val',    default='NA',   help='WGD value string')
-    p.add_argument('--ploidy-val', default='NA',   help='Ploidy value string')
-    p.add_argument('--purity-val', default='NA',   help='Tumor purity value string')
-    p.add_argument('--cov-n-val',  default='NA',   help='Coverage Normal value string')
-    p.add_argument('--cov-t-val',  default='NA',   help='Coverage Tumor value string')
+        description='GENUIT clinical PDF report: renders the report model (bin/report_model.py).')
+    p.add_argument('--model',    required=True, help='{pair}.report_model.json')
+    p.add_argument('--out',      required=True, help='Output PDF path')
+    p.add_argument('--language', default='en',  help='Report language: en (default) or es (Spanish)')
     return p.parse_args()
 
 
 def main():
-    args = parse_args()
-
-    # ── Derive HRD metrics from the HRD file if not provided on CLI ──────────
-    hrd_prob_val   = 'NA'
-    hrd_status_val = 'NA'
-    if args.hrd and os.path.isfile(args.hrd):
-        _, hrd_rows = read_tsv(args.hrd)
-        if hrd_rows:
-            row0 = hrd_rows[0]
-            hrd_prob_val = str(row0.get('hrd.prob', 'NA') or 'NA').strip()
-            raw_pred     = str(row0.get('prediction', '') or '').strip()
-            if raw_pred == '1':
-                hrd_status_val = 'HRD+'
-            elif raw_pred == '0':
-                hrd_status_val = 'HRD-'
-            else:
-                hrd_status_val = raw_pred if raw_pred else 'NA'
-            # Probability >= filters.biomarkers.hrd_high (the threshold also given to
-            # HRProfiler); without a probability, the reason from HRD_PROFILER (status)
-            try:
-                hrd_status_val = 'HRD+' if float(hrd_prob_val) >= BIO_HRD_HIGH else 'HRD-'
-            except (ValueError, TypeError):
-                why = str(row0.get('status', '') or '').strip()
-                hrd_status_val = 'NA' + (f' ({why})' if why and why not in ('ok', 'NA') else '')
-
-    metrics = {
-        'tmb':        args.tmb_val    or 'NA',
-        'msi':        args.msi_val    or 'NA',
-        'loh':        args.loh_val    or 'NA',
-        'gi':         args.gi_val     or 'NA',
-        'wgd':        args.wgd_val    or 'NA',
-        'ploidy':     args.ploidy_val or 'NA',
-        'purity':     args.purity_val or 'NA',
-        'gof':        _ascat_field(args.ascat, 'goodness_of_fit'),
-        'cov_n':      args.cov_n_val  or 'NA',
-        'cov_t':      args.cov_t_val  or 'NA',
-        'hrd_prob':   hrd_prob_val,
-        'hrd_status': hrd_status_val,
-    }
-
-    # ── Variant loading ───────────────────────────────────────────────────────
-    germline_variants = []
-    if args.germline and os.path.isfile(args.germline):
-        germline_variants = load_germline_variants(args.germline)
-        print(f'[INFO] Germline: {len(germline_variants)} P/LP/VUS variant(s) after ACMG filtering',
-              file=sys.stderr)
-    else:
-        print(f'[WARN] Germline TSV not found or not provided: {args.germline}', file=sys.stderr)
-
-    global TUMOR_TERMS, TUMOR_LABEL, CAPTURE_BED
-    CAPTURE_BED = args.capture_bed
-    TUMOR_TERMS, TUMOR_LABEL = _amp.tumor_terms_for(
-        [args.patient, args.tumor, args.pair], args.tumor_type, args.tumor_types)
+    global MODEL, TUMOR_TERMS, TUMOR_LABEL
+    cli = parse_args()
+    with open(cli.model) as fh:
+        MODEL = json.load(fh)
+    m = MODEL
+    os.environ['REPORT_NOT_RUN'] = ','.join(m['not_run'])   # report_shared.kpi_value
+    ids = m['ids']
+    args = SimpleNamespace(pair=ids['pair'], run_name=ids['run_name'], patient=ids['patient'],
+                           tumor=ids['tumor'], normal=ids['normal'], out=cli.out)
+    TUMOR_TERMS = set(m['tumor_type']['terms'])
+    TUMOR_LABEL = m['tumor_type']['label']
     print(f'[INFO] Tumor type for AMP tiering: {TUMOR_LABEL or "not provided (max tier IIC)"}',
           file=sys.stderr)
 
-    somatic_variants = []
-    if args.somatic and os.path.isfile(args.somatic):
-        somatic_variants = load_somatic_variants(args.somatic, args.civic)
-        print(f'[INFO] Somatic: {len(somatic_variants)} variant(s) loaded', file=sys.stderr)
-    else:
-        print(f'[WARN] Somatic TSV not found or not provided: {args.somatic}', file=sys.stderr)
-    # Pan-tumor TSO500 track (genes outside the core panel): Tier I/II join the
-    # actionable findings, Tier III go to their own section, Tier IV to the
-    # population polymorphisms
-    tso500_variants = []
-    if args.somatic_tso500 and os.path.isfile(args.somatic_tso500):
-        tso500_variants = load_somatic_variants(args.somatic_tso500, args.civic_tso500)
-        for v in tso500_variants:
-            v['_TRACK'] = 'TSO500'
-        print(f'[INFO] Somatic TSO500 track: {len(tso500_variants)} variant(s) loaded', file=sys.stderr)
-    somatic_variants = somatic_variants + [v for v in tso500_variants if v.get('_AMP_TIER') not in ('III', 'IV')]
-    tso500_vus       = [v for v in tso500_variants if v.get('_AMP_TIER') == 'III']
-    # AMP Tier IV (common population polymorphisms): shown apart, never a somatic finding
-    pop_variants     = [v for v in somatic_variants + tso500_variants if v.get('_AMP_TIER') == 'IV']
-    somatic_variants = [v for v in somatic_variants if v.get('_AMP_TIER') != 'IV']
-    # Second-hit track: germline genes outside the core panel, for the
-    # germline-somatic findings only (never in the somatic SNV tables)
-    second_hit_variants = []
-    if args.somatic_second_hit and os.path.isfile(args.somatic_second_hit):
-        _, second_hit_variants = read_tsv(args.somatic_second_hit)
-        second_hit_variants = [v for v in second_hit_variants if not _amp.population_common(v.get)]
+    metrics = dict(m['metrics'])
+    metrics['is_low_cov'] = bool(m['metrics'].get('low_tumor_coverage'))
 
-    gene_ctx_data = {}
-    gene_ctx_path = getattr(args, 'gene_ctx', '') or ''
-    if gene_ctx_path and os.path.isfile(gene_ctx_path):
-        gene_ctx_data = load_gene_ctx(gene_ctx_path)
-        print(f'[INFO] Gene context: {len(gene_ctx_data)} gene(s) loaded from {gene_ctx_path}', file=sys.stderr)
-    else:
-        print(f'[WARN] Gene context TSV not found: {gene_ctx_path}', file=sys.stderr)
+    # The clinical report shows germline P / LP / VUS; the laboratory report all classes
+    germline_variants   = [v for v in m['germline'] if v.get('_ACMG') in ('P', 'LP', 'VUS')]
+    somatic_variants    = m['somatic']
+    pop_variants        = m['somatic_tier_iv']
+    tso500_vus          = m['somatic_tso500_vus']
+    second_hit_variants = m['somatic_second_hit']
+    gene_ctx_data = {(v.get('ANN[*].GENE') or '').strip(): v['_CTX']
+                     for v in somatic_variants + tso500_vus + pop_variants if v.get('_CTX')}
+    corr_data = m['correlation']
 
     # ── Document setup ────────────────────────────────────────────────────────
     doc = BaseDocTemplate(
@@ -3276,32 +2844,16 @@ def main():
         title=f'GENUIT Clinical Report – {args.pair}',
         author='GENUIT nf-sarek-clinical',
     )
+    frame = Frame(MARGIN_L, MARGIN_B, USABLE_W, PAGE_H - MARGIN_T - MARGIN_B, id='main_frame')
+    doc.addPageTemplates([PageTemplate(id='standard', frames=[frame], onPage=build_footer)])
 
-    frame = Frame(
-        MARGIN_L, MARGIN_B,
-        USABLE_W, PAGE_H - MARGIN_T - MARGIN_B,
-        id='main_frame',
-    )
-    pt = PageTemplate(
-        id='standard',
-        frames=[frame],
-        onPage=build_footer,
-    )
-    doc.addPageTemplates([pt])
-
-    # ── Germline-somatic correlation ──────────────────────────────────────────
-    corr_data  = _load_correlation(args)
-
-    # ── Language ──────────────────────────────────────────────────────────────
-    set_lang(getattr(args, 'language', 'en') or 'en')
+    set_lang(cli.language or 'en')
 
     # ── Story ─────────────────────────────────────────────────────────────────
-    story = []
-    # Each section starts on a new page (leading PageBreak inside each build_* function).
-    # Cover page is always page 1 (no leading PageBreak).
     # Page 1: identification, every biomarker and the QC alerts, then the major
     # findings and the disclaimer; the detailed results start on the next page
     # and flow (a section starts a new page only when little space is left).
+    story = []
     build_cover_page(args, metrics, story)
     build_secondary_biomarkers(metrics, story)
     build_quality_metrics_page(metrics, story)
@@ -3310,50 +2862,27 @@ def main():
     story.append(Spacer(1, 0.4 * cm))
     story.append(Paragraph(T('disclaimer'), STYLE_DISCLAIMER))
     story.append(PageBreak())
-    if not section_unavailable('germline_snv', [args.germline], story):
+    if not section_unavailable('germline_snv', story):
         build_germline_section(germline_variants, story)
-    if not section_unavailable('germline_cnv', [args.cnv_germline_gatk], story):
-        build_germline_cnv_section(args.cnv_germline_gatk, story,
-                                   germline_panel_path=getattr(args, 'germline_panel', '') or '')
-    if not section_unavailable('somatic_snv', [args.somatic], story):
+    if not section_unavailable('germline_cnv', story):
+        build_germline_cnv_section(m['germline_cnv'], story)
+    if not section_unavailable('somatic_snv', story):
         build_somatic_section(somatic_variants, story, gene_ctx=gene_ctx_data, pop_variants=pop_variants,
                               tso500_vus=tso500_vus)
-    if not section_unavailable('signatures', [args.sig_sbs96, args.sig_id], story):
-        build_mutational_signatures_section(args, story)
-    if not section_unavailable('somatic_cnv', [args.cnv_somatic, args.cnv_gatk_somatic], story):
-        build_somatic_cnv_section(
-            getattr(args, 'cnv_somatic', '') or '',
-            getattr(args, 'cnv_gatk_somatic', '') or '',
-            getattr(args, 'somatic_cnv_panel', '') or '',
-            getattr(args, 'germline_panel', '') or '',
-            story,
-            germline_snv_path=args.germline or '',
-            somatic_snv_path=args.somatic or '',
-            is_low_cov=metrics.get('is_low_cov', False),
-            second_hit_snv_path=args.somatic_second_hit or '',
-            ploidy_text=ploidy_note(metrics),
-        )
+    if not section_unavailable('signatures', story):
+        build_mutational_signatures_section(story)
+    if not section_unavailable('somatic_cnv', story):
+        build_somatic_cnv_section(story, amp_threshold=m['thresholds']['somatic_cnv_amp_cn'],
+                                  is_low_cov=metrics['is_low_cov'],
+                                  ploidy_text=m['alerts']['ploidy_note'])
     build_correlation_section(corr_data, story)
-    # Pharmacogenomics with CPIC dose recommendations
-    if not section_unavailable('pharmaco', [args.pharmaco], story):
-        build_pharmaco_section(getattr(args, 'pharmaco', '') or '', story)
-    # Clinical Trials — recruiting studies for identified variants/biomarkers
-    build_clinical_trials_section(corr_data, metrics.get('tmb', 'NA'),
-                                   metrics.get('msi', 'NA'), metrics.get('hrd_status', 'NA'), story,
-                                   somatic_variants=somatic_variants)
-    # Sequencing Quality
-    if not section_unavailable('coverage', [args.gene_cov_n, args.gene_cov_t], story):
-        build_sequencing_quality_section(
-            getattr(args, 'gene_cov_n', '') or '',
-            getattr(args, 'gene_cov_t', '') or '',
-            args.normal, args.tumor, story,
-            germline_panel_path=getattr(args, 'germline_panel', '') or '',
-            somatic_panel_path=getattr(args, 'somatic_panel', '') or '',
-        )
-    # Methodology section — always last
-    build_methodology_section(story)
+    if not section_unavailable('pharmaco', story):
+        build_pharmaco_section(story)
+    build_clinical_trials_section(story)
+    if not section_unavailable('coverage', story):
+        build_sequencing_quality_section(m['coverage'], args.normal, args.tumor, story)
+    build_methodology_section(story)   # always last
 
-    # Build PDF
     doc.build(story)
     print(f'[INFO] PDF written: {args.out}', file=sys.stderr)
 

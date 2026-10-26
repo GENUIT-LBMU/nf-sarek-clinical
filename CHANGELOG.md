@@ -72,6 +72,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variants of the panel (e.g. MSH2 c.942+3A>T) could never be reported.
 
 ### Changed
+- Reports: one report model per pair (`REPORT_MODEL`, `bin/report_model.py`,
+  published as `reporting/<pair>.report_model.json`) holds every value and
+  interpretation (ACMG, AMP tiers and CIViC evidence, biomarker statuses, low-coverage
+  indeterminate, ASCAT alerts, CNV / LOH with the events the PDF leaves out, germline CNV
+  segments, signatures with COSMIC aetiology, CPIC, coverage, clinical trials, analyses
+  not run, thresholds, versions). The laboratory HTML (`bin/render_html.py`, moved out
+  of the FINAL_REPORT heredoc) and the clinical PDF only render it. Verified on 1128 and
+  IMAX1141: the PDF text is unchanged; the HTML now matches the PDF where they diverged
+  (signature aetiologies, pharmacogenomics genes actually tested, TMB / MSI / HRD
+  "Indeterminate" below 50X tumor coverage — IMAX1141 at 46X showed values in the HTML).
+  Clinical trials are queried once, so both reports list the same trials.
 - **TMB definition**: non-synonymous somatic variants (HIGH / MODERATE; synonymous
   not counted) of the consensus with tumor DP >= 10, VAF >= 5% and >= 3 ALT reads
   (`filters.tmb.min_alt_reads`; before > 10, shared with signatures), inside the

@@ -7,7 +7,8 @@ import pytest
 
 @pytest.mark.parametrize('module', [
     'clinical_pdf_report', 'germline_somatic_correlate', 'final_report_sections',
-    'final_report_acmg', 'acmg_shared', 'amp_tier', 'cnv_shared', 'report_shared', 'gene_sets',
+    'acmg_shared', 'amp_tier', 'cnv_shared', 'report_shared', 'gene_sets',
+    'report_model', 'render_html',
 ])
 def test_module_imports(module):
     importlib.import_module(module)

@@ -15,10 +15,7 @@ import html
 import os
 import sys as _sys
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from acmg_shared import msi_status, MSI_HIGH_PCT, MSI_BORDER_PCT  # noqa: E402
-from report_shared import tool_label, pipeline_label, sarek_label, version_rows  # noqa: E402
-from report_shared import trial_queries, clinical_trials  # noqa: E402
-import csv
+from acmg_shared import MSI_HIGH_PCT, MSI_BORDER_PCT  # noqa: E402
 
 _GCNV_MIN_QA = str(int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA', '4')))
 _GCNV_LOWMAP_PCT = str(int(round(float(os.environ.get('FILT_GERMLINE_CNV_LOWMAP_FRAC', '0.5')) * 100)))
@@ -31,61 +28,21 @@ _SOM_MAX_POP_AF = str(float(os.environ.get('FILT_SOMATIC_MAX_POP_AF', '0.01')))
 # ---------------------------------------------------------------------------
 # CPIC Pharmacogenomics lookup table
 # ---------------------------------------------------------------------------
-_CPIC_TABLE = {
-    'rs3918290':   {'gene':'DPYD',    'allele':'*2A (c.1905+1G>A)',         'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'5-FU, Capecitabine, Tegafur',                       'recommendation':'Avoid fluoropyrimidines. If unavoidable, reduce starting dose by >=50% and perform therapeutic drug monitoring. Risk of severe/fatal toxicity.',           'alert':'HIGH'},
-    'rs55886062':  {'gene':'DPYD',    'allele':'*13 (c.1679T>G)',            'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'5-FU, Capecitabine, Tegafur',                       'recommendation':'Avoid fluoropyrimidines. If unavoidable, reduce starting dose by >=50% and perform TDM.',                                                                'alert':'HIGH'},
-    'rs67376798':  {'gene':'DPYD',    'allele':'c.2846A>T (p.Asp949Val)',    'activity':'0.5',     'phenotype':'Decreased Function -- Intermediate Met.',   'drugs':'5-FU, Capecitabine, Tegafur',                       'recommendation':'Reduce starting dose by 25-50%; titrate based on toxicity and pharmacokinetics.',                                                                        'alert':'MODERATE'},
-    'rs56038477':  {'gene':'DPYD',    'allele':'HapB3 (c.1236G>A, E412E)',  'activity':'0.5',     'phenotype':'Decreased Function -- Intermediate Met.',   'drugs':'5-FU, Capecitabine, Tegafur',                       'recommendation':'Reduce starting dose by 25-50%; titrate based on toxicity and pharmacokinetics.',                                                                        'alert':'MODERATE'},
-    'rs4148323':   {'gene':'UGT1A1',  'allele':'*28 ([TA]7)',                'activity':'Reduced', 'phenotype':'Reduced UGT1A1 Activity',                  'drugs':'Irinotecan, Belinostat, Nilotinib',                 'recommendation':'*28/*28: reduce irinotecan starting dose by >=30%. *1/*28: standard dose; monitor for diarrhea/neutropenia.',                                            'alert':'MODERATE'},
-    'rs3064744':   {'gene':'UGT1A1',  'allele':'*28 TA7 repeat',            'activity':'Reduced', 'phenotype':'Reduced UGT1A1 Activity',                  'drugs':'Irinotecan',                                        'recommendation':'Consider reduced irinotecan starting dose; monitor for SN-38-related toxicity.',                                                                          'alert':'MODERATE'},
-    'rs116855232': {'gene':'NUDT15',  'allele':'*2 (c.415C>T, p.Arg139Cys)','activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Start thiopurine at 10% of standard dose; adjust based on hematological toxicity and TGN nucleotide levels.',                                           'alert':'HIGH'},
-    'rs186364861': {'gene':'NUDT15',  'allele':'*3',                        'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Start thiopurine at 10% of standard dose; adjust based on toxicity monitoring.',                                                                        'alert':'HIGH'},
-    'rs1800462':   {'gene':'TPMT',    'allele':'*2 (c.238G>C)',             'activity':'Decreased','phenotype':'Decreased Function',                       'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Intermediate metabolizer: reduce thiopurine starting dose by 30-70%; titrate based on hematological toxicity.',                                         'alert':'MODERATE'},
-    'rs1800460':   {'gene':'TPMT',    'allele':'*3B (c.460G>A)',            'activity':'Decreased','phenotype':'Decreased Function',                       'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Intermediate metabolizer: reduce thiopurine starting dose by 30-70%.',                                                                                   'alert':'MODERATE'},
-    'rs1142345':   {'gene':'TPMT',    'allele':'*3C (c.719A>G)',            'activity':'Decreased','phenotype':'Decreased Function',                       'drugs':'Mercaptopurine, Azathioprine, Thioguanine',         'recommendation':'Intermediate metabolizer: reduce thiopurine starting dose by 30-70%.',                                                                                   'alert':'MODERATE'},
-    'rs3892097':   {'gene':'CYP2D6',  'allele':'*4 (c.506-1G>A)',           'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'Tamoxifen',                                         'recommendation':'Consider aromatase inhibitor (AI) rather than tamoxifen for postmenopausal ER+ patients. CYP2D6 PM have impaired conversion to active endoxifen.',       'alert':'HIGH'},
-    'rs1065852':   {'gene':'CYP2D6',  'allele':'*10 (c.100C>T)',            'activity':'0.5',     'phenotype':'Decreased Function -- Intermediate Met.',   'drugs':'Tamoxifen',                                         'recommendation':'Consider alternative hormonal therapy (AI) if clinically feasible; reduced endoxifen levels may compromise tamoxifen efficacy.',                           'alert':'MODERATE'},
-    'rs4244285':   {'gene':'CYP2C19', 'allele':'*2 (c.681G>A)',             'activity':'0',       'phenotype':'No Function -- Poor Metabolizer',          'drugs':'Clopidogrel, Voriconazole',                         'recommendation':'For clopidogrel: use alternative antiplatelet (prasugrel, ticagrelor). For voriconazole: dose reduction; PMs have substantially increased exposure.',      'alert':'MODERATE'},
-}
-
 def _alert_badge(alert):
     colors_map = {'HIGH': '#dc2626', 'MODERATE': '#d97706', 'LOW': '#16a34a'}
     c = colors_map.get(alert, '#6b7280')
     return "<span style='background:" + c + ";color:#fff;padding:2px 7px;border-radius:10px;font-size:.62rem;font-weight:700;'>" + html.escape(alert) + "</span>"
 
-def tsv_to_html_pharmaco(path):
-    cpic_rows = []
-    if path and os.path.isfile(path):
-        with open(path) as fh:
-            reader = csv.DictReader(fh, delimiter='\t')
-            for row in reader:
-                rsid_raw = (row.get('ID') or '').strip()
-                if not rsid_raw or rsid_raw == '.':
-                    continue
-                for rsid in rsid_raw.split(';'):
-                    rsid = rsid.strip()
-                    cpic = _CPIC_TABLE.get(rsid)
-                    if cpic:
-                        cpic_rows.append({
-                            'rsid':   rsid,
-                            'gene':   cpic['gene'],
-                            'allele': cpic['allele'],
-                            'gt':     (row.get('GEN[0].GT') or '').strip() or '&mdash;',
-                            'phenotype': cpic['phenotype'],
-                            'activity':  cpic['activity'],
-                            'drugs':     cpic['drugs'],
-                            'recommendation': cpic['recommendation'],
-                            'alert':         cpic['alert'],
-                        })
-
+def tsv_to_html_pharmaco(cpic_rows):
+    # Report model 'pharmaco': CPIC matches of the normal's genotypes (report_model.CPIC_TABLE)
+    cpic_rows = [dict(r, gt=html.escape(r['gt']) or '&mdash;') for r in cpic_rows]
     if not cpic_rows:
         return (
             "<div class='callout-info'>"
             "<strong>No Actionable Pharmacogenomic Variants Detected</strong><br/>"
-            "The pharmacogenomics panel (DPYD, UGT1A1, NUDT15, TPMT, CYP2D6, CYP2C19) "
-            "did not identify any germline variants with CPIC actionable dosing recommendations. "
-            "Standard dosing for fluoropyrimidines, irinotecan, thiopurines, and tamoxifen "
-            "is indicated based on pharmacogenomic genotyping."
+            "The pharmacogenomics panel (DPYD, UGT1A1) did not identify any germline variants "
+            "with CPIC actionable dosing recommendations. Standard dosing for fluoropyrimidines "
+            "and irinotecan is indicated based on pharmacogenomic genotyping."
             "</div>"
         )
 
@@ -115,8 +72,7 @@ def tsv_to_html_pharmaco(path):
     note = (
         "<p style='font-size:.72rem;color:#94a3b8;margin-top:6px;'>"
         "CPIC = Clinical Pharmacogenomics Implementation Consortium. "
-        "Recommendations based on CPIC guidelines for DPYD (2017), UGT1A1 (2014), "
-        "NUDT15/TPMT (2018), CYP2D6/Tamoxifen (2018), CYP2C19 (2013).</p>"
+        "Recommendations based on CPIC guidelines for DPYD (2017) and UGT1A1 (2014).</p>"
     )
     return (
         "<div class='tbl-wrap'><table><thead><tr>" + th + "</tr></thead>"
@@ -126,20 +82,12 @@ def tsv_to_html_pharmaco(path):
 # ---------------------------------------------------------------------------
 # Clinical Trials section (ClinicalTrials.gov API v2)
 # ---------------------------------------------------------------------------
-def fetch_clinical_trials_html(corr_json_path, tmb_val, msi_val, hrd_status,
-                               actionable_genes=None, tumor_label=''):
-    """Recruiting trials: the query plan shared with the PDF (report_shared.trial_queries)."""
-    import json as _json
-    cdata = {}
-    if corr_json_path and os.path.isfile(corr_json_path):
-        with open(corr_json_path) as fh:
-            cdata = _json.load(fh)
-    msi_st = msi_status(msi_val)
-    queries = trial_queries(cdata, actionable_genes, tmb_val, msi_st, hrd_status, tumor_label)
-    if not queries:
+def clinical_trials_html(res):
+    """Recruiting trials queried once in the report model (report_shared.trial_queries)."""
+    if not res:
         return "<p class='warn'>No reportable findings to drive clinical trial queries.</p>"
-    res = clinical_trials(queries, msi_st)
     all_trials = res['trials']
+    queries = [(q,) for q in res['queries']]
 
     if res['error'] and not all_trials:
         return (
@@ -192,7 +140,17 @@ def fetch_clinical_trials_html(corr_json_path, tmb_val, msi_val, hrd_status,
 # ---------------------------------------------------------------------------
 # Test Methodology section
 # ---------------------------------------------------------------------------
-def build_methodology_html():
+def build_methodology_html(m):
+    # Versions from the report model
+    v = m['versions']
+    pipeline_label = lambda: v['pipeline']
+    sarek_label = lambda: v['sarek']
+    version_rows = lambda: v['rows']
+
+    def tool_label(name, key):
+        ver = v['tools'].get(key, '')
+        return f'{name} {ver}' if ver else name
+
     method_css = (
         "<style>"
         ".meth-table { border-collapse:collapse; width:100%; font-size:.78rem; margin-top:8px; }"
@@ -367,62 +325,15 @@ def germline_cnv_lowmap(row):
     except ValueError:
         return None
 
-def tsv_to_html_germline_cnv(path, _panel_genes):
-    # One row per exon -> group by (CHROM, POS, END). Only panel genes, QA >= MIN_QA.
-    # Low-mappability segments go to a separate table, never to the main one.
-    MIN_QA = int(os.environ.get('FILT_GERMLINE_CNV_MIN_QA','4'))
-    LOWMAP_FRAC = float(os.environ.get('FILT_GERMLINE_CNV_LOWMAP_FRAC','0.5'))
-    if not path or not os.path.isfile(path):
-        return "<p class='warn'>Germline CNV (GATK) file not found: " + html.escape(path or "N/A") + "</p>"
-    with open(path) as fh:
-        reader = csv.DictReader(fh, delimiter='\t')
-        rows = list(reader)
-    if not rows:
+def germline_cnv_html(gcnv, thresholds):
+    # Report model 'germline_cnv': segments grouped per (CHROM, POS, END), panel genes,
+    # QA >= min; low-mappability segments in their own table, never in the main one.
+    MIN_QA = thresholds['germline_cnv_min_qa']
+    LOWMAP_FRAC = thresholds['germline_cnv_lowmap_frac']
+    if not gcnv.get('n_rows'):
         return "<p class='warn'>Germline CNV (GATK): empty file</p>"
-    # Group rows by segment
-    segments = {}
-    seg_order = []
-    for row in rows:
-        cn_raw = row.get('CN', '2').strip()
-        if not germline_cnv_is_event(row):
-            continue
-        key = (row.get('CHROM',''), row.get('POS',''), row.get('END',''))
-        if key not in segments:
-            segments[key] = {
-                'chrom': row.get('CHROM',''),
-                'pos':   row.get('POS',''),
-                'end':   row.get('END',''),
-                'alt':   row.get('ALT','.'),
-                'qual':  row.get('QUAL','.'),
-                'filter':row.get('FILTER','.'),
-                'gt':    row.get('GT','.'),
-                'cn':    cn_raw,
-                'np':    row.get('NP','.'),
-                'qa':    row.get('QA','0'),
-                'qs':    row.get('QS','.'),
-                'lowmap': germline_cnv_lowmap(row),
-                'genes': [],
-            }
-            seg_order.append(key)
-        gene = row.get('gen','').strip()
-        if gene and gene not in segments[key]['genes']:
-            segments[key]['genes'].append(gene)
-    # Panel genes only, QA >= MIN_QA
-    filtered = []
-    for key in seg_order:
-        seg = segments[key]
-        try:
-            qa_val = int(float(seg.get('qa') or ''))
-        except (ValueError, TypeError, OverflowError):
-            continue  # non-numeric QA: treated as below threshold
-        if qa_val < MIN_QA:
-            continue
-        panel_hits = [g for g in seg['genes'] if g in _panel_genes]
-        if panel_hits:
-            seg['genes'] = panel_hits
-            filtered.append(seg)
-    lowmap_segs = [s for s in filtered if s['lowmap'] is not None and s['lowmap'] >= LOWMAP_FRAC]
-    filtered = [s for s in filtered if s not in lowmap_segs]
+    filtered = gcnv['segments']
+    lowmap_segs = gcnv['lowmap']
     main_html = ""
     if not filtered:
         main_html = (
