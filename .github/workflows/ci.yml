@@ -19,6 +19,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version:
+    name: Tag matches manifest.version
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the tag with nextflow.config and CHANGELOG.md
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest=$(sed -n "s/^ *version *= *'\(.*\)'.*/\1/p" nextflow.config | head -1)
+          echo "tag=$tag manifest=$manifest"
+          test "$tag" = "$manifest" || { echo "::error::tag v$tag != manifest.version $manifest"; exit 1; }
+          grep -q "^## \[$tag\]" CHANGELOG.md || { echo "::error::no CHANGELOG section [$tag]"; exit 1; }
+
   unit:
     name: Unit tests (pytest)
     runs-on: ubuntu-latest

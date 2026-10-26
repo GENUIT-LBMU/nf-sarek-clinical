@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0-rc.1] – 2026-10-26
+
+Release candidate for the benchmark and the clinical validation (ACMG rules,
+pharmacogenomics). Not yet released for clinical use.
+
+### Breaking changes
+
+- dbNSFP removed: germline SNVs need the local gnomAD v4.1, ClinVar and REVEL panel
+  resources (`--gnomad_tsv`, `--clinvar_tsv`, `--revel_tsv`); somatic SNVs need a frozen
+  CIViC cache (`--civic_cache`).
+- Nextflow >= 24.04 (with Nextflow >= 26, `NXF_SYNTAX_PARSER=v1`).
+- Removed parameters: `--dbnsfp`, `--tmb_min_dp`, `--tmb_min_af`, `--tmb_min_alt_reads`,
+  `--germline_min_dp`, `--amp_threshold`, `--hrd_threshold`, `--sigprofiler_env` and the
+  nf-core boilerplate parameters; the `conda` profile.
+- Reports: one report model per pair (`reporting/<pair>.report_model.json`) rendered by
+  the laboratory HTML and the clinical PDF; `correlation_section.json` is no longer
+  published; new PDF layout.
+- `run_full.sh` launches sarek 3.5.1 (`SAREK_REVISION`) from the run directory.
+
 ### Added
 - Patient and specimen identification in both reports from optional extra columns
   of the sarek samplesheet (`--samplesheet`, passed by `run_full.sh`): patient_name,
@@ -493,7 +512,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-value dbNSFP frequencies (`0.53,0.53`) were read as AF 0 by the ACMG
   engine (PM2 applied to common variants).
 
-## [1.0.0] – 2024-XX-XX
+## [1.0.0] – 2026-02-19
 
 ### Initial release
 
